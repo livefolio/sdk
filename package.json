@@ -20,6 +20,10 @@
     "./portfolio": {
       "types": "./dist/portfolio/index.d.ts",
       "default": "./dist/portfolio/index.js"
+    },
+    "./auth": {
+      "types": "./dist/auth/index.d.ts",
+      "default": "./dist/auth/index.js"
     }
   },
   "files": [
@@ -29,7 +33,10 @@
     "build": "tsc",
     "clean": "rm -rf dist"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@livefolio/db": "*",
+    "@supabase/supabase-js": "^2"
+  },
   "devDependencies": {
     "typescript": "^5.5.3"
   }
