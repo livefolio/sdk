@@ -13,9 +13,9 @@
       "types": "./dist/market/index.d.ts",
       "default": "./dist/market/index.js"
     },
-    "./evaluator": {
-      "types": "./dist/evaluator/index.d.ts",
-      "default": "./dist/evaluator/index.js"
+    "./strategy": {
+      "types": "./dist/strategy/index.d.ts",
+      "default": "./dist/strategy/index.js"
     },
     "./portfolio": {
       "types": "./dist/portfolio/index.d.ts",
@@ -40,6 +40,7 @@
     "@supabase/supabase-js": "^2"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.18",
     "typescript": "^5.5.3",
     "vitest": "^4.0.18"
   }

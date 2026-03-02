@@ -17,7 +17,7 @@ npm run test:watch   # run tests in watch mode
 
 - **auth** — Authentication (user, session, sign-out) wrapping Supabase Auth
 - **market** — Market data retrieval (series, quotes, trading calendar) via Supabase Edge Functions and direct queries
-- **evaluator** — Strategy allocation evaluation, indicators, signals, and backtesting (stub)
+- **strategy** — Strategy definition retrieval, pure evaluation (indicators, signals, conditions, allocations), and evaluation caching
 - **portfolio** — Brokerage account aggregation and trade order management (stub)
 
 The root `src/index.ts` re-exports all modules as namespaces and provides `createLivefolioClient()` which wires everything together from a single `TypedSupabaseClient`.
@@ -34,11 +34,21 @@ src/<module>/
 └── client.test.ts  ← tests (imports from client.ts)
 ```
 
+The strategy module has additional files for pure logic:
+
+```
+src/strategy/
+├── evaluate.ts       ← pure evaluation functions (indicators, signals, conditions)
+├── evaluate.test.ts  ← evaluation tests
+├── symbols.ts        ← INDICATOR_SYMBOL_MAP + extractSymbols
+└── time.ts           ← utcToET, isAtMarketClose
+```
+
 **Rules:**
 - `index.ts` must be a pure barrel file — only `export type` and `export` re-statements, no logic
 - `types.ts` holds the module interface (e.g. `MarketModule`) and all domain types
 - `client.ts` holds the `createX()` factory that returns the module interface
-- Tests go in `client.test.ts` and import directly from `./client`
+- Tests go in `client.test.ts` and/or `evaluate.test.ts` and import directly from source
 - New modules must follow this same pattern
 
 ### Key types
@@ -58,6 +68,32 @@ interface TradingDay { date: string; open: string; close: string; extended_open:
 | `getBatchQuotes(symbols)` | `quote` | `Record<string, Observation>` |
 | `getTradingDays(start, end)` | direct query | `TradingDay[]` |
 | `getTradingDay(date)` | direct query | `TradingDay \| null` |
+
+### StrategyModule methods
+
+| Method | Category | Description |
+|--------|----------|-------------|
+| `get(linkId)` | Retrieval | Fetch a fully-resolved Strategy via `strategy` edge function (DB lookup + testfol.io auto-import) |
+| `getMany(linkIds)` | Retrieval | Batch fetch strategies by link IDs |
+| `evaluate(strategy, at)` | Cache-through | Async self-contained evaluation — fetches series, checks cache, evaluates on miss |
+| `evaluateIndicator(indicator, options)` | Pure eval | Evaluate a single indicator (SMA, EMA, RSI, etc.) — accepts `EvaluationOptions` |
+| `evaluateSignal(signal, options)` | Pure eval | Compare two indicators with dead-band hysteresis — accepts `EvaluationOptions` |
+| `evaluateAllocation(allocation, options)` | Pure eval | Evaluate a condition tree (AND/OR/NOT of signals) — accepts `EvaluationOptions` |
+| `getEvaluationDate(trading, options)` | Pure eval | Compute evaluation date — accepts `EvaluationOptions` (needs batchSeries) |
+| `extractSymbols(strategy)` | Utility | Extract all ticker symbols needed for evaluation |
+| `backtest(strategy, options)` | Stub | Not yet implemented |
+
+### Strategy domain model
+
+- **Indicator** — a single metric (SMA, EMA, RSI, Price, VIX, etc.) with ticker, lookback, delay
+- **Signal** — comparison of two indicators with tolerance (dead-band hysteresis)
+- **Condition** — boolean expression tree: `OR(AND(...), AND(...))` where leaves are `signal` or `NOT(signal)`
+- **Allocation** — a condition + holdings (tickers + weights)
+- **NamedAllocation** — allocation with a name and position (priority order; internal)
+- **AllocationEvaluation** — flattened allocation result (name, holdings)
+- **Strategy** — named signals + allocations + trading frequency
+
+Signals use a **definition/named-instance split**: signal definitions are strategy-agnostic (shared via unique constraint on indicator pair + comparison + tolerance), while `named_signals` are strategy-scoped. Allocations keep name/position directly on the table.
 
 ## Testing
 
