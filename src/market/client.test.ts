@@ -40,9 +40,9 @@ function createMockClient() {
 // ---------------------------------------------------------------------------
 
 const SERIES_DATA: Observation[] = [
-  { date: '2025-01-10', value: 590.25 },
-  { date: '2025-01-11', value: 592.10 },
-  { date: '2025-01-12', value: 588.50 },
+  { timestamp: '2025-01-10T16:00:00Z', value: 590.25 },
+  { timestamp: '2025-01-11T16:00:00Z', value: 592.10 },
+  { timestamp: '2025-01-12T16:00:00Z', value: 588.50 },
 ];
 
 
@@ -114,6 +114,69 @@ describe('createMarket', () => {
         body: { symbols: ['SPY'] },
       });
       expect(result).toEqual(SERIES_DATA);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // getBatchQuotes
+  // -----------------------------------------------------------------------
+
+  describe('getBatchQuotes', () => {
+    it('invokes the quote edge function with symbols array', async () => {
+      const batchResult = {
+        SPY: { timestamp: '2025-01-12T19:15:00.000Z', value: 590.25 },
+        QQQ: { timestamp: '2025-01-12T19:15:00.000Z', value: 480.10 },
+      };
+      mock.mockInvoke.mockResolvedValue({ data: batchResult, error: null });
+
+      const result = await market.getBatchQuotes(['SPY', 'QQQ']);
+
+      expect(mock.mockInvoke).toHaveBeenCalledOnce();
+      expect(mock.mockInvoke).toHaveBeenCalledWith('quote', {
+        body: { symbols: ['SPY', 'QQQ'] },
+      });
+      expect(result).toEqual(batchResult);
+    });
+
+    it('throws on invoke error', async () => {
+      const error = new Error('Function invocation failed');
+      mock.mockInvoke.mockResolvedValue({ data: null, error });
+
+      await expect(market.getBatchQuotes(['SPY'])).rejects.toThrow(
+        'Function invocation failed'
+      );
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // getQuote (thin wrapper)
+  // -----------------------------------------------------------------------
+
+  describe('getQuote', () => {
+    it('delegates to getBatchQuotes and extracts the single observation', async () => {
+      const spyQuote: Observation = { timestamp: '2025-01-12T19:15:00.000Z', value: 590.25 };
+      mock.mockInvoke.mockResolvedValue({
+        data: { SPY: spyQuote },
+        error: null,
+      });
+
+      const result = await market.getQuote('SPY');
+
+      expect(mock.mockInvoke).toHaveBeenCalledWith('quote', {
+        body: { symbols: ['SPY'] },
+      });
+      expect(result).toEqual(spyQuote);
+    });
+
+    it('throws when symbol has no quote', async () => {
+      mock.mockInvoke.mockResolvedValue({
+        data: {},
+        error: null,
+      });
+
+      await expect(market.getQuote('INVALID')).rejects.toThrow(
+        'No quote available for INVALID'
+      );
     });
   });
 

@@ -14,6 +14,19 @@ export function createMarket(client: TypedSupabaseClient): MarketModule {
       return result[symbol];
     },
 
+    async getBatchQuotes(symbols: string[]): Promise<Record<string, Observation>> {
+      const { data, error } = await client.functions.invoke('quote', { body: { symbols } });
+      if (error) throw error;
+      return data as Record<string, Observation>;
+    },
+
+    async getQuote(symbol: string): Promise<Observation> {
+      const result = await this.getBatchQuotes([symbol]);
+      const quote = result[symbol];
+      if (quote == null) throw new Error(`No quote available for ${symbol}`);
+      return quote;
+    },
+
     async getTradingDays(startDate: string, endDate: string): Promise<TradingDay[]> {
       const { data, error } = await client
         .from('trading_days')

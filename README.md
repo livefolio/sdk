@@ -17,9 +17,15 @@ import { createClient } from '@supabase/supabase-js';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const livefolio = createLivefolioClient(supabase);
 
-// Market data
+// Market data — historical series
 const series = await livefolio.market.getSeries('SPY');
 const batch = await livefolio.market.getBatchSeries(['SPY', 'QQQ']);
+
+// Market data — real-time quotes
+const quote = await livefolio.market.getQuote('SPY');
+const quotes = await livefolio.market.getBatchQuotes(['SPY', 'QQQ']);
+
+// Trading calendar
 const days = await livefolio.market.getTradingDays('2025-01-01', '2025-12-31');
 
 // Auth
@@ -36,7 +42,7 @@ import { createAuth } from '@livefolio/sdk/auth';
 ## Modules
 
 - **auth** — Authentication (user, session, sign-out)
-- **market** — Market data series and trading calendar
+- **market** — Market data series, real-time quotes, and trading calendar
 - **evaluator** — Strategy evaluation (planned)
 - **portfolio** — Brokerage aggregation and trade management (planned)
 

@@ -16,7 +16,7 @@ npm run test:watch   # run tests in watch mode
 `@livefolio/sdk` is a TypeScript SDK with four domain modules:
 
 - **auth** — Authentication (user, session, sign-out) wrapping Supabase Auth
-- **market** — Market data retrieval (series, trading calendar) via Supabase Edge Functions and direct queries
+- **market** — Market data retrieval (series, quotes, trading calendar) via Supabase Edge Functions and direct queries
 - **evaluator** — Strategy allocation evaluation, indicators, signals, and backtesting (stub)
 - **portfolio** — Brokerage account aggregation and trade order management (stub)
 
@@ -40,6 +40,32 @@ src/<module>/
 - `client.ts` holds the `createX()` factory that returns the module interface
 - Tests go in `client.test.ts` and import directly from `./client`
 - New modules must follow this same pattern
+
+### Key types
+
+```ts
+interface Observation { timestamp: string; value: number }  // ISO 8601 timestamp
+interface TradingDay { date: string; open: string; close: string; extended_open: string; extended_close: string }
+```
+
+### MarketModule methods
+
+| Method | Edge Function | Returns |
+|--------|--------------|---------|
+| `getSeries(symbol)` | `series` | `Observation[]` |
+| `getBatchSeries(symbols)` | `series` | `Record<string, Observation[]>` |
+| `getQuote(symbol)` | `quote` | `Observation` |
+| `getBatchQuotes(symbols)` | `quote` | `Record<string, Observation>` |
+| `getTradingDays(start, end)` | direct query | `TradingDay[]` |
+| `getTradingDay(date)` | direct query | `TradingDay \| null` |
+
+## Testing
+
+**Every code change must include corresponding tests.** Tests use vitest and mock the Supabase client. Each module's `client.test.ts` must cover:
+
+- Every method's success path (correct invoke args and return shape)
+- Error paths (invoke errors, missing data)
+- Thin wrappers (verify delegation to batch method)
 
 ### Imports
 
