@@ -299,7 +299,7 @@ export function createStrategy(client: TypedSupabaseClient): StrategyModule {
       .maybeSingle();
 
     const signalResults = Object.entries(result.signals).map(([_key, sigResult]) => {
-      const ns = strategy.namedSignals.find(
+      const ns = strategy.signals.find(
         (ns) => signalKey(ns.signal) === _key,
       );
       return { name: ns?.name ?? _key, result: sigResult };

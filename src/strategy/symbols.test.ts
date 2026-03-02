@@ -74,7 +74,7 @@ describe('extractSymbols', () => {
       linkId: 'test',
       name: 'Test',
       trading: { frequency: 'Daily', offset: 0 },
-      namedSignals: [
+      signals: [
         { name: 'S1', signal: makeSignal() }, // SPY on both sides
       ],
       allocations: [],
@@ -89,7 +89,7 @@ describe('extractSymbols', () => {
       linkId: 'test',
       name: 'Test',
       trading: { frequency: 'Daily', offset: 0 },
-      namedSignals: [
+      signals: [
         {
           name: 'VIX check',
           signal: makeSignal({
@@ -119,7 +119,7 @@ describe('extractSymbols', () => {
       linkId: 'test',
       name: 'Test',
       trading: { frequency: 'Daily', offset: 0 },
-      namedSignals: [
+      signals: [
         {
           name: 'Threshold signal',
           signal: makeSignal({
@@ -142,7 +142,7 @@ describe('extractSymbols', () => {
       linkId: 'test',
       name: 'Test',
       trading: { frequency: 'Daily', offset: 0 },
-      namedSignals: [],
+      signals: [],
       allocations: [
         {
           name: 'A1',
@@ -168,7 +168,7 @@ describe('extractSymbols', () => {
       linkId: 'test',
       name: 'Test',
       trading: { frequency: 'Daily', offset: 0 },
-      namedSignals: [
+      signals: [
         { name: 'S1', signal: makeSignal() }, // SPY
       ],
       allocations: [
@@ -195,7 +195,7 @@ describe('extractSymbols', () => {
       linkId: 'test',
       name: 'Test',
       trading: { frequency: 'Daily', offset: 0 },
-      namedSignals: [],
+      signals: [],
       allocations: [],
     };
 

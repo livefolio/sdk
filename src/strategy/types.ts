@@ -136,7 +136,7 @@ export interface Strategy {
   name: string;
   trading: Trading;
   allocations: NamedAllocation[];
-  namedSignals: NamedSignal[];
+  signals: NamedSignal[];
 }
 
 // ---------------------------------------------------------------------------

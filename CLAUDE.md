@@ -91,9 +91,9 @@ interface TradingDay { date: string; open: string; close: string; extended_open:
 - **Allocation** — a condition + holdings (tickers + weights)
 - **NamedAllocation** — allocation with a name and position (priority order; internal)
 - **AllocationEvaluation** — flattened allocation result (name, holdings)
-- **Strategy** — named signals + allocations + trading frequency
+- **Strategy** — signals + allocations + trading frequency
 
-Signals use a **definition/named-instance split**: signal definitions are strategy-agnostic (shared via unique constraint on indicator pair + comparison + tolerance), while `named_signals` are strategy-scoped. Allocations keep name/position directly on the table.
+Signals use a **definition/named-instance split**: signal definitions are strategy-agnostic (shared via unique constraint on indicator pair + comparison + tolerance), while `signals` (named instances) are strategy-scoped. Allocations keep name/position directly on the table.
 
 ## Testing
 

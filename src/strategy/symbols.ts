@@ -27,7 +27,7 @@ function addIndicatorSymbol(indicator: Indicator, symbols: Set<string>): void {
 export function extractSymbols(strategy: Strategy): string[] {
   const symbols = new Set<string>();
 
-  for (const ns of strategy.namedSignals) {
+  for (const ns of strategy.signals) {
     addIndicatorSymbol(ns.signal.left, symbols);
     addIndicatorSymbol(ns.signal.right, symbols);
   }

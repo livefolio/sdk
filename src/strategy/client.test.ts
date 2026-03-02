@@ -47,7 +47,7 @@ const STRATEGY_RESPONSE = {
   linkId: 'abc-123',
   name: 'Test Strategy',
   trading: { frequency: 'Daily', offset: 0 },
-  namedSignals: [
+  signals: [
     {
       name: 'SPY above SMA50',
       signal: {
@@ -140,8 +140,8 @@ describe('createStrategy', () => {
       expect(result!.linkId).toBe('abc-123');
       expect(result!.name).toBe('Test Strategy');
       expect(result!.trading).toEqual({ frequency: 'Daily', offset: 0 });
-      expect(result!.namedSignals).toHaveLength(1);
-      expect(result!.namedSignals[0].name).toBe('SPY above SMA50');
+      expect(result!.signals).toHaveLength(1);
+      expect(result!.signals[0].name).toBe('SPY above SMA50');
       expect(result!.allocations).toHaveLength(1);
       expect(result!.allocations[0].name).toBe('Aggressive');
     });
@@ -241,7 +241,7 @@ describe('createStrategy', () => {
           },
         },
       ],
-      namedSignals: [
+      signals: [
         {
           name: 'SPY above SMA5',
           signal: {
@@ -585,7 +585,7 @@ describe('createStrategy', () => {
     it('throws "Not implemented"', async () => {
       await expect(
         strategy.backtest(
-          { linkId: 'x', name: 'x', trading: { frequency: 'Daily', offset: 0 }, allocations: [], namedSignals: [] },
+          { linkId: 'x', name: 'x', trading: { frequency: 'Daily', offset: 0 }, allocations: [], signals: [] },
           { startDate: '2020-01-01', endDate: '2025-01-01' },
         ),
       ).rejects.toThrow('Not implemented');

@@ -663,7 +663,7 @@ describe('evaluate', () => {
       name: 'Test Strategy',
       trading: { frequency: 'Daily', offset: 0 },
       allocations: allocs,
-      namedSignals: [...signals].map((s, i) => ({ name: `Signal ${i}`, signal: s })),
+      signals: [...signals].map((s, i) => ({ name: `Signal ${i}`, signal: s })),
     };
   }
 
@@ -912,7 +912,7 @@ describe('extractSymbols', () => {
       linkId: 'test',
       name: 'Test',
       trading: { frequency: 'Daily', offset: 0 },
-      namedSignals: [
+      signals: [
         { name: 'S1', signal: vixSignal },
         { name: 'S2', signal: spySignal },
       ],
