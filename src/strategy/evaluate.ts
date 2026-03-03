@@ -428,14 +428,14 @@ export function evaluate(strategy: Strategy, options: EvaluationOptions): Strate
     }
   }
 
-  const evaluatedAt = getEvaluationDate(strategy.trading, options);
+  const asOf = getEvaluationDate(strategy.trading, options);
 
   return {
     allocation: {
       name: winning.name,
       holdings: winning.allocation.holdings,
     },
-    evaluatedAt,
+    asOf,
     signals,
     indicators,
   };

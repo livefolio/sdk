@@ -289,6 +289,7 @@ export function createStrategy(client: TypedSupabaseClient): StrategyModule {
   async function storeResult(
     strategy: Strategy,
     result: StrategyEvaluation,
+    tradingDayId: number,
   ): Promise<void> {
     // Resolve strategy_id for indicator key → DB ID mapping
     const { data: stratRow } = await client
@@ -320,7 +321,7 @@ export function createStrategy(client: TypedSupabaseClient): StrategyModule {
       p_allocation_name: result.allocation.name,
       p_signal_results: signalResults,
       p_indicator_results: indicatorResults,
-      p_evaluated_at: result.evaluatedAt.toISOString(),
+      p_trading_day_id: tradingDayId,
     });
 
     if (error) throw new Error(`Failed to store evaluation: ${error.message}`);
@@ -391,7 +392,7 @@ export function createStrategy(client: TypedSupabaseClient): StrategyModule {
       // 6. Check cache
       const { data: cacheRow } = await db
         .from('strategy_evaluations')
-        .select('allocation_id, evaluated_at')
+        .select('allocation_id')
         .eq('strategy_id', stratRow.id)
         .eq('trading_day_id', tdRow.id)
         .limit(1)
@@ -418,7 +419,7 @@ export function createStrategy(client: TypedSupabaseClient): StrategyModule {
             name: namedAlloc.name,
             holdings: namedAlloc.allocation.holdings,
           },
-          evaluatedAt: new Date(cacheRow.evaluated_at),
+          asOf: evaluationDate,
           signals,
           indicators,
         };
@@ -437,7 +438,7 @@ export function createStrategy(client: TypedSupabaseClient): StrategyModule {
       });
 
       // Store (non-blocking)
-      storeResult(strategy, result).catch(err =>
+      storeResult(strategy, result, tdRow.id).catch(err =>
         console.error('Failed to store evaluation:', err),
       );
 

@@ -162,7 +162,7 @@ export interface AllocationEvaluation {
 }
 
 export interface StrategyEvaluation {
-  evaluatedAt: Date;
+  asOf: Date;
   allocation: AllocationEvaluation;
   signals: Record<string, boolean>;
   indicators: Record<string, IndicatorEvaluation>;

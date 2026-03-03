@@ -294,7 +294,7 @@ describe('createStrategy', () => {
       const result = await strategy.evaluate(testStrategy, evalAt);
 
       expect(result.allocation.name).toBe('Aggressive');
-      expect(result.evaluatedAt).toBeInstanceOf(Date);
+      expect(result.asOf).toBeInstanceOf(Date);
       expect(Object.keys(result.indicators).length).toBeGreaterThan(0);
       expect(mock.mockRpc).not.toHaveBeenCalled();
     });
@@ -329,7 +329,7 @@ describe('createStrategy', () => {
       const result = await strategy.evaluate(testStrategy, evalAt);
 
       expect(result.allocation.name).toBe('Aggressive');
-      expect(result.evaluatedAt).toBeInstanceOf(Date);
+      expect(result.asOf).toBeInstanceOf(Date);
       expect(mock.mockRpc).not.toHaveBeenCalled();
     });
 
@@ -356,7 +356,7 @@ describe('createStrategy', () => {
                 eq: vi.fn().mockReturnValue({
                   limit: vi.fn().mockReturnValue({
                     maybeSingle: vi.fn().mockResolvedValue({
-                      data: { allocation_id: 200, evaluated_at: '2025-01-10T21:00:00Z' },
+                      data: { allocation_id: 200 },
                       error: null,
                     }),
                   }),
@@ -427,7 +427,7 @@ describe('createStrategy', () => {
       const result = await strategy.evaluate(testStrategy, evalAt);
 
       expect(result.allocation.name).toBe('Aggressive');
-      expect(result.evaluatedAt).toEqual(new Date('2025-01-10T21:00:00Z'));
+      expect(result.asOf).toBeInstanceOf(Date);
       expect(Object.keys(result.indicators).length).toBe(2);
       // Verify indicator values are reconstructed from cache
       const indKeys = Object.keys(result.indicators);
@@ -498,7 +498,7 @@ describe('createStrategy', () => {
       const result = await strategy.evaluate(testStrategy, evalAt);
 
       expect(result.allocation.name).toBe('Aggressive');
-      expect(result.evaluatedAt).toBeInstanceOf(Date);
+      expect(result.asOf).toBeInstanceOf(Date);
       expect(Object.keys(result.indicators).length).toBeGreaterThan(0);
 
       // Wait for non-blocking store
@@ -563,7 +563,7 @@ describe('createStrategy', () => {
       const result = await strategy.evaluate(testStrategy, evalAt);
 
       expect(result.allocation.name).toBe('Aggressive');
-      expect(result.evaluatedAt).toBeInstanceOf(Date);
+      expect(result.asOf).toBeInstanceOf(Date);
 
       // Wait for non-blocking store error to be logged
       await vi.waitFor(() => {

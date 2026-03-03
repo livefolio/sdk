@@ -689,7 +689,7 @@ describe('evaluate', () => {
 
     const result = evaluate(strategy, makeOptions());
     expect(result.allocation.name).toBe('Aggressive');
-    expect(result.evaluatedAt).toBeInstanceOf(Date);
+    expect(result.asOf).toBeInstanceOf(Date);
   });
 
   it('falls back to last allocation', () => {
@@ -732,7 +732,7 @@ describe('evaluate', () => {
     const result = evaluate(strategy, opts);
     expect(Object.keys(result.signals).length).toBeGreaterThan(0);
     expect(Object.keys(result.indicators).length).toBeGreaterThan(0);
-    expect(result.evaluatedAt).toEqual(getEvaluationDate(strategy.trading, opts));
+    expect(result.asOf).toEqual(getEvaluationDate(strategy.trading, opts));
   });
 
   it('deduplicates shared indicators across allocations', () => {
