@@ -1,6 +1,6 @@
 {
   "name": "@livefolio/sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Livefolio SDK — market data, strategy evaluation, and portfolio management",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -13,9 +13,9 @@
       "types": "./dist/market/index.d.ts",
       "default": "./dist/market/index.js"
     },
-    "./evaluator": {
-      "types": "./dist/evaluator/index.d.ts",
-      "default": "./dist/evaluator/index.js"
+    "./strategy": {
+      "types": "./dist/strategy/index.d.ts",
+      "default": "./dist/strategy/index.js"
     },
     "./portfolio": {
       "types": "./dist/portfolio/index.d.ts",
@@ -31,13 +31,17 @@
   ],
   "scripts": {
     "build": "tsc",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@livefolio/db": "*",
     "@supabase/supabase-js": "^2"
   },
   "devDependencies": {
-    "typescript": "^5.5.3"
+    "@vitest/coverage-v8": "^4.0.18",
+    "typescript": "^5.5.3",
+    "vitest": "^4.0.18"
   }
 }

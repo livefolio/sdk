@@ -1,29 +1,29 @@
 export * as auth from './auth';
 export * as market from './market';
-export * as evaluator from './evaluator';
+export * as strategy from './strategy';
 export * as portfolio from './portfolio';
 
 export type { TypedSupabaseClient } from './types';
 export type { AuthModule } from './auth';
 export type { MarketModule } from './market';
-export type { EvaluatorModule } from './evaluator';
+export type { StrategyModule } from './strategy';
 export type { PortfolioModule } from './portfolio';
 
 import type { TypedSupabaseClient } from './types';
 import type { AuthModule } from './auth';
 import type { MarketModule } from './market';
-import type { EvaluatorModule } from './evaluator';
+import type { StrategyModule } from './strategy';
 import type { PortfolioModule } from './portfolio';
 import { createAuth } from './auth';
 import { createMarket } from './market';
-import { createEvaluator } from './evaluator';
+import { createStrategy } from './strategy';
 import { createPortfolio } from './portfolio';
 
 export interface LivefolioClient {
   readonly supabase: TypedSupabaseClient;
   readonly auth: AuthModule;
   readonly market: MarketModule;
-  readonly evaluator: EvaluatorModule;
+  readonly strategy: StrategyModule;
   readonly portfolio: PortfolioModule;
 }
 
@@ -32,7 +32,7 @@ export function createLivefolioClient(supabase: TypedSupabaseClient): LivefolioC
     supabase,
     auth: createAuth(supabase),
     market: createMarket(supabase),
-    evaluator: createEvaluator(supabase),
+    strategy: createStrategy(supabase),
     portfolio: createPortfolio(supabase),
   };
 }
