@@ -37,7 +37,8 @@
   },
   "dependencies": {
     "@livefolio/db": "*",
-    "@supabase/supabase-js": "^2"
+    "@supabase/supabase-js": "^2",
+    "snaptrade-typescript-sdk": "^9.0.169"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.0.18",
