@@ -22,6 +22,7 @@ export type {
   EvaluationOptions,
   IndicatorEvaluation,
   StrategyEvaluation,
+  StreamObservation,
   BacktestOptions,
   BacktestResult,
 } from './types';

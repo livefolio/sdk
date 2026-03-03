@@ -168,6 +168,16 @@ export interface StrategyEvaluation {
 }
 
 // ---------------------------------------------------------------------------
+// Live streaming
+// ---------------------------------------------------------------------------
+
+export interface StreamObservation {
+  symbol: string;
+  timestamp: string; // ISO 8601
+  value: number;
+}
+
+// ---------------------------------------------------------------------------
 // Backtest (stub)
 // ---------------------------------------------------------------------------
 
@@ -200,6 +210,9 @@ export interface StrategyModule {
 
   // Utilities
   extractSymbols(strategy: Strategy): string[];
+
+  // Live streaming (evaluate with a single incoming observation merged into historical series)
+  stream(strategy: Strategy, observation: StreamObservation): Promise<StrategyEvaluation>;
 
   // Backtest (stub)
   backtest(strategy: Strategy, options: BacktestOptions): Promise<BacktestResult>;

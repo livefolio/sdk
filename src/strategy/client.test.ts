@@ -578,6 +578,192 @@ describe('createStrategy', () => {
   });
 
   // -----------------------------------------------------------------------
+  // stream (live observation)
+  // -----------------------------------------------------------------------
+
+  describe('stream', () => {
+    const streamStrategy = {
+      linkId: 'abc-123',
+      name: 'Test Strategy',
+      trading: { frequency: 'Daily' as const, offset: 0 },
+      allocations: [
+        {
+          name: 'Aggressive',
+          allocation: {
+            condition: {
+              kind: 'signal' as const,
+              signal: {
+                left: { type: 'Price' as const, ticker: { symbol: 'SPY', leverage: 1 }, lookback: 1, delay: 0, unit: null, threshold: null },
+                comparison: '>' as const,
+                right: { type: 'SMA' as const, ticker: { symbol: 'SPY', leverage: 1 }, lookback: 5, delay: 0, unit: null, threshold: null },
+                tolerance: 0,
+              },
+            },
+            holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
+          },
+        },
+        {
+          name: 'Default',
+          allocation: {
+            condition: {
+              kind: 'signal' as const,
+              signal: {
+                left: { type: 'Threshold' as const, ticker: { symbol: '', leverage: 1 }, lookback: 0, delay: 0, unit: null, threshold: 1 },
+                comparison: '>' as const,
+                right: { type: 'Threshold' as const, ticker: { symbol: '', leverage: 1 }, lookback: 0, delay: 0, unit: null, threshold: 0 },
+                tolerance: 0,
+              },
+            },
+            holdings: [{ ticker: { symbol: 'BND', leverage: 1 }, weight: 100 }],
+          },
+        },
+      ],
+      signals: [
+        {
+          name: 'SPY above SMA5',
+          signal: {
+            left: { type: 'Price' as const, ticker: { symbol: 'SPY', leverage: 1 }, lookback: 1, delay: 0, unit: null, threshold: null },
+            comparison: '>' as const,
+            right: { type: 'SMA' as const, ticker: { symbol: 'SPY', leverage: 1 }, lookback: 5, delay: 0, unit: null, threshold: null },
+            tolerance: 0,
+          },
+        },
+      ],
+    };
+
+    it('merges observation into series and returns valid evaluation', async () => {
+      // Return historical series from invoke
+      mock.mockInvoke.mockResolvedValue({ data: SERIES_DATA, error: null });
+
+      // Strategy not in DB — skip prior state lookup
+      mock.mockFrom.mockImplementation(() => ({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            limit: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            }),
+          }),
+        }),
+      }));
+
+      const result = await strategy.stream(streamStrategy, {
+        symbol: 'SPY',
+        timestamp: '2025-01-10T19:30:00.000Z',
+        value: 110,
+      });
+
+      expect(result.asOf).toBeInstanceOf(Date);
+      expect(result.allocation).toBeDefined();
+      expect(result.allocation.name).toBeDefined();
+      expect(Object.keys(result.indicators).length).toBeGreaterThan(0);
+    });
+
+    it('replaces same-date entry when observation matches existing date', async () => {
+      mock.mockInvoke.mockResolvedValue({ data: SERIES_DATA, error: null });
+
+      mock.mockFrom.mockImplementation(() => ({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            limit: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            }),
+          }),
+        }),
+      }));
+
+      // 2025-01-10 already exists in SERIES_DATA — should replace with value 200
+      const result = await strategy.stream(streamStrategy, {
+        symbol: 'SPY',
+        timestamp: '2025-01-10T19:30:00.000Z',
+        value: 200,
+      });
+
+      // The price indicator should reflect the merged value (200), not the original (104)
+      const priceKey = Object.keys(result.indicators).find(k => k.startsWith('Price_SPY'));
+      expect(priceKey).toBeDefined();
+      expect(result.indicators[priceKey!].value).toBe(200);
+    });
+
+    it('skips cache check and does not store result', async () => {
+      mock.mockInvoke.mockResolvedValue({ data: SERIES_DATA, error: null });
+
+      mock.mockFrom.mockImplementation(() => ({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            limit: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            }),
+          }),
+        }),
+      }));
+
+      await strategy.stream(streamStrategy, {
+        symbol: 'SPY',
+        timestamp: '2025-01-10T19:30:00.000Z',
+        value: 110,
+      });
+
+      // No RPC calls (no cache check, no store)
+      expect(mock.mockRpc).not.toHaveBeenCalled();
+    });
+
+    it('fetches prior signal states when strategy exists in DB', async () => {
+      mock.mockInvoke.mockResolvedValue({ data: SERIES_DATA, error: null });
+
+      mock.mockFrom.mockImplementation((table: string) => {
+        if (table === 'strategies') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                limit: vi.fn().mockReturnValue({
+                  maybeSingle: vi.fn().mockResolvedValue({ data: { id: 1 }, error: null }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'named_signals') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+            }),
+          };
+        }
+        if (table === 'signal_evaluations') {
+          return {
+            select: vi.fn().mockReturnValue({
+              in: vi.fn().mockReturnValue({
+                order: vi.fn().mockResolvedValue({ data: [], error: null }),
+              }),
+            }),
+          };
+        }
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              limit: vi.fn().mockReturnValue({
+                maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+              }),
+            }),
+          }),
+        };
+      });
+
+      const result = await strategy.stream(streamStrategy, {
+        symbol: 'SPY',
+        timestamp: '2025-01-10T19:30:00.000Z',
+        value: 110,
+      });
+
+      expect(result.allocation).toBeDefined();
+      // Verify named_signals was queried (for prior state)
+      expect(mock.mockFrom).toHaveBeenCalledWith('named_signals');
+      // No RPC store call
+      expect(mock.mockRpc).not.toHaveBeenCalled();
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // backtest (stub)
   // -----------------------------------------------------------------------
 
