@@ -1,4 +1,5 @@
 import type { TypedSupabaseClient } from '../types';
+import type { Observation } from '../market/types';
 import type {
   Indicator,
   IndicatorEvaluation,
@@ -13,6 +14,8 @@ import type {
   Comparison,
   IndicatorType,
 } from './types';
+import { simulate } from './backtest';
+import { computeSeriesStats } from './performance';
 import {
   evaluate as evaluatePure,
   evaluateIndicator as evaluateIndicatorPure,
@@ -456,8 +459,18 @@ export function createStrategy(client: TypedSupabaseClient): StrategyModule {
 
     extractSymbols: extractSymbolsPure,
 
-    async backtest(_strategy: Strategy, _options: BacktestOptions): Promise<BacktestResult> {
-      throw new Error('Not implemented');
+    async backtest(strategy: Strategy, options: BacktestOptions): Promise<BacktestResult> {
+      const symbols = extractSymbolsPure(strategy);
+      const [batchSeries, tradingDaysData] = await Promise.all([
+        market.getBatchSeries(symbols),
+        market.getTradingDays(options.startDate, options.endDate),
+      ]);
+
+      const tradingDays = tradingDaysData.map((d) => d.date).sort();
+      const points = simulate({ strategy, tradingDays, batchSeries });
+      const stats = computeSeriesStats(points);
+
+      return { points, stats };
     },
   };
 }

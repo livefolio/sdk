@@ -578,17 +578,87 @@ describe('createStrategy', () => {
   });
 
   // -----------------------------------------------------------------------
-  // backtest (stub)
+  // backtest
   // -----------------------------------------------------------------------
 
   describe('backtest', () => {
-    it('throws "Not implemented"', async () => {
-      await expect(
-        strategy.backtest(
-          { linkId: 'x', name: 'x', trading: { frequency: 'Daily', offset: 0 }, allocations: [], signals: [] },
-          { startDate: '2020-01-01', endDate: '2025-01-01' },
-        ),
-      ).rejects.toThrow('Not implemented');
+    const backtestStrategy = {
+      linkId: 'bt-1',
+      name: 'Backtest Strategy',
+      trading: { frequency: 'Daily' as const, offset: 0 },
+      allocations: [{
+        name: 'Hold SPY',
+        allocation: {
+          condition: {
+            kind: 'signal' as const,
+            signal: {
+              left: { type: 'Threshold' as const, ticker: { symbol: '', leverage: 1 }, lookback: 0, delay: 0, unit: null, threshold: 1 },
+              comparison: '>' as const,
+              right: { type: 'Threshold' as const, ticker: { symbol: '', leverage: 1 }, lookback: 0, delay: 0, unit: null, threshold: 0 },
+              tolerance: 0,
+            },
+          },
+          holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
+        },
+      }],
+      signals: [],
+    };
+
+    it('returns backtest result with points and stats', async () => {
+      // Mock getBatchSeries (functions.invoke for 'series')
+      mock.mockInvoke.mockResolvedValue({
+        data: {
+          SPY: [
+            { timestamp: '2025-01-06T21:00:00.000Z', value: 100 },
+            { timestamp: '2025-01-07T21:00:00.000Z', value: 110 },
+            { timestamp: '2025-01-08T21:00:00.000Z', value: 121 },
+          ],
+        },
+        error: null,
+      });
+
+      // Mock getTradingDays (from('trading_days'))
+      mock.mockFrom.mockImplementation((table: string) => {
+        if (table === 'trading_days') {
+          return {
+            select: vi.fn().mockReturnValue({
+              gte: vi.fn().mockReturnValue({
+                lte: vi.fn().mockReturnValue({
+                  order: vi.fn().mockResolvedValue({
+                    data: [
+                      { date: '2025-01-06' },
+                      { date: '2025-01-07' },
+                      { date: '2025-01-08' },
+                    ],
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              limit: vi.fn().mockReturnValue({
+                maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+              }),
+            }),
+          }),
+        };
+      });
+
+      const result = await strategy.backtest(backtestStrategy, {
+        startDate: '2025-01-06',
+        endDate: '2025-01-08',
+      });
+
+      expect(result.points).toHaveLength(3);
+      expect(result.points[0].value).toBe(100);
+      expect(result.points[1].value).toBeCloseTo(110, 1);
+      expect(result.points[2].value).toBeCloseTo(121, 1);
+      expect(result.stats).toBeDefined();
+      expect(result.stats.sinceInceptionReturn).toBeGreaterThan(0);
     });
   });
 });
