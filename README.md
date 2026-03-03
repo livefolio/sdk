@@ -129,7 +129,7 @@ if (strategy) {
   const result = await livefolio.strategy.evaluate(strategy, new Date());
 
   result.allocation;   // the winning allocation (name, holdings)
-  result.evaluatedAt;  // Date the evaluation corresponds to
+  result.asOf;         // Date the evaluation corresponds to (trading day market close)
   result.signals;      // Record<string, boolean> — all signal states
   result.indicators;   // Record<string, IndicatorEvaluation> — all indicator values
 }
