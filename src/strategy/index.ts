@@ -24,9 +24,28 @@ export type {
   StrategyEvaluation,
   BacktestOptions,
   BacktestResult,
+  PerformancePoint,
+  SimulationInput,
+  SeriesStats,
+  RecentTrade,
+  Range,
+  DateValuePoint,
+  ReturnsResult,
 } from './types';
 
 export { createStrategy } from './client';
 export { evaluateIndicator, evaluateSignal, evaluateAllocation, evaluate, getEvaluationDate, indicatorKey, signalKey } from './evaluate';
 export { extractSymbols, INDICATOR_SYMBOL_MAP } from './symbols';
 export { utcToET, isAtMarketClose } from './time';
+export { simulate, isRebalanceDay } from './backtest';
+export {
+  computeSeriesStats,
+  computeAlphaVsSpy,
+  filterByRange,
+  normalizeTo100,
+  getAlignmentDate,
+  getValueAtDate,
+  trimAndNormalizeToAlignment,
+  returnFromAlignedPoints,
+  computeReturnsFromPoints,
+} from './performance';

@@ -168,15 +168,63 @@ export interface StrategyEvaluation {
 }
 
 // ---------------------------------------------------------------------------
-// Backtest (stub)
+// Backtest
 // ---------------------------------------------------------------------------
+
+export interface PerformancePoint {
+  date: string;
+  value: number;
+  allocation: string;
+}
+
+export interface SimulationInput {
+  strategy: Strategy;
+  tradingDays: string[];
+  batchSeries: Record<string, Observation[]>;
+  executionPrices?: Record<string, Record<string, number>>;
+}
 
 export interface BacktestOptions {
   startDate: string;
   endDate: string;
 }
 
-export interface BacktestResult {}
+export interface BacktestResult {
+  points: PerformancePoint[];
+  stats: SeriesStats;
+}
+
+// ---------------------------------------------------------------------------
+// Performance stats & returns
+// ---------------------------------------------------------------------------
+
+export interface RecentTrade {
+  date: string;
+  from: string | null;
+  to: string;
+}
+
+export interface SeriesStats {
+  sinceInceptionReturn: number;
+  cagr: number;
+  maxDrawdown: number;
+  sharpe: number;
+  volatility: number;
+  painIndex: number;
+  recoveryTime: number | null;
+  lastTriggerDate: string | null;
+  recentTrades: RecentTrade[];
+}
+
+export type Range = 'ytd' | '1y' | '3y';
+
+export type DateValuePoint = { date: string; value: number };
+
+export interface ReturnsResult {
+  returnYTD: number | null;
+  return1y: number | null;
+  return3y: number | null;
+}
 
 // ---------------------------------------------------------------------------
 // Module interface
@@ -201,6 +249,6 @@ export interface StrategyModule {
   // Utilities
   extractSymbols(strategy: Strategy): string[];
 
-  // Backtest (stub)
+  // Backtest
   backtest(strategy: Strategy, options: BacktestOptions): Promise<BacktestResult>;
 }
