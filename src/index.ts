@@ -3,13 +3,13 @@ export * as market from './market';
 export * as strategy from './strategy';
 export * as portfolio from './portfolio';
 
-export type { TypedSupabaseClient } from './types';
+export type { TypedSupabaseClient, LivefolioClientConfig, SnapTradeConfig } from './types';
 export type { AuthModule } from './auth';
 export type { MarketModule } from './market';
 export type { StrategyModule } from './strategy';
 export type { PortfolioModule } from './portfolio';
 
-import type { TypedSupabaseClient } from './types';
+import type { TypedSupabaseClient, LivefolioClientConfig } from './types';
 import type { AuthModule } from './auth';
 import type { MarketModule } from './market';
 import type { StrategyModule } from './strategy';
@@ -27,12 +27,15 @@ export interface LivefolioClient {
   readonly portfolio: PortfolioModule;
 }
 
-export function createLivefolioClient(supabase: TypedSupabaseClient): LivefolioClient {
+export function createLivefolioClient(
+  supabase: TypedSupabaseClient,
+  config?: LivefolioClientConfig,
+): LivefolioClient {
   return {
     supabase,
     auth: createAuth(supabase),
     market: createMarket(supabase),
     strategy: createStrategy(supabase),
-    portfolio: createPortfolio(supabase),
+    portfolio: createPortfolio(supabase, config),
   };
 }
