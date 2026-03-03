@@ -5,7 +5,7 @@ const ET_FORMATTER = new Intl.DateTimeFormat('en-US', {
   day: 'numeric',
   hour: 'numeric',
   minute: 'numeric',
-  hour12: false,
+  hourCycle: 'h23',
 });
 
 export function utcToET(date: Date): {

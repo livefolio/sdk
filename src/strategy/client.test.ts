@@ -61,7 +61,7 @@ const STRATEGY_RESPONSE = {
   allocations: [
     {
       name: 'Aggressive',
-      position: 0,
+
       allocation: {
         condition: {
           kind: 'signal',
@@ -210,7 +210,7 @@ describe('createStrategy', () => {
       allocations: [
         {
           name: 'Aggressive',
-          position: 0,
+    
           allocation: {
             condition: {
               kind: 'signal' as const,
@@ -226,7 +226,7 @@ describe('createStrategy', () => {
         },
         {
           name: 'Default',
-          position: 1,
+
           allocation: {
             condition: {
               kind: 'signal' as const,

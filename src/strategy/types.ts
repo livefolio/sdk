@@ -119,7 +119,6 @@ export interface NamedSignal {
 export interface NamedAllocation {
   name: string;
   allocation: Allocation;
-  position: number;
 }
 
 // ---------------------------------------------------------------------------

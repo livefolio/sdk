@@ -417,11 +417,11 @@ export function evaluate(strategy: Strategy, options: EvaluationOptions): Strate
     signals[signalKey(signal)] = evaluateSignal(signal, options);
   }
 
-  // Find first matching allocation
-  const sorted = [...strategy.allocations].sort((a, b) => a.position - b.position);
+  // Find first matching allocation (array is pre-sorted by position from DB)
+  const allocations = strategy.allocations;
 
-  let winning = sorted[sorted.length - 1];
-  for (const na of sorted) {
+  let winning = allocations[allocations.length - 1];
+  for (const na of allocations) {
     if (evaluateAllocation(na.allocation, options)) {
       winning = na;
       break;

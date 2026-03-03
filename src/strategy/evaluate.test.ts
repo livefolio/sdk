@@ -671,7 +671,7 @@ describe('evaluate', () => {
     const strategy = makeStrategy([
       {
         name: 'Aggressive',
-        position: 0,
+
         allocation: {
           condition: { kind: 'signal', signal: trueSignal },
           holdings: [{ ticker: SPY_TICKER, weight: 100 }],
@@ -679,7 +679,7 @@ describe('evaluate', () => {
       },
       {
         name: 'Default',
-        position: 1,
+
         allocation: {
           condition: { kind: 'signal', signal: trueSignal },
           holdings: [{ ticker: SPY_TICKER, weight: 50 }],
@@ -696,7 +696,7 @@ describe('evaluate', () => {
     const strategy = makeStrategy([
       {
         name: 'Aggressive',
-        position: 0,
+
         allocation: {
           condition: { kind: 'signal', signal: falseSignal },
           holdings: [{ ticker: SPY_TICKER, weight: 100 }],
@@ -704,7 +704,7 @@ describe('evaluate', () => {
       },
       {
         name: 'Default',
-        position: 1,
+
         allocation: {
           condition: { kind: 'signal', signal: falseSignal },
           holdings: [{ ticker: SPY_TICKER, weight: 50 }],
@@ -720,7 +720,7 @@ describe('evaluate', () => {
     const strategy = makeStrategy([
       {
         name: 'First',
-        position: 0,
+
         allocation: {
           condition: { kind: 'signal', signal: trueSignal },
           holdings: [],
@@ -741,7 +741,7 @@ describe('evaluate', () => {
     const strategy = makeStrategy([
       {
         name: 'A',
-        position: 0,
+
         allocation: {
           condition: { kind: 'signal', signal: sharedSignal },
           holdings: [],
@@ -749,7 +749,7 @@ describe('evaluate', () => {
       },
       {
         name: 'B',
-        position: 1,
+
         allocation: {
           condition: { kind: 'signal', signal: sharedSignal },
           holdings: [],
@@ -771,7 +771,7 @@ describe('evaluate', () => {
     const strategy = makeStrategy([
       {
         name: 'EMA Test',
-        position: 0,
+
         allocation: {
           condition: { kind: 'signal', signal: emaSignal },
           holdings: [],
@@ -919,7 +919,7 @@ describe('extractSymbols', () => {
       allocations: [
         {
           name: 'A1',
-          position: 0,
+  
           allocation: {
             condition: { kind: 'signal', signal: spySignal },
             holdings: [

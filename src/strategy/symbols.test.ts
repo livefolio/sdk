@@ -146,7 +146,7 @@ describe('extractSymbols', () => {
       allocations: [
         {
           name: 'A1',
-          position: 0,
+
           allocation: {
             condition: { kind: 'signal', signal: makeSignal() },
             holdings: [
@@ -174,7 +174,7 @@ describe('extractSymbols', () => {
       allocations: [
         {
           name: 'A1',
-          position: 0,
+
           allocation: {
             condition: { kind: 'signal', signal: makeSignal() },
             holdings: [
