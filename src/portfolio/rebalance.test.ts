@@ -1,21 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { buildRebalancePlan, computePortfolioDriftPercentPoints } from './rebalance';
 
-function mapOfNumber(entries: Array<[string, number]>): Map<string, number> {
-  return new Map(entries);
-}
-
 describe('computePortfolioDriftPercentPoints', () => {
   it('computes half-sum absolute weight differences including cash', () => {
     const drift = computePortfolioDriftPercentPoints({
-      targetWeights: mapOfNumber([
-        ['SPY', 50],
-        ['QQQ', 50],
-      ]),
-      currentValues: mapOfNumber([
-        ['SPY', 300],
-        ['QQQ', 700],
-      ]),
+      targetWeights: { SPY: 50, QQQ: 50 },
+      currentValues: { SPY: 300, QQQ: 700 },
       cashValue: 0,
       totalValue: 1000,
     });
@@ -25,14 +15,8 @@ describe('computePortfolioDriftPercentPoints', () => {
 
   it('does not double-count when strategy includes cash as explicit ticker (sum 100)', () => {
     const drift = computePortfolioDriftPercentPoints({
-      targetWeights: mapOfNumber([
-        ['SPY', 60],
-        ['CASH', 40],
-      ]),
-      currentValues: mapOfNumber([
-        ['SPY', 600],
-        ['CASH', 400],
-      ]),
+      targetWeights: { SPY: 60, CASH: 40 },
+      currentValues: { SPY: 600, CASH: 400 },
       cashValue: 400,
       totalValue: 1000,
     });
@@ -43,18 +27,9 @@ describe('computePortfolioDriftPercentPoints', () => {
 describe('buildRebalancePlan', () => {
   it('does not trigger when portfolio drift is below threshold', () => {
     const plan = buildRebalancePlan({
-      targetWeights: mapOfNumber([
-        ['SPY', 50],
-        ['QQQ', 50],
-      ]),
-      currentValues: mapOfNumber([
-        ['SPY', 300],
-        ['QQQ', 700],
-      ]),
-      prices: mapOfNumber([
-        ['SPY', 100],
-        ['QQQ', 100],
-      ]),
+      targetWeights: { SPY: 50, QQQ: 50 },
+      currentValues: { SPY: 300, QQQ: 700 },
+      prices: { SPY: 100, QQQ: 100 },
       cashValue: 0,
       totalValue: 1000,
       portfolioDriftThresholdPercentPoints: 25,
@@ -67,24 +42,9 @@ describe('buildRebalancePlan', () => {
 
   it('creates a funded plan with sells first then buys', () => {
     const plan = buildRebalancePlan({
-      targetWeights: mapOfNumber([
-        ['A', 25],
-        ['B', 25],
-        ['C', 25],
-        ['D', 25],
-      ]),
-      currentValues: mapOfNumber([
-        ['A', 0],
-        ['B', 330],
-        ['C', 330],
-        ['D', 340],
-      ]),
-      prices: mapOfNumber([
-        ['A', 10],
-        ['B', 10],
-        ['C', 10],
-        ['D', 10],
-      ]),
+      targetWeights: { A: 25, B: 25, C: 25, D: 25 },
+      currentValues: { A: 0, B: 330, C: 330, D: 340 },
+      prices: { A: 10, B: 10, C: 10, D: 10 },
       cashValue: 0,
       totalValue: 1000,
       portfolioDriftThresholdPercentPoints: 25,
@@ -106,18 +66,9 @@ describe('buildRebalancePlan', () => {
 
   it('does not create round-trip orders when holdings already match target weights', () => {
     const plan = buildRebalancePlan({
-      targetWeights: mapOfNumber([
-        ['SPY', 50],
-        ['QQQ', 50],
-      ]),
-      currentValues: mapOfNumber([
-        ['SPY', 500],
-        ['QQQ', 500],
-      ]),
-      prices: mapOfNumber([
-        ['SPY', 100],
-        ['QQQ', 100],
-      ]),
+      targetWeights: { SPY: 50, QQQ: 50 },
+      currentValues: { SPY: 500, QQQ: 500 },
+      prices: { SPY: 100, QQQ: 100 },
       cashValue: 0,
       totalValue: 1000,
       portfolioDriftThresholdPercentPoints: 0,
@@ -134,18 +85,9 @@ describe('buildRebalancePlan', () => {
 
   it('creates only net delta trades for partially overlapping holdings', () => {
     const plan = buildRebalancePlan({
-      targetWeights: mapOfNumber([
-        ['SPY', 60],
-        ['QQQ', 40],
-      ]),
-      currentValues: mapOfNumber([
-        ['SPY', 700],
-        ['QQQ', 300],
-      ]),
-      prices: mapOfNumber([
-        ['SPY', 100],
-        ['QQQ', 100],
-      ]),
+      targetWeights: { SPY: 60, QQQ: 40 },
+      currentValues: { SPY: 700, QQQ: 300 },
+      prices: { SPY: 100, QQQ: 100 },
       cashValue: 0,
       totalValue: 1000,
       portfolioDriftThresholdPercentPoints: 0,
@@ -170,9 +112,9 @@ describe('buildRebalancePlan', () => {
 
   it('uses execution buffer when sizing buys from cash', () => {
     const plan = buildRebalancePlan({
-      targetWeights: mapOfNumber([['SPY', 100]]),
-      currentValues: mapOfNumber([]),
-      prices: mapOfNumber([['SPY', 100]]),
+      targetWeights: { SPY: 100 },
+      currentValues: {},
+      prices: { SPY: 100 },
       cashValue: 1000,
       totalValue: 1000,
       portfolioDriftThresholdPercentPoints: 25,
@@ -187,15 +129,9 @@ describe('buildRebalancePlan', () => {
 
   it('uses net sell proceeds (after sell slippage) to fund buys', () => {
     const plan = buildRebalancePlan({
-      targetWeights: mapOfNumber([
-        ['A', 0],
-        ['B', 100],
-      ]),
-      currentValues: mapOfNumber([['A', 1000]]),
-      prices: mapOfNumber([
-        ['A', 100],
-        ['B', 100],
-      ]),
+      targetWeights: { A: 0, B: 100 },
+      currentValues: { A: 1000 },
+      prices: { A: 100, B: 100 },
       cashValue: 0,
       totalValue: 1000,
       portfolioDriftThresholdPercentPoints: 25,
@@ -211,9 +147,9 @@ describe('buildRebalancePlan', () => {
 
   it('supports legacy behavior when all execution buffers are disabled', () => {
     const plan = buildRebalancePlan({
-      targetWeights: mapOfNumber([['SPY', 100]]),
-      currentValues: mapOfNumber([]),
-      prices: mapOfNumber([['SPY', 100]]),
+      targetWeights: { SPY: 100 },
+      currentValues: {},
+      prices: { SPY: 100 },
       cashValue: 1000,
       totalValue: 1000,
       portfolioDriftThresholdPercentPoints: 25,
@@ -230,10 +166,10 @@ describe('buildRebalancePlan', () => {
 
   it('respects per-symbol quantity precision overrides', () => {
     const plan = buildRebalancePlan({
-      targetWeights: mapOfNumber([['SPY', 100]]),
-      currentValues: mapOfNumber([]),
-      prices: mapOfNumber([['SPY', 100]]),
-      quantityPrecisionBySymbol: mapOfNumber([['SPY', 1]]),
+      targetWeights: { SPY: 100 },
+      currentValues: {},
+      prices: { SPY: 100 },
+      quantityPrecisionBySymbol: { SPY: 1 },
       cashValue: 1000,
       totalValue: 1000,
       portfolioDriftThresholdPercentPoints: 25,
@@ -252,12 +188,9 @@ describe('buildRebalancePlan', () => {
   it('throws when target symbol needs a trade but has no price', () => {
     expect(() =>
       buildRebalancePlan({
-        targetWeights: mapOfNumber([
-          ['SPY', 70],
-          ['QQQ', 30],
-        ]),
-        currentValues: mapOfNumber([['SPY', 1000]]),
-        prices: mapOfNumber([['SPY', 100]]),
+        targetWeights: { SPY: 70, QQQ: 30 },
+        currentValues: { SPY: 1000 },
+        prices: { SPY: 100 },
         cashValue: 0,
         totalValue: 1000,
       }),
@@ -267,15 +200,9 @@ describe('buildRebalancePlan', () => {
   it('throws when target weights exceed 100', () => {
     expect(() =>
       buildRebalancePlan({
-        targetWeights: mapOfNumber([
-          ['SPY', 60],
-          ['QQQ', 60],
-        ]),
-        currentValues: mapOfNumber([['SPY', 1000]]),
-        prices: mapOfNumber([
-          ['SPY', 100],
-          ['QQQ', 100],
-        ]),
+        targetWeights: { SPY: 60, QQQ: 60 },
+        currentValues: { SPY: 1000 },
+        prices: { SPY: 100, QQQ: 100 },
         cashValue: 0,
         totalValue: 1000,
       }),
@@ -284,15 +211,9 @@ describe('buildRebalancePlan', () => {
 
   it('treats cash symbol as non-tradeable when cashSymbol is set', () => {
     const plan = buildRebalancePlan({
-      targetWeights: mapOfNumber([
-        ['SPY', 60],
-        ['CASH', 40],
-      ]),
-      currentValues: mapOfNumber([
-        ['SPY', 800],
-        ['CASH', 200],
-      ]),
-      prices: mapOfNumber([['SPY', 100]]),
+      targetWeights: { SPY: 60, CASH: 40 },
+      currentValues: { SPY: 800, CASH: 200 },
+      prices: { SPY: 100 },
       cashValue: 200,
       totalValue: 1000,
       portfolioDriftThresholdPercentPoints: 10,

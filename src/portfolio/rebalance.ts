@@ -13,10 +13,10 @@ export interface TradeOrder {
 }
 
 export interface RebalancePlanInput {
-  targetWeights: Map<string, number>;
-  currentValues: Map<string, number>;
-  prices: Map<string, number>;
-  quantityPrecisionBySymbol?: Map<string, number>;
+  targetWeights: Record<string, number>;
+  currentValues: Record<string, number>;
+  prices: Record<string, number>;
+  quantityPrecisionBySymbol?: Record<string, number>;
   cashValue: number;
   totalValue: number;
   portfolioDriftThresholdPercentPoints?: number;
@@ -103,8 +103,8 @@ function bpsToFraction(bps: number): number {
 // ---------------------------------------------------------------------------
 
 export function computePortfolioDriftPercentPoints(input: {
-  targetWeights: Map<string, number>;
-  currentValues: Map<string, number>;
+  targetWeights: Record<string, number>;
+  currentValues: Record<string, number>;
   cashValue: number;
   totalValue: number;
 }): number {
@@ -113,7 +113,7 @@ export function computePortfolioDriftPercentPoints(input: {
   assertNonNegative('cashValue', cashValue);
 
   let targetWeightSum = 0;
-  for (const [symbol, weight] of targetWeights.entries()) {
+  for (const [symbol, weight] of Object.entries(targetWeights)) {
     assertNonNegative(`targetWeight(${symbol})`, weight);
     targetWeightSum += weight;
   }
@@ -121,14 +121,14 @@ export function computePortfolioDriftPercentPoints(input: {
     throw new Error(`Invalid target weights: sum exceeds 100 (${targetWeightSum.toFixed(4)})`);
   }
 
-  const symbols = new Set<string>([...targetWeights.keys(), ...currentValues.keys()]);
+  const symbols = new Set<string>([...Object.keys(targetWeights), ...Object.keys(currentValues)]);
 
   let absSum = 0;
   for (const symbol of symbols) {
-    const currentValue = currentValues.get(symbol) ?? 0;
+    const currentValue = currentValues[symbol] ?? 0;
     assertNonNegative(`currentValue(${symbol})`, currentValue);
     const currentWeight = (currentValue / totalValue) * 100;
-    const targetWeight = targetWeights.get(symbol) ?? 0;
+    const targetWeight = targetWeights[symbol] ?? 0;
     absSum += Math.abs(targetWeight - currentWeight);
   }
 
@@ -169,7 +169,7 @@ export function buildRebalancePlan(input: RebalancePlanInput): RebalancePlan {
   assertNonNegative('buySlippageBps', buySlippageBps);
   assertNonNegative('sellSlippageBps', sellSlippageBps);
   assertNonNegative('perOrderFee', perOrderFee);
-  for (const [symbol, precision] of (quantityPrecisionBySymbol ?? new Map()).entries()) {
+  for (const [symbol, precision] of Object.entries(quantityPrecisionBySymbol ?? {})) {
     assertPositive(`quantityPrecisionBySymbol(${symbol})`, precision);
   }
 
@@ -189,22 +189,22 @@ export function buildRebalancePlan(input: RebalancePlanInput): RebalancePlan {
     };
   }
 
-  const symbols = new Set<string>([...targetWeights.keys(), ...currentValues.keys()]);
+  const symbols = new Set<string>([...Object.keys(targetWeights), ...Object.keys(currentValues)]);
   const sellCandidates: Array<{ symbol: string; notional: number; price: number }> = [];
   const buyCandidates: Array<{ symbol: string; notional: number; price: number }> = [];
 
   for (const symbol of symbols) {
     if (cashSymbol != null && symbol === cashSymbol) continue;
 
-    const currentValue = currentValues.get(symbol) ?? 0;
+    const currentValue = currentValues[symbol] ?? 0;
     assertNonNegative(`currentValue(${symbol})`, currentValue);
-    const targetWeight = targetWeights.get(symbol) ?? 0;
+    const targetWeight = targetWeights[symbol] ?? 0;
     const targetValue = (targetWeight / 100) * totalValue;
     const delta = targetValue - currentValue;
 
     if (Math.abs(delta) <= minTradeValue) continue;
 
-    const price = prices.get(symbol);
+    const price = prices[symbol];
     assertPositive(`price(${symbol})`, price);
 
     if (delta < 0) {
@@ -224,7 +224,7 @@ export function buildRebalancePlan(input: RebalancePlanInput): RebalancePlan {
   const sellSlippageMultiplier = 1 - bpsToFraction(sellSlippageBps);
 
   for (const candidate of sellCandidates) {
-    const quantityPrecision = quantityPrecisionBySymbol?.get(candidate.symbol) ?? REBALANCE_QUANTITY_PRECISION;
+    const quantityPrecision = quantityPrecisionBySymbol?.[candidate.symbol] ?? REBALANCE_QUANTITY_PRECISION;
     const quantity = quantityFromNotional(candidate.notional, candidate.price, quantityPrecision);
     if (quantity <= 0) continue;
     const estimatedValue = quantity * candidate.price;
@@ -245,7 +245,7 @@ export function buildRebalancePlan(input: RebalancePlanInput): RebalancePlan {
     const maxAffordableNotional = Math.max(0, availableFunds - perOrderFee);
     const cappedNotional = Math.min(candidate.notional, maxAffordableNotional);
     const effectiveBuyPrice = candidate.price * buySlippageMultiplier;
-    const quantityPrecision = quantityPrecisionBySymbol?.get(candidate.symbol) ?? REBALANCE_QUANTITY_PRECISION;
+    const quantityPrecision = quantityPrecisionBySymbol?.[candidate.symbol] ?? REBALANCE_QUANTITY_PRECISION;
     const quantity = quantityFromNotional(cappedNotional, effectiveBuyPrice, quantityPrecision);
     if (quantity <= 0) continue;
     const estimatedValue = quantity * candidate.price;
