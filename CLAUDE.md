@@ -24,31 +24,25 @@ The root `src/index.ts` re-exports all modules as namespaces and provides `creat
 
 ### Module convention
 
-Each module directory follows this structure:
+`src/` contains domain module folders. Each module follows this structure:
 
 ```
 src/<module>/
-├── index.ts        ← barrel re-exports only (no logic)
-├── types.ts        ← domain types + module interface
-├── client.ts       ← createX() factory (implementation)
-└── client.test.ts  ← tests (imports from client.ts)
-```
-
-The strategy module has additional files for pure logic:
-
-```
-src/strategy/
-├── evaluate.ts       ← pure evaluation functions (indicators, signals, conditions)
-├── evaluate.test.ts  ← evaluation tests
-├── symbols.ts        ← INDICATOR_SYMBOL_MAP + extractSymbols
-└── time.ts           ← utcToET, isAtMarketClose
+├── index.ts          ← barrel re-exports only (no logic)
+├── types.ts          ← module interface + all domain types
+├── client.ts         ← createX() factory — minimal wiring only
+├── client.test.ts    ← wiring tests (verify shape + delegation)
+├── <feature>.ts      ← function implementation(s)
+└── <feature>.test.ts ← tests for that implementation
 ```
 
 **Rules:**
 - `index.ts` must be a pure barrel file — only `export type` and `export` re-statements, no logic
-- `types.ts` holds the module interface (e.g. `MarketModule`) and all domain types
-- `client.ts` holds the `createX()` factory that returns the module interface
-- Tests go in `client.test.ts` and/or `evaluate.test.ts` and import directly from source
+- `types.ts` holds the module interface (e.g. `StrategyModule`) and all domain types
+- `client.ts` holds the `createX()` factory that returns the module interface. It must be **minimal wiring** — import functions from their implementation files and return an object that delegates to them. No business logic in `client.ts`.
+- Every implementation file (`<feature>.ts`) must have a corresponding test file (`<feature>.test.ts`). Tests import directly from the implementation file, not through the client.
+- `client.test.ts` only verifies that the factory returns the correct shape and delegates to the right functions. The heavy testing lives in per-feature test files.
+- **100% unit test coverage** of all exported functions. Every success path, error path, and edge case must be tested.
 - New modules must follow this same pattern
 
 ### Key types
@@ -81,6 +75,7 @@ interface TradingDay { date: string; open: string; close: string; extended_open:
 | `evaluateAllocation(allocation, options)` | Pure eval | Evaluate a condition tree (AND/OR/NOT of signals) — accepts `EvaluationOptions` |
 | `getEvaluationDate(trading, options)` | Pure eval | Compute evaluation date — accepts `EvaluationOptions` (needs batchSeries) |
 | `extractSymbols(strategy)` | Utility | Extract all ticker symbols needed for evaluation |
+| `stream(strategy, observation)` | Live | Merge a single observation into historical series, evaluate without caching |
 | `backtest(strategy, options)` | Stub | Not yet implemented |
 
 ### Strategy domain model
@@ -97,11 +92,12 @@ Signals use a **definition/named-instance split**: signal definitions are strate
 
 ## Testing
 
-**Every code change must include corresponding tests.** Tests use vitest and mock the Supabase client. Each module's `client.test.ts` must cover:
+**Every code change must include corresponding tests.** Tests use vitest and mock the Supabase client. Aim for **100% unit test coverage**.
 
-- Every method's success path (correct invoke args and return shape)
-- Error paths (invoke errors, missing data)
-- Thin wrappers (verify delegation to batch method)
+- Every implementation file (`<feature>.ts`) must have a corresponding `<feature>.test.ts`
+- Test every exported function's success path, error path, and edge cases
+- `client.test.ts` only tests wiring (correct shape, delegation) — keep it lightweight
+- Mock the Supabase client at the boundary; test implementation logic directly
 
 ### Imports
 
