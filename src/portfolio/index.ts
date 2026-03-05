@@ -23,5 +23,5 @@ export {
   mapTickerToBrokerable,
   FRED_BROKERABLE_MAP,
   BASE_TICKER_ALIASES,
-  LEVERAGED_ETF_MAP,
+  ETF_LEVERAGE_MAP,
 } from './symbols';

@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   FRED_BROKERABLE_MAP,
   BASE_TICKER_ALIASES,
-  LEVERAGED_ETF_MAP,
+  ETF_LEVERAGE_MAP,
   mapTickerToBrokerable,
 } from './symbols';
 
@@ -26,12 +26,22 @@ describe('BASE_TICKER_ALIASES', () => {
   });
 });
 
-describe('LEVERAGED_ETF_MAP', () => {
-  it('contains expected leverage mappings', () => {
-    expect(LEVERAGED_ETF_MAP['SPY:2']).toBe('SSO');
-    expect(LEVERAGED_ETF_MAP['SPY:3']).toBe('UPRO');
-    expect(LEVERAGED_ETF_MAP['QQQ:2']).toBe('QLD');
-    expect(LEVERAGED_ETF_MAP['QQQ:3']).toBe('TQQQ');
+describe('ETF_LEVERAGE_MAP', () => {
+  it('contains expected bull leverage mappings', () => {
+    expect(ETF_LEVERAGE_MAP['SPY:2']).toBe('SSO');
+    expect(ETF_LEVERAGE_MAP['SPY:3']).toBe('UPRO');
+    expect(ETF_LEVERAGE_MAP['QQQ:2']).toBe('QLD');
+    expect(ETF_LEVERAGE_MAP['QQQ:3']).toBe('TQQQ');
+    expect(ETF_LEVERAGE_MAP['XLF:3']).toBe('FAS');
+    expect(ETF_LEVERAGE_MAP['SOXX:3']).toBe('SOXL');
+    expect(ETF_LEVERAGE_MAP['BTC-USD:2']).toBe('BITU');
+  });
+
+  it('contains expected inverse mappings', () => {
+    expect(ETF_LEVERAGE_MAP['SPY:-1']).toBe('SH');
+    expect(ETF_LEVERAGE_MAP['QQQ:-3']).toBe('SQQQ');
+    expect(ETF_LEVERAGE_MAP['TLT:-3']).toBe('TMV');
+    expect(ETF_LEVERAGE_MAP['GLD:-2']).toBe('GLL');
   });
 });
 
@@ -68,12 +78,38 @@ describe('mapTickerToBrokerable', () => {
     expect(mapTickerToBrokerable({ symbol: 'GLD', leverage: 2 })).toBe('UGL');
   });
 
-  it('warns and passes through for unmapped leverage', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const result = mapTickerToBrokerable({ symbol: 'XLF', leverage: 2 });
-    expect(result).toBe('XLF');
-    expect(warnSpy).toHaveBeenCalledWith('No leveraged ETF mapping for XLF at 2x — passing through as XLF');
-    warnSpy.mockRestore();
+  it('maps XLF x3 to FAS', () => {
+    expect(mapTickerToBrokerable({ symbol: 'XLF', leverage: 3 })).toBe('FAS');
+  });
+
+  it('maps SOXX x3 to SOXL', () => {
+    expect(mapTickerToBrokerable({ symbol: 'SOXX', leverage: 3 })).toBe('SOXL');
+  });
+
+  it('maps BTC-USD x2 to BITU', () => {
+    expect(mapTickerToBrokerable({ symbol: 'BTC-USD', leverage: 2 })).toBe('BITU');
+  });
+
+  it('maps QQQ x-3 to SQQQ', () => {
+    expect(mapTickerToBrokerable({ symbol: 'QQQ', leverage: -3 })).toBe('SQQQ');
+  });
+
+  it('maps SPY x-1 to SH', () => {
+    expect(mapTickerToBrokerable({ symbol: 'SPY', leverage: -1 })).toBe('SH');
+  });
+
+  it('maps TLT x-3 to TMV', () => {
+    expect(mapTickerToBrokerable({ symbol: 'TLT', leverage: -3 })).toBe('TMV');
+  });
+
+  it('throws for unmapped bull leverage', () => {
+    expect(() => mapTickerToBrokerable({ symbol: 'ARKK', leverage: 2 }))
+      .toThrow('No leveraged ETF mapping for ARKK at 2x');
+  });
+
+  it('throws for unmapped inverse leverage', () => {
+    expect(() => mapTickerToBrokerable({ symbol: 'ARKK', leverage: -1 }))
+      .toThrow('No leveraged ETF mapping for ARKK at -1x');
   });
 
   it('passes through symbol unchanged at leverage 1', () => {
