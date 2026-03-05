@@ -1,3 +1,13 @@
+import type { Ticker } from '../strategy/types';
+import type { RebalancePlanInput, RebalancePlan } from './rebalance';
+
 export interface PortfolioModule {
-  // Methods will be added as portfolio features are implemented
+  buildRebalancePlan(input: RebalancePlanInput): RebalancePlan;
+  computePortfolioDriftPercentPoints(input: {
+    targetWeights: Record<string, number>;
+    currentValues: Record<string, number>;
+    cashValue: number;
+    totalValue: number;
+  }): number;
+  mapTickerToTradable(ticker: Ticker): string | null;
 }
