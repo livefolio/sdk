@@ -20,8 +20,8 @@ export {
   REBALANCE_CASH_SOURCE_SYMBOL,
 } from './rebalance';
 export {
-  mapTickerToBrokerable,
-  FRED_BROKERABLE_MAP,
+  mapTickerToTradable,
+  FRED_TRADABLE_MAP,
   BASE_TICKER_ALIASES,
   ETF_LEVERAGE_MAP,
 } from './symbols';

@@ -1,7 +1,7 @@
 import type { Ticker } from '../strategy/types';
 
-/** Maps FRED rate symbols to brokerable equivalents. `null` = hold as cash. */
-export const FRED_BROKERABLE_MAP: Record<string, string | null> = {
+/** Maps FRED rate symbols to tradable equivalents. `null` = hold as cash. */
+export const FRED_TRADABLE_MAP: Record<string, string | null> = {
   DTB3: null,
   DFF: 'USFR',
 };
@@ -100,14 +100,14 @@ export const ETF_LEVERAGE_MAP: Record<string, string> = {
 };
 
 /**
- * Maps a strategy ticker to its brokerable symbol.
+ * Maps a strategy ticker to its tradable symbol.
  * Pipeline: FRED mapping -> leveraged/inverse ETF lookup (with alias normalization) -> passthrough.
  */
-export function mapTickerToBrokerable(ticker: Ticker): string | null {
+export function mapTickerToTradable(ticker: Ticker): string | null {
   const { symbol, leverage } = ticker;
 
   // FRED mapping takes priority
-  if (symbol in FRED_BROKERABLE_MAP) return FRED_BROKERABLE_MAP[symbol];
+  if (symbol in FRED_TRADABLE_MAP) return FRED_TRADABLE_MAP[symbol];
 
   // Leveraged/inverse ETF lookup
   if (leverage !== 1) {

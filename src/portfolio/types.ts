@@ -9,5 +9,5 @@ export interface PortfolioModule {
     cashValue: number;
     totalValue: number;
   }): number;
-  mapTickerToBrokerable(ticker: Ticker): string | null;
+  mapTickerToTradable(ticker: Ticker): string | null;
 }
