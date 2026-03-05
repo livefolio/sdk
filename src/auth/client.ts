@@ -1,7 +1,20 @@
 import type { TypedSupabaseClient } from '../types';
+import type { LivefolioClientConfig } from '../types';
 import type { AuthModule } from './types';
+import {
+  generatePKCE as generatePKCEPure,
+  buildAuthorizationUrl as buildAuthorizationUrlPure,
+  exchangeCodeForTokens as exchangeCodeForTokensPure,
+  refreshAccessToken as refreshAccessTokenPure,
+} from './oauth';
 
-export function createAuth(client: TypedSupabaseClient): AuthModule {
+function requireSupabaseUrl(config?: LivefolioClientConfig): string {
+  const url = config?.supabaseUrl;
+  if (!url) throw new Error('supabaseUrl is required for OAuth operations');
+  return url;
+}
+
+export function createAuth(client: TypedSupabaseClient, config?: LivefolioClientConfig): AuthModule {
   return {
     async getUser() {
       const { data, error } = await client.auth.getUser();
@@ -30,6 +43,35 @@ export function createAuth(client: TypedSupabaseClient): AuthModule {
     async signOut() {
       const { error } = await client.auth.signOut();
       if (error) throw error;
+    },
+
+    // ----- OAuth 2.1 PKCE -----
+
+    generatePKCE() {
+      return generatePKCEPure();
+    },
+
+    buildAuthorizationUrl(options) {
+      const supabaseUrl = requireSupabaseUrl(config);
+      return buildAuthorizationUrlPure(supabaseUrl, options);
+    },
+
+    async exchangeCodeForTokens(code, codeVerifier, clientId, redirectUri) {
+      const supabaseUrl = requireSupabaseUrl(config);
+      return exchangeCodeForTokensPure(supabaseUrl, code, codeVerifier, clientId, redirectUri);
+    },
+
+    async refreshAccessToken(refreshToken, clientId) {
+      const supabaseUrl = requireSupabaseUrl(config);
+      return refreshAccessTokenPure(supabaseUrl, refreshToken, clientId);
+    },
+
+    async revokeGrant(clientId) {
+      const auth = client.auth as any;
+      if (typeof auth.oauth?.revokeGrant !== 'function') {
+        throw new Error('supabase.auth.oauth.revokeGrant() is not available — upgrade @supabase/supabase-js');
+      }
+      await auth.oauth.revokeGrant(clientId);
     },
   };
 }
