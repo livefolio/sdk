@@ -19,7 +19,7 @@ describe('createStrategy', () => {
     expect(typeof mod.evaluateAllocation).toBe('function');
     expect(typeof mod.getEvaluationDate).toBe('function');
     expect(typeof mod.extractSymbols).toBe('function');
-    expect(typeof mod.stream).toBe('function');
+    expect(typeof mod.createStreamer).toBe('function');
     expect(typeof mod.backtest).toBe('function');
   });
 

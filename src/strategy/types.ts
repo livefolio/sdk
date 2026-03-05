@@ -168,6 +168,14 @@ export interface StrategyEvaluation {
 }
 
 // ---------------------------------------------------------------------------
+// Stateful streamer
+// ---------------------------------------------------------------------------
+
+export interface Streamer {
+  update(observation: StreamObservation | StreamObservation[]): StrategyEvaluation;
+}
+
+// ---------------------------------------------------------------------------
 // Live streaming
 // ---------------------------------------------------------------------------
 
@@ -211,8 +219,8 @@ export interface StrategyModule {
   // Utilities
   extractSymbols(strategy: Strategy): string[];
 
-  // Live streaming (evaluate with incoming observations merged into historical series)
-  stream(strategy: Strategy, observation: StreamObservation | StreamObservation[]): Promise<StrategyEvaluation>;
+  // Stateful streamer (fetch once, synchronous updates)
+  createStreamer(strategy: Strategy): Promise<Streamer>;
 
   // Backtest (stub)
   backtest(strategy: Strategy, options: BacktestOptions): Promise<BacktestResult>;

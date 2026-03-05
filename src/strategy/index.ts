@@ -22,6 +22,7 @@ export type {
   EvaluationOptions,
   IndicatorEvaluation,
   StrategyEvaluation,
+  Streamer,
   StreamObservation,
   BacktestOptions,
   BacktestResult,
@@ -30,7 +31,8 @@ export type {
 export { createStrategy } from './client';
 export { get, getMany } from './get';
 export { evaluateCached } from './cache';
-export { stream } from './stream';
+export { mergeObservations } from './stream';
+export { createStreamer } from './streamer';
 export { backtest } from './backtest';
 export { evaluateIndicator, evaluateSignal, evaluateAllocation, evaluate, getEvaluationDate, indicatorKey, signalKey } from './evaluate';
 export { extractSymbols, INDICATOR_SYMBOL_MAP } from './symbols';
