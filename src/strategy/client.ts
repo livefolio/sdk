@@ -10,7 +10,7 @@ import { extractSymbols as extractSymbolsPure } from './symbols';
 import { createMarket } from '../market/client';
 import { get, getMany } from './get';
 import { evaluateCached } from './cache';
-import { stream } from './stream';
+import { createStreamer } from './streamer';
 import { backtest } from './backtest';
 
 export function createStrategy(client: TypedSupabaseClient): StrategyModule {
@@ -24,7 +24,7 @@ export function createStrategy(client: TypedSupabaseClient): StrategyModule {
     evaluateAllocation: evaluateAllocationPure,
     getEvaluationDate: getEvaluationDatePure,
     extractSymbols: extractSymbolsPure,
-    stream: (strategy, observation) => stream(client, market, strategy, observation),
+    createStreamer: (strategy) => createStreamer(client, market, strategy),
     backtest,
   };
 }

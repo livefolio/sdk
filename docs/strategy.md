@@ -49,16 +49,21 @@ const symbols = lf.strategy.extractSymbols(strategy);
 console.log(symbols); // ['SPY', 'QQQ', 'TLT']
 ```
 
-### `stream(strategy, observation): Promise<StrategyEvaluation>`
+### `createStreamer(strategy): Promise<Streamer>`
 
-Live streaming evaluation. Accepts a single `StreamObservation` or an array. Merges observations into historical series (replacing same-date bars or appending), then evaluates.
+Creates a stateful `Streamer` that fetches series and prior state once, then evaluates synchronously on each `update()` call. State carries forward between updates (signal hysteresis).
 
 ```ts
-const result = await lf.strategy.stream(strategy, [
+const streamer = await lf.strategy.createStreamer(strategy);
+
+const result = streamer.update([
   { symbol: 'SPY', timestamp: '2025-06-01T16:00:00Z', value: 590.25 },
   { symbol: 'QQQ', timestamp: '2025-06-01T16:00:00Z', value: 480.10 },
 ]);
 // → same shape as evaluate(): { asOf, allocation, signals, indicators }
+
+// Subsequent calls are synchronous — no network round-trips
+const result2 = streamer.update({ symbol: 'SPY', timestamp: '2025-06-01T16:01:00Z', value: 591.00 });
 ```
 
 ### Pure evaluation
