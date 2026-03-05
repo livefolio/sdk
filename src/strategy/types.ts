@@ -211,8 +211,8 @@ export interface StrategyModule {
   // Utilities
   extractSymbols(strategy: Strategy): string[];
 
-  // Live streaming (evaluate with a single incoming observation merged into historical series)
-  stream(strategy: Strategy, observation: StreamObservation): Promise<StrategyEvaluation>;
+  // Live streaming (evaluate with incoming observations merged into historical series)
+  stream(strategy: Strategy, observation: StreamObservation | StreamObservation[]): Promise<StrategyEvaluation>;
 
   // Backtest (stub)
   backtest(strategy: Strategy, options: BacktestOptions): Promise<BacktestResult>;

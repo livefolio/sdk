@@ -29,6 +29,13 @@ const SERIES_DATA: Record<string, { timestamp: string; value: number }[]> = {
     { timestamp: marketCloseUTC('2025-01-09'), value: 103 },
     { timestamp: marketCloseUTC('2025-01-10'), value: 104 },
   ],
+  BND: [
+    { timestamp: marketCloseUTC('2025-01-06'), value: 70 },
+    { timestamp: marketCloseUTC('2025-01-07'), value: 71 },
+    { timestamp: marketCloseUTC('2025-01-08'), value: 70.5 },
+    { timestamp: marketCloseUTC('2025-01-09'), value: 71.2 },
+    { timestamp: marketCloseUTC('2025-01-10'), value: 71.5 },
+  ],
 };
 
 function createMockMarket(): MarketModule {
@@ -214,5 +221,96 @@ describe('stream', () => {
     expect(result.allocation).toBeDefined();
     expect(mock.mockFrom).toHaveBeenCalledWith('named_signals');
     expect(mock.mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('accepts multiple observations for different symbols', async () => {
+    mock.mockFrom.mockImplementation(() => ({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          limit: vi.fn().mockReturnValue({
+            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+          }),
+        }),
+      }),
+    }));
+
+    const result = await stream(mock.client, market, streamStrategy, [
+      { symbol: 'SPY', timestamp: '2025-01-10T19:30:00.000Z', value: 110 },
+      { symbol: 'BND', timestamp: '2025-01-10T19:30:00.000Z', value: 72 },
+    ]);
+
+    expect(result.asOf).toBeInstanceOf(Date);
+    expect(result.allocation).toBeDefined();
+    expect(market.getBatchSeries).toHaveBeenCalledTimes(1);
+  });
+
+  it('last observation wins for same symbol same date', async () => {
+    mock.mockFrom.mockImplementation(() => ({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          limit: vi.fn().mockReturnValue({
+            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+          }),
+        }),
+      }),
+    }));
+
+    const result = await stream(mock.client, market, streamStrategy, [
+      { symbol: 'SPY', timestamp: '2025-01-10T19:00:00.000Z', value: 105 },
+      { symbol: 'SPY', timestamp: '2025-01-10T19:30:00.000Z', value: 200 },
+    ]);
+
+    const priceKey = Object.keys(result.indicators).find(k => k.startsWith('Price_SPY'));
+    expect(priceKey).toBeDefined();
+    expect(result.indicators[priceKey!].value).toBe(200);
+  });
+
+  it('uses latest observation timestamp as evaluation date', async () => {
+    mock.mockFrom.mockImplementation(() => ({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          limit: vi.fn().mockReturnValue({
+            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+          }),
+        }),
+      }),
+    }));
+
+    // Use market-close timestamps so getEvaluationDate can find them
+    const result = await stream(mock.client, market, streamStrategy, [
+      { symbol: 'SPY', timestamp: marketCloseUTC('2025-01-09'), value: 105 },
+      { symbol: 'SPY', timestamp: marketCloseUTC('2025-01-10'), value: 110 },
+    ]);
+
+    // asOf should be derived from the latest observation date (Jan 10)
+    expect(result.asOf.toISOString().slice(0, 10)).toBe('2025-01-10');
+  });
+
+  it('throws on empty array', async () => {
+    await expect(
+      stream(mock.client, market, streamStrategy, []),
+    ).rejects.toThrow('stream() requires at least one observation');
+  });
+
+  it('single-element array matches bare observation behavior', async () => {
+    mock.mockFrom.mockImplementation(() => ({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          limit: vi.fn().mockReturnValue({
+            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+          }),
+        }),
+      }),
+    }));
+
+    const obs = { symbol: 'SPY', timestamp: '2025-01-10T19:30:00.000Z', value: 110 };
+    const [resultBare, resultArray] = await Promise.all([
+      stream(mock.client, market, streamStrategy, obs),
+      stream(mock.client, market, streamStrategy, [obs]),
+    ]);
+
+    expect(resultBare.asOf).toEqual(resultArray.asOf);
+    expect(resultBare.allocation.name).toBe(resultArray.allocation.name);
+    expect(resultBare.signals).toEqual(resultArray.signals);
   });
 });
