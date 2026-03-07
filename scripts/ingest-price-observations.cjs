@@ -113,6 +113,60 @@ async function fetchYahooChart(symbol, range) {
   return rows;
 }
 
+async function fetchYahooChartByPeriod(symbol, period1Seconds, period2Seconds) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+    symbol,
+  )}?period1=${period1Seconds}&period2=${period2Seconds}&interval=1d&includePrePost=false&events=div%2Csplits`;
+
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'livefolio-ingestion/1.0',
+      Accept: 'application/json',
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    if (
+      res.status === 400 &&
+      /Data doesn't exist for startDate/i.test(text)
+    ) {
+      return [];
+    }
+    throw new Error(`Yahoo HTTP ${res.status}`);
+  }
+  const json = await res.json();
+  const result = json?.chart?.result?.[0];
+  if (!result) return [];
+
+  const timestamps = result.timestamp ?? [];
+  const closes = result.indicators?.quote?.[0]?.close ?? [];
+  const adjustedCloses = result.indicators?.adjclose?.[0]?.adjclose ?? [];
+  const rows = [];
+
+  for (let index = 0; index < timestamps.length; index += 1) {
+    const ts = timestamps[index];
+    const adjustedClose = adjustedCloses[index];
+    const close = closes[index];
+    const price = Number.isFinite(adjustedClose) ? adjustedClose : close;
+    if (!Number.isFinite(ts) || !Number.isFinite(price)) continue;
+    rows.push({
+      symbol,
+      date: isoDay(ts),
+      price_330pm_et: price,
+      price_400pm_et: price,
+      timestamp_330pm_et: isoTs(ts),
+      timestamp_400pm_et: isoTs(ts),
+    });
+  }
+
+  return rows;
+}
+
+async function fetchYahooDailyInit(symbol) {
+  const end = Math.floor(Date.now() / 1000);
+  return fetchYahooChartByPeriod(symbol, 0, end);
+}
+
 async function upsertRows(supabase, rows) {
   const chunkSize = 1000;
   for (let index = 0; index < rows.length; index += chunkSize) {
@@ -142,7 +196,7 @@ async function main() {
   }
 
   const supabase = createClient(supabaseUrl, serviceKey);
-  const range = mode === 'daily' ? '5d' : 'max';
+  const range = mode === 'daily' ? '5d' : 'period-chunked';
   let totalRows = 0;
   let success = 0;
   let failed = 0;
@@ -151,7 +205,7 @@ async function main() {
 
   for (const symbol of selected) {
     try {
-      const rows = await fetchYahooChart(symbol, range);
+      const rows = mode === 'daily' ? await fetchYahooChart(symbol, '5d') : await fetchYahooDailyInit(symbol);
       if (rows.length === 0) {
         console.log(`- ${symbol}: no rows`);
         continue;
