@@ -91,17 +91,20 @@ async function fetchYahooChart(symbol, range) {
 
   const timestamps = result.timestamp ?? [];
   const closes = result.indicators?.quote?.[0]?.close ?? [];
+  const adjustedCloses = result.indicators?.adjclose?.[0]?.adjclose ?? [];
   const rows = [];
 
   for (let index = 0; index < timestamps.length; index += 1) {
     const ts = timestamps[index];
+    const adjustedClose = adjustedCloses[index];
     const close = closes[index];
-    if (!Number.isFinite(ts) || !Number.isFinite(close)) continue;
+    const price = Number.isFinite(adjustedClose) ? adjustedClose : close;
+    if (!Number.isFinite(ts) || !Number.isFinite(price)) continue;
     rows.push({
       symbol,
       date: isoDay(ts),
-      price_330pm_et: close,
-      price_400pm_et: close,
+      price_330pm_et: price,
+      price_400pm_et: price,
       timestamp_330pm_et: isoTs(ts),
       timestamp_400pm_et: isoTs(ts),
     });

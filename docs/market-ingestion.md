@@ -16,8 +16,9 @@ export SUPABASE_SERVICE_ROLE_KEY=<local-service-role-key>
 ## 1) Initial backfill
 
 1. Seed tracked symbols from `TRACKED_TICKERS_YFINANCE`.
-2. Download daily bars from Yahoo Finance for each symbol.
-3. Upsert into `price_observations` keyed by `(symbol, date)`.
+2. Download daily bars from Yahoo Finance (`interval=1d`) for each symbol.
+3. Use adjusted close (`adjclose`) when present; fallback to `close` if not.
+4. Upsert into `price_observations` keyed by `(symbol, date)`.
 
 Run:
 
