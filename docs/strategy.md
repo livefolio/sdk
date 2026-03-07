@@ -87,3 +87,26 @@ Runs a deterministic, rules-based backtest using DB-only historical series (`pri
 Requirements:
 - Strategy must include exactly one allocation named `Default`.
 - Backtest evaluates allocations by strategy order; first match wins; `Default` is fallback.
+
+### `compileRules(strategyDraft): Strategy`
+
+Compiles a rules-builder payload into the existing executable `Strategy` shape used by evaluation/backtests.
+
+`strategyDraft` intentionally reuses existing types (`NamedSignal`, `Holding`, `Trading`) and only uses signal-name references inside conditions for UI authoring.
+
+```ts
+const compiled = lf.strategy.compileRules({
+  linkId: 'draft-1',
+  name: 'SPY Trend',
+  trading: { frequency: 'Daily', offset: 0 },
+  signals: [{ name: 'Uptrend', signal: /* Signal */ }],
+  allocations: [
+    { name: 'Risk On', condition: { kind: 'signal', signalName: 'Uptrend' }, holdings: [{ ticker: { symbol: 'TQQQ', leverage: 1 }, weight: 100 }] },
+    { name: 'Default', condition: { kind: 'not', signalName: 'Uptrend' }, holdings: [{ ticker: { symbol: 'BIL', leverage: 1 }, weight: 100 }] },
+  ],
+});
+```
+
+### `backtestRules(strategyDraft, options): Promise<BacktestResult>`
+
+Compiles `strategyDraft` then runs `backtest` against DB historical data.

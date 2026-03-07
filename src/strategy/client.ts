@@ -12,6 +12,7 @@ import { get, getMany } from './get';
 import { evaluateCached } from './cache';
 import { stream } from './stream';
 import { backtest as backtestPure } from './backtest';
+import { compileRules as compileRulesPure } from './rules';
 
 export function createStrategy(client: TypedSupabaseClient): StrategyModule {
   const market = createMarket(client);
@@ -24,6 +25,19 @@ export function createStrategy(client: TypedSupabaseClient): StrategyModule {
     evaluateAllocation: evaluateAllocationPure,
     getEvaluationDate: getEvaluationDatePure,
     extractSymbols: extractSymbolsPure,
+    compileRules: compileRulesPure,
+    backtestRules: async (strategyDraft, options) => {
+      const strategy = compileRulesPure(strategyDraft);
+      const batchSeries =
+        options.batchSeries ??
+        (await market.getBatchSeriesFromDb(
+          extractSymbolsPure(strategy),
+          options.startDate,
+          options.endDate,
+        ));
+      const tradingDays = options.tradingDays ?? (await market.getTradingDays(options.startDate, options.endDate));
+      return backtestPure(strategy, { ...options, batchSeries, tradingDays });
+    },
     stream: (strategy, observation) => stream(client, market, strategy, observation),
     backtest: async (strategy, options) => {
       const batchSeries =

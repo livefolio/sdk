@@ -139,6 +139,48 @@ export interface Strategy {
 }
 
 // ---------------------------------------------------------------------------
+// Rules-based strategy authoring (for builders/UI)
+// ---------------------------------------------------------------------------
+
+export interface SignalNameExpr {
+  kind: 'signal';
+  signalName: string;
+}
+
+export interface NotSignalNameExpr {
+  kind: 'not';
+  signalName: string;
+}
+
+export type SignalNameUnaryExpr = SignalNameExpr | NotSignalNameExpr;
+
+export interface SignalNameAndExpr {
+  kind: 'and';
+  args: SignalNameUnaryExpr[];
+}
+
+export interface SignalNameOrExpr {
+  kind: 'or';
+  args: SignalNameAndExpr[];
+}
+
+export type SignalNameCondition = SignalNameOrExpr | SignalNameAndExpr | SignalNameUnaryExpr;
+
+export interface StrategyAllocationDraft {
+  name: string;
+  condition: SignalNameCondition;
+  holdings: Holding[];
+}
+
+export interface StrategyDraft {
+  linkId: string;
+  name: string;
+  trading: Trading;
+  signals: NamedSignal[];
+  allocations: StrategyAllocationDraft[];
+}
+
+// ---------------------------------------------------------------------------
 // Evaluation
 // ---------------------------------------------------------------------------
 
@@ -247,6 +289,8 @@ export interface StrategyModule {
 
   // Utilities
   extractSymbols(strategy: Strategy): string[];
+  compileRules(strategyDraft: StrategyDraft): Strategy;
+  backtestRules(strategyDraft: StrategyDraft, options: BacktestOptions): Promise<BacktestResult>;
 
   // Live streaming (evaluate with incoming observations merged into historical series)
   stream(strategy: Strategy, observation: StreamObservation | StreamObservation[]): Promise<StrategyEvaluation>;
