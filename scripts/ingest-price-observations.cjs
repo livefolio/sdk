@@ -14,6 +14,44 @@ function parseArg(name, fallback = null) {
   return fallback;
 }
 
+function loadEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) return false;
+  const content = fs.readFileSync(filePath, 'utf8');
+  for (const rawLine of content.split('\n')) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq <= 0) continue;
+    const key = line.slice(0, eq).trim();
+    if (!key || process.env[key] != null) continue;
+    let value = line.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  }
+  return true;
+}
+
+function loadEnvDefaults() {
+  const envFile = parseArg('env-file', null);
+  const candidates = envFile
+    ? [path.resolve(process.cwd(), envFile)]
+    : [
+        path.resolve(process.cwd(), '.env.local'),
+        path.resolve(process.cwd(), '.env'),
+        path.resolve(process.cwd(), '../app/.env.local'),
+        path.resolve(process.cwd(), '../app/.env'),
+      ];
+  for (const candidate of candidates) {
+    if (loadEnvFile(candidate)) return candidate;
+  }
+  return null;
+}
+
 function loadTrackedTickers() {
   const filePath = path.resolve(__dirname, '../src/market/trackedTickers.ts');
   const source = fs.readFileSync(filePath, 'utf8');
@@ -84,6 +122,7 @@ async function upsertRows(supabase, rows) {
 }
 
 async function main() {
+  loadEnvDefaults();
   const mode = (parseArg('mode', 'init') || 'init').toLowerCase();
   const symbolsArg = parseArg('symbols', '');
   const limitArg = parseArg('limit', '');
