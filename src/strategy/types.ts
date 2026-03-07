@@ -1,4 +1,4 @@
-import type { Observation } from '../market/types';
+import type { Observation, TradingDay } from '../market/types';
 
 // ---------------------------------------------------------------------------
 // Primitives
@@ -184,9 +184,46 @@ export interface StreamObservation {
 export interface BacktestOptions {
   startDate: string;
   endDate: string;
+  initialCapital?: number;
+  batchSeries?: Record<string, Observation[]>;
+  tradingDays?: TradingDay[];
 }
 
-export interface BacktestResult {}
+export interface BacktestTrade {
+  date: string;
+  ticker: string;
+  leverage: number;
+  shares: number;
+  price: number;
+  value: number;
+  action: 'buy' | 'sell';
+  allocation: string;
+}
+
+export interface BacktestTimeseries {
+  dates: string[];
+  portfolio: number[];
+  cash: number[];
+  drawdownPct: number[];
+  allocation: string[];
+}
+
+export interface BacktestSummary {
+  initialValue: number;
+  finalValue: number;
+  totalReturnPct: number;
+  cagrPct: number;
+  maxDrawdownPct: number;
+  annualizedVolatilityPct: number;
+  sharpeRatio: number;
+  tradeCount: number;
+}
+
+export interface BacktestResult {
+  timeseries: BacktestTimeseries;
+  summary: BacktestSummary;
+  trades: BacktestTrade[];
+}
 
 // ---------------------------------------------------------------------------
 // Module interface

@@ -11,7 +11,7 @@ import { createMarket } from '../market/client';
 import { get, getMany } from './get';
 import { evaluateCached } from './cache';
 import { stream } from './stream';
-import { backtest } from './backtest';
+import { backtest as backtestPure } from './backtest';
 
 export function createStrategy(client: TypedSupabaseClient): StrategyModule {
   const market = createMarket(client);
@@ -25,6 +25,10 @@ export function createStrategy(client: TypedSupabaseClient): StrategyModule {
     getEvaluationDate: getEvaluationDatePure,
     extractSymbols: extractSymbolsPure,
     stream: (strategy, observation) => stream(client, market, strategy, observation),
-    backtest,
+    backtest: async (strategy, options) => {
+      const batchSeries = options.batchSeries ?? (await market.getBatchSeries(extractSymbolsPure(strategy)));
+      const tradingDays = options.tradingDays ?? (await market.getTradingDays(options.startDate, options.endDate));
+      return backtestPure(strategy, { ...options, batchSeries, tradingDays });
+    },
   };
 }

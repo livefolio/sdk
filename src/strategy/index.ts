@@ -25,6 +25,9 @@ export type {
   StreamObservation,
   BacktestOptions,
   BacktestResult,
+  BacktestTrade,
+  BacktestTimeseries,
+  BacktestSummary,
 } from './types';
 
 export { createStrategy } from './client';
