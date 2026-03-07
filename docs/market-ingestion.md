@@ -2,11 +2,35 @@
 
 This workflow keeps backtests deterministic by loading historical data into Supabase first, then reading only from the database.
 
+## Prerequisites
+
+Set local Supabase credentials:
+
+```bash
+export SUPABASE_URL=http://127.0.0.1:54321
+export SUPABASE_ANON_KEY=<local-anon-key>
+# Prefer service role for writes
+export SUPABASE_SERVICE_ROLE_KEY=<local-service-role-key>
+```
+
 ## 1) Initial backfill
 
 1. Seed tracked symbols from `TRACKED_TICKERS_YFINANCE`.
 2. Download daily bars from Yahoo Finance for each symbol.
 3. Upsert into `price_observations` keyed by `(symbol, date)`.
+
+Run:
+
+```bash
+npm run ingest:init
+```
+
+Optional partial run:
+
+```bash
+node scripts/ingest-price-observations.cjs --mode init --limit 20
+node scripts/ingest-price-observations.cjs --mode init --symbols SPY,QQQ,TQQQ
+```
 
 Suggested table for explicit ingestion scope:
 
@@ -30,8 +54,23 @@ Run once per market day after close:
 
 Example cron: `15 21 * * 1-5` (9:15 PM UTC) to run after US market close.
 
+Manual daily refresh:
+
+```bash
+npm run ingest:daily
+```
+
 ## 3) Backtest read path
 
 - Use `market.getBatchSeriesFromDb(symbols, startDate, endDate)`.
 - Use `market.getTradingDays(startDate, endDate)`.
 - Do not use cache-through fetches during backtest execution.
+
+## 4) Backtest smoke test
+
+Build SDK, then run:
+
+```bash
+npm run build
+node scripts/backtest-smoke.cjs --linkId <strategy-link-id> --startDate 2024-01-01 --endDate 2024-12-31
+```

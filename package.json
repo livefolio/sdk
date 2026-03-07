@@ -33,7 +33,10 @@
     "build": "tsc",
     "clean": "rm -rf dist",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "ingest:init": "node scripts/ingest-price-observations.cjs --mode init",
+    "ingest:daily": "node scripts/ingest-price-observations.cjs --mode daily",
+    "backtest:smoke": "node scripts/backtest-smoke.cjs"
   },
   "dependencies": {
     "@livefolio/db": "*",
