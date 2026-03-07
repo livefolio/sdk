@@ -15,6 +15,12 @@ export interface MarketModule {
   // Via Edge Function (cache-through: resolve indicator -> check daily_observations -> fetch if missing)
   getSeries(symbol: string): Promise<Observation[]>;
   getBatchSeries(symbols: string[]): Promise<Record<string, Observation[]>>;
+  getSeriesFromDb(symbol: string, startDate: string, endDate: string): Promise<Observation[]>;
+  getBatchSeriesFromDb(
+    symbols: string[],
+    startDate: string,
+    endDate: string,
+  ): Promise<Record<string, Observation[]>>;
 
   // Real-time quotes via Edge Function (yahoo quote with series fallback)
   getQuote(symbol: string): Promise<Observation>;

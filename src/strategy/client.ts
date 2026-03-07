@@ -26,7 +26,13 @@ export function createStrategy(client: TypedSupabaseClient): StrategyModule {
     extractSymbols: extractSymbolsPure,
     stream: (strategy, observation) => stream(client, market, strategy, observation),
     backtest: async (strategy, options) => {
-      const batchSeries = options.batchSeries ?? (await market.getBatchSeries(extractSymbolsPure(strategy)));
+      const batchSeries =
+        options.batchSeries ??
+        (await market.getBatchSeriesFromDb(
+          extractSymbolsPure(strategy),
+          options.startDate,
+          options.endDate,
+        ));
       const tradingDays = options.tradingDays ?? (await market.getTradingDays(options.startDate, options.endDate));
       return backtestPure(strategy, { ...options, batchSeries, tradingDays });
     },

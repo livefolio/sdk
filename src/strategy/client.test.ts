@@ -39,12 +39,7 @@ describe('createStrategy', () => {
   });
 
   it('delegates backtest to the backtest module', async () => {
-    const mockInvoke = vi.fn().mockResolvedValue({
-      data: {
-        SPY: [{ timestamp: '2024-01-02T21:00:00.000Z', value: 100 }],
-      },
-      error: null,
-    });
+    const mockInvoke = vi.fn();
     const mockOrder = vi.fn().mockResolvedValue({
       data: [
         {
@@ -60,8 +55,24 @@ describe('createStrategy', () => {
     });
     const mockLte = vi.fn(() => ({ order: mockOrder }));
     const mockGte = vi.fn(() => ({ lte: mockLte }));
-    const mockSelect = vi.fn(() => ({ gte: mockGte }));
-    const mockFrom = vi.fn(() => ({ select: mockSelect }));
+    const mockIn = vi.fn(() => ({ gte: mockGte }));
+    const mockSelect = vi.fn(() => ({ in: mockIn, gte: mockGte }));
+    const mockFrom = vi.fn((table: string) => {
+      if (table === 'price_observations') {
+        mockOrder.mockResolvedValueOnce({
+          data: [
+            {
+              symbol: 'SPY',
+              date: '2024-01-02',
+              price_400pm_et: 100,
+              timestamp_400pm_et: '2024-01-02T21:00:00.000Z',
+            },
+          ],
+          error: null,
+        });
+      }
+      return { select: mockSelect };
+    });
     const client = {
       from: mockFrom,
       rpc: vi.fn(),
@@ -89,7 +100,8 @@ describe('createStrategy', () => {
       { startDate: '2024-01-02', endDate: '2024-01-02' },
     );
 
-    expect(mockInvoke).toHaveBeenCalledWith('series', { body: { symbols: ['SPY'] } });
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mockFrom).toHaveBeenCalledWith('price_observations');
     expect(mockFrom).toHaveBeenCalledWith('trading_days');
     expect(result.summary.tradeCount).toBe(1);
   });

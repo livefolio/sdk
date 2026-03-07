@@ -80,4 +80,10 @@ lf.strategy.getEvaluationDate(strategy.trading, { at, batchSeries });
 // → 2025-06-01T21:00:00.000Z
 ```
 
-### `backtest(strategy, options): Promise<BacktestResult>` *(stub)*
+### `backtest(strategy, options): Promise<BacktestResult>`
+
+Runs a deterministic, rules-based backtest using DB-only historical series (`price_observations`) and `trading_days`.
+
+Requirements:
+- Strategy must include exactly one allocation named `Default`.
+- Backtest evaluates allocations by strategy order; first match wins; `Default` is fallback.

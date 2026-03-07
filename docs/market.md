@@ -26,6 +26,23 @@ const batch = await lf.market.getBatchSeries(['SPY', 'QQQ', 'TLT']);
 // → { SPY: [{ timestamp: '2025-01-10T...', value: 590.25 }, ...], QQQ: [...], TLT: [...] }
 ```
 
+### `getBatchSeriesFromDb(symbols, startDate, endDate): Promise<Record<string, Observation[]>>`
+
+DB-only historical series from `price_observations` (no cache-through fetch).
+
+```ts
+const batch = await lf.market.getBatchSeriesFromDb(['SPY', 'QQQ'], '2025-01-01', '2025-01-31');
+// → { SPY: [{ timestamp: '2025-01-10T16:00:00Z', value: 590.25 }], QQQ: [...] }
+```
+
+### `getSeriesFromDb(symbol, startDate, endDate): Promise<Observation[]>`
+
+DB-only single-symbol convenience wrapper.
+
+```ts
+const series = await lf.market.getSeriesFromDb('SPY', '2025-01-01', '2025-01-31');
+```
+
 ### `getQuote(symbol): Promise<Observation>`
 
 Get a real-time quote (Yahoo quote API with series fallback).
@@ -69,4 +86,12 @@ interface Observation {
   timestamp: string; // ISO 8601
   value: number;
 }
+```
+
+### Tracked tickers (Yahoo format)
+
+Use the SDK constant as the canonical ingestion list seed:
+
+```ts
+import { TRACKED_TICKERS_YFINANCE } from '@livefolio/sdk/market';
 ```
