@@ -230,6 +230,11 @@ export interface BacktestOptions {
   batchSeries?: Record<string, Observation[]>;
   tradingDays?: TradingDay[];
   allocationRebalance?: Record<string, BacktestRebalanceConfig>;
+  debug?: boolean | BacktestDebugOptions;
+}
+
+export interface BacktestDebugOptions {
+  logEveryDays?: number;
 }
 
 export type BacktestRebalanceConfig =

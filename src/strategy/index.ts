@@ -32,6 +32,7 @@ export type {
   SignalNameOrExpr,
   SignalNameCondition,
   BacktestOptions,
+  BacktestDebugOptions,
   BacktestRebalanceConfig,
   BacktestResult,
   BacktestTrade,

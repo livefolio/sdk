@@ -1,5 +1,6 @@
 import type {
   BacktestAnnualTax,
+  BacktestDebugOptions,
   BacktestOptions,
   BacktestRebalanceConfig,
   BacktestResult,
@@ -14,6 +15,20 @@ type PricePoint = { timestamp: number; value: number };
 type TaxTerm = 'shortTerm' | 'longTerm';
 
 const EPSILON = 1e-8;
+const DEFAULT_DEBUG_LOG_EVERY_DAYS = 63;
+
+function nowMs(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now();
+}
+
+function getDebugOptions(options: BacktestOptions): BacktestDebugOptions | null {
+  if (!options.debug) return null;
+  if (options.debug === true) return { logEveryDays: DEFAULT_DEBUG_LOG_EVERY_DAYS };
+  const logEveryDays = Math.max(1, Math.floor(options.debug.logEveryDays ?? DEFAULT_DEBUG_LOG_EVERY_DAYS));
+  return { logEveryDays };
+}
 
 function toDateYmd(value: Date): string {
   return value.toISOString().slice(0, 10);
@@ -391,6 +406,18 @@ function computeAllocationDriftPct(
 }
 
 export async function backtest(strategy: Strategy, options: BacktestOptions): Promise<BacktestResult> {
+  const debug = getDebugOptions(options);
+  const logEveryDays = debug?.logEveryDays ?? DEFAULT_DEBUG_LOG_EVERY_DAYS;
+  const startedAt = nowMs();
+  const timings = {
+    validateMs: 0,
+    normalizeTradingDaysMs: 0,
+    buildPricePathsMs: 0,
+    evaluateMs: 0,
+    rebalanceMs: 0,
+    bookkeepingMs: 0,
+  };
+  const tValidateStart = nowMs();
   validateDefaultAllocation(strategy);
   if (!options.batchSeries) {
     throw new Error('Backtest requires batchSeries in options.');
@@ -398,9 +425,12 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
   if (!options.tradingDays) {
     throw new Error('Backtest requires tradingDays in options.');
   }
+  timings.validateMs = nowMs() - tValidateStart;
 
   const initialCapital = options.initialCapital ?? 100_000;
+  const tNormalizeTradingDaysStart = nowMs();
   const tradingDays = normalizeTradingDays(options.tradingDays, options.startDate, options.endDate);
+  timings.normalizeTradingDaysMs = nowMs() - tNormalizeTradingDaysStart;
   if (!tradingDays.length) {
     throw new Error('No trading days in selected date range.');
   }
@@ -422,7 +452,9 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
     }
   }
 
+  const tBuildPricePathsStart = nowMs();
   const pricePaths = buildLeveragedPriceSeries(tradingDays, options.batchSeries, [...requiredPositions.values()]);
+  timings.buildPricePathsMs = nowMs() - tBuildPricePathsStart;
   const positions: PositionMap = {};
   let cash = initialCapital;
   let previousSignalStates: Record<string, boolean> = {};
@@ -441,7 +473,9 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
   const drawdownPct: number[] = [];
   const allocationSeries: string[] = [];
 
-  for (const day of tradingDays) {
+  for (let dayIndex = 0; dayIndex < tradingDays.length; dayIndex++) {
+    const day = tradingDays[dayIndex];
+    const tEvaluateStart = nowMs();
     const closeAt = new Date(day.close);
     const currentDate = day.date;
 
@@ -451,6 +485,7 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
       previousSignalStates,
       previousIndicatorMetadata,
     });
+    timings.evaluateMs += nowMs() - tEvaluateStart;
 
     const pricesByPosition: Record<string, number> = {};
     for (const [key] of requiredPositions) {
@@ -493,6 +528,7 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
       }
     }
 
+    const tRebalanceStart = nowMs();
     if (shouldRebalance) {
       lastRebalancedDateByAllocation.set(evaluation.allocation.name, currentDate);
       const totalValue = computePortfolioValue(positions, pricesByPosition, cash);
@@ -605,7 +641,9 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
         cash = 0;
       }
     }
+    timings.rebalanceMs += nowMs() - tRebalanceStart;
 
+    const tBookkeepingStart = nowMs();
     const portfolioValue = computePortfolioValue(positions, pricesByPosition, cash);
     runningPeak = Math.max(runningPeak, portfolioValue);
     const dd = runningPeak > 0 ? ((portfolioValue - runningPeak) / runningPeak) * 100 : 0;
@@ -623,6 +661,18 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
         .filter(([, indicator]) => indicator.metadata !== undefined)
         .map(([key, indicator]) => [key, indicator.metadata]),
     );
+    timings.bookkeepingMs += nowMs() - tBookkeepingStart;
+
+    if (debug && ((dayIndex + 1) % logEveryDays === 0 || dayIndex === tradingDays.length - 1)) {
+      const elapsedMs = nowMs() - startedAt;
+      console.info('[sdk.backtest] progress', {
+        day: dayIndex + 1,
+        totalDays: tradingDays.length,
+        date: currentDate,
+        elapsedMs: Math.round(elapsedMs),
+        trades: trades.length,
+      });
+    }
   }
 
   const finalValue = portfolioValues.at(-1) ?? initialCapital;
@@ -653,7 +703,7 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
       longTermRealizedGains: totals.longTerm,
     }));
 
-  return {
+  const result: BacktestResult = {
     timeseries: {
       dates,
       portfolio: portfolioValues,
@@ -674,4 +724,19 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
     trades,
     annualTax,
   };
+  if (debug) {
+    const totalMs = nowMs() - startedAt;
+    console.info('[sdk.backtest] timing', {
+      days: tradingDays.length,
+      trades: trades.length,
+      totalMs: Math.round(totalMs),
+      validateMs: Math.round(timings.validateMs),
+      normalizeTradingDaysMs: Math.round(timings.normalizeTradingDaysMs),
+      buildPricePathsMs: Math.round(timings.buildPricePathsMs),
+      evaluateMs: Math.round(timings.evaluateMs),
+      rebalanceMs: Math.round(timings.rebalanceMs),
+      bookkeepingMs: Math.round(timings.bookkeepingMs),
+    });
+  }
+  return result;
 }
