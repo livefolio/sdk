@@ -6,9 +6,12 @@ import type {
   BacktestResult,
   BacktestTrade,
   Strategy,
+  StrategyDraft,
 } from './types';
-import type { Observation, TradingDay } from '../market/types';
+import type { MarketModule, Observation, TradingDay } from '../market/types';
 import { evaluate } from './evaluate';
+import { compileRules } from './rules';
+import { extractSymbols } from './symbols';
 
 type PositionMap = Record<string, number>;
 type PricePoint = { timestamp: number; value: number };
@@ -403,6 +406,35 @@ function computeAllocationDriftPct(
     maxDrift = Math.max(maxDrift, Math.abs(currentWeight - targetWeight));
   }
   return maxDrift;
+}
+
+async function resolveBacktestInputs(
+  market: Pick<MarketModule, 'getBatchSeriesFromDb' | 'getTradingDays'>,
+  strategy: Strategy,
+  options: BacktestOptions,
+): Promise<BacktestOptions> {
+  const batchSeries =
+    options.batchSeries ??
+    (await market.getBatchSeriesFromDb(extractSymbols(strategy), options.startDate, options.endDate));
+  const tradingDays = options.tradingDays ?? (await market.getTradingDays(options.startDate, options.endDate));
+  return { ...options, batchSeries, tradingDays };
+}
+
+export async function backtestWithMarketData(
+  market: Pick<MarketModule, 'getBatchSeriesFromDb' | 'getTradingDays'>,
+  strategy: Strategy,
+  options: BacktestOptions,
+): Promise<BacktestResult> {
+  return backtest(strategy, await resolveBacktestInputs(market, strategy, options));
+}
+
+export async function backtestRulesWithMarketData(
+  market: Pick<MarketModule, 'getBatchSeriesFromDb' | 'getTradingDays'>,
+  strategyDraft: StrategyDraft,
+  options: BacktestOptions,
+): Promise<BacktestResult> {
+  const strategy = compileRules(strategyDraft);
+  return backtestWithMarketData(market, strategy, options);
 }
 
 export async function backtest(strategy: Strategy, options: BacktestOptions): Promise<BacktestResult> {

@@ -1,3 +1,6 @@
+export const TRACKED_TICKERS_DESCRIPTION =
+  'Curated default backtest/ingestion universe in Yahoo Finance symbol format.';
+
 export const TRACKED_TICKERS_YFINANCE = [
   'SPY',
   'QQQ',

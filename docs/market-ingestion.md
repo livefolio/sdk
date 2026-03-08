@@ -1,6 +1,6 @@
 # Market Ingestion Plan
 
-This workflow keeps backtests deterministic by loading historical data into Supabase first, then reading only from the database.
+Backtests read from Supabase (`price_observations`, `trading_days`). Data hydration is cache-through via the `series()` edge function: missing symbols/dates are fetched from Yahoo, then persisted.
 
 ## Prerequisites
 
@@ -13,25 +13,15 @@ export SUPABASE_ANON_KEY=<local-anon-key>
 export SUPABASE_SERVICE_ROLE_KEY=<local-service-role-key>
 ```
 
-## 1) Initial backfill
+## 1) Cache-through hydration (default path)
 
-1. Seed tracked symbols from `TRACKED_TICKERS_YFINANCE`.
-2. Download daily bars from Yahoo Finance (`interval=1d`) for each symbol.
-3. Use adjusted close (`adjclose`) when present; fallback to `close` if not.
-4. Upsert into `price_observations` keyed by `(symbol, date)`.
+Any consumer of market `series()` (for example strategy `evaluate`) can hydrate data:
 
-Run:
+1. Query requested symbols and date range.
+2. For missing symbols or missing recent dates, fetch Yahoo daily bars.
+3. Upsert new rows into `price_observations`.
 
-```bash
-npm run ingest:init
-```
-
-Optional partial run:
-
-```bash
-node scripts/ingest-price-observations.cjs --mode init --limit 20
-node scripts/ingest-price-observations.cjs --mode init --symbols SPY,QQQ,TQQQ
-```
+This is the default ingestion path and does not require a separate backfill command.
 
 Suggested table for explicit ingestion scope:
 
@@ -45,7 +35,22 @@ create table if not exists tracked_tickers (
 );
 ```
 
-## 2) Daily cron refresh
+## 2) Optional explicit prefetch
+
+You can still prefetch tracked symbols (for faster first-run UX):
+
+```bash
+npm run ingest:init
+```
+
+Optional partial run:
+
+```bash
+node scripts/ingest-price-observations.cjs --mode init --limit 20
+node scripts/ingest-price-observations.cjs --mode init --symbols SPY,QQQ,TQQQ
+```
+
+## 3) Daily cron refresh
 
 Run once per market day after close:
 
@@ -61,13 +66,13 @@ Manual daily refresh:
 npm run ingest:daily
 ```
 
-## 3) Backtest read path
+## 4) Backtest read path
 
 - Use `market.getBatchSeriesFromDb(symbols, startDate, endDate)`.
 - Use `market.getTradingDays(startDate, endDate)`.
 - Do not use cache-through fetches during backtest execution.
 
-## 4) Backtest smoke test
+## 5) Backtest smoke test
 
 Build SDK, then run:
 

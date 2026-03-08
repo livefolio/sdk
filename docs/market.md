@@ -90,8 +90,8 @@ interface Observation {
 
 ### Tracked tickers (Yahoo format)
 
-Use the SDK constant as the canonical ingestion list seed:
+Use the SDK constant as the default ingestion/backtest universe seed:
 
 ```ts
-import { TRACKED_TICKERS_YFINANCE } from '@livefolio/sdk/market';
+import { TRACKED_TICKERS_DESCRIPTION, TRACKED_TICKERS_YFINANCE } from '@livefolio/sdk/market';
 ```
