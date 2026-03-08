@@ -693,7 +693,8 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
     dailyReturns.length > 0
       ? dailyReturns.reduce((sum, value) => sum + value, 0) / dailyReturns.length
       : 0;
-  const sharpe = volatility > 0 ? (meanDailyReturn * Math.sqrt(252)) / volatility : 0;
+  const annualizedReturn = meanDailyReturn * 252;
+  const sharpe = volatility > 0 ? annualizedReturn / volatility : 0;
   const maxDrawdown = drawdownPct.length ? Math.min(...drawdownPct) : 0;
   const annualTax: BacktestAnnualTax[] = [...annualTaxByYear.entries()]
     .sort((a, b) => a[0] - b[0])

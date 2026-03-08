@@ -102,6 +102,16 @@ describe('backtest', () => {
     expect(result.summary.tradeCount).toBe(1);
     expect(result.trades[0].ticker).toBe('SPY');
     expect(result.annualTax).toEqual([]);
+    const returns: number[] = [];
+    for (let i = 1; i < result.timeseries.portfolio.length; i++) {
+      const prev = result.timeseries.portfolio[i - 1];
+      const curr = result.timeseries.portfolio[i];
+      returns.push((curr - prev) / prev);
+    }
+    const mean = returns.reduce((sum, value) => sum + value, 0) / returns.length;
+    const variance = returns.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (returns.length - 1);
+    const expectedSharpe = variance > 0 ? (mean / Math.sqrt(variance)) * Math.sqrt(252) : 0;
+    expect(result.summary.sharpeRatio).toBeCloseTo(expectedSharpe, 8);
   });
 
   it('switches between signal allocation and default', async () => {
