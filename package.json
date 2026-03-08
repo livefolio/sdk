@@ -36,7 +36,8 @@
     "test:watch": "vitest",
     "ingest:init": "node scripts/ingest-price-observations.cjs --mode init",
     "ingest:daily": "node scripts/ingest-price-observations.cjs --mode daily",
-    "backtest:smoke": "node scripts/backtest-smoke.cjs"
+    "backtest:smoke": "node scripts/backtest-smoke.cjs",
+    "prepare": "npm run build"
   },
   "dependencies": {
     "@livefolio/db": "*",
