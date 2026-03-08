@@ -24,8 +24,14 @@ interface InternalObs {
   price: number;
 }
 
+const INTERNAL_SERIES_CACHE = new WeakMap<Observation[], InternalObs[]>();
+
 function toInternalSeries(series: Observation[]): InternalObs[] {
-  return series.map((o) => ({ timestamp: new Date(o.timestamp), price: o.value }));
+  const cached = INTERNAL_SERIES_CACHE.get(series);
+  if (cached) return cached;
+  const normalized = series.map((o) => ({ timestamp: new Date(o.timestamp), price: o.value }));
+  INTERNAL_SERIES_CACHE.set(series, normalized);
+  return normalized;
 }
 
 // ---------------------------------------------------------------------------
@@ -58,14 +64,21 @@ function pickSeries(
   delay: number,
 ): InternalObs[] {
   const source = toInternalSeries(batchSeries[ticker.symbol] ?? []);
+  if (source.length === 0) return [];
 
-  let atIndex = source.length - 1;
-  for (let i = source.length - 1; i >= 0; i--) {
-    if (source[i].timestamp <= at) {
-      atIndex = i;
-      break;
+  let lo = 0;
+  let hi = source.length - 1;
+  let atIndex = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (source[mid].timestamp <= at) {
+      atIndex = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
     }
   }
+  if (atIndex < 0) return [];
 
   const end = atIndex + 1 - delay;
   const start = Math.max(0, end - lookback);
@@ -394,7 +407,6 @@ function evaluateCondition(condition: Condition, options: EvaluationOptions): bo
 }
 
 export function evaluate(strategy: Strategy, options: EvaluationOptions): StrategyEvaluation {
-  // Collect all unique signals from all allocations
   const allSignals = getAllSignalsFromStrategy(strategy);
   const indicatorsMap = new Map<string, IndicatorEvaluation>();
   const indicatorsOrder: string[] = [];
@@ -422,7 +434,7 @@ export function evaluate(strategy: Strategy, options: EvaluationOptions): Strate
 
   let winning = allocations[allocations.length - 1];
   for (const na of allocations) {
-    if (evaluateAllocation(na.allocation, options)) {
+    if (evaluateConditionWithSignalValues(na.allocation.condition, signals)) {
       winning = na;
       break;
     }
@@ -439,6 +451,22 @@ export function evaluate(strategy: Strategy, options: EvaluationOptions): Strate
     signals,
     indicators,
   };
+}
+
+function evaluateConditionWithSignalValues(
+  condition: Condition,
+  signalValues: Record<string, boolean>,
+): boolean {
+  switch (condition.kind) {
+    case 'or':
+      return condition.args.some((andExpr) => evaluateConditionWithSignalValues(andExpr, signalValues));
+    case 'and':
+      return condition.args.every((unaryExpr) => evaluateConditionWithSignalValues(unaryExpr, signalValues));
+    case 'not':
+      return !(signalValues[signalKey(condition.signal)] ?? false);
+    case 'signal':
+      return signalValues[signalKey(condition.signal)] ?? false;
+  }
 }
 
 // ---------------------------------------------------------------------------
