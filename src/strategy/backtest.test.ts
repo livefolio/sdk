@@ -101,6 +101,7 @@ describe('backtest', () => {
     expect(result.timeseries.dates).toEqual(['2024-01-02', '2024-01-03', '2024-01-04', '2024-01-05']);
     expect(result.summary.tradeCount).toBe(1);
     expect(result.trades[0].ticker).toBe('SPY');
+    expect(result.annualTax).toEqual([]);
   });
 
   it('switches between signal allocation and default', async () => {
@@ -139,5 +140,180 @@ describe('backtest', () => {
     expect(result.summary.tradeCount).toBe(5);
     expect(result.timeseries.allocation).toEqual(['Default', 'Default', 'Risk On', 'Default']);
     expect(result.trades.filter((trade) => trade.action === 'sell').length).toBeGreaterThan(0);
+  });
+
+  it('supports calendar and drift rebalance modes', async () => {
+    const strategy: Strategy = {
+      linkId: 'x',
+      name: 'x',
+      trading: { frequency: 'Daily', offset: 0 },
+      signals: [],
+      allocations: [
+        {
+          name: 'Default',
+          allocation: {
+            condition: { kind: 'and', args: [] },
+            holdings: [
+              { ticker: { symbol: 'SPY', leverage: 1 }, weight: 50 },
+              { ticker: { symbol: 'BIL', leverage: 1 }, weight: 50 },
+            ],
+          },
+        },
+      ],
+    };
+    const options = makeOptions();
+    options.batchSeries = {
+      SPY: [
+        { timestamp: '2024-01-02T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-03T21:00:00.000Z', value: 200 },
+        { timestamp: '2024-01-04T21:00:00.000Z', value: 200 },
+        { timestamp: '2024-01-05T21:00:00.000Z', value: 200 },
+      ],
+      BIL: [
+        { timestamp: '2024-01-02T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-03T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-04T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-05T21:00:00.000Z', value: 100 },
+      ],
+    };
+
+    const onChange = await backtest(strategy, {
+      ...options,
+      allocationRebalance: { Default: { mode: 'on_change' } },
+    });
+    const daily = await backtest(strategy, {
+      ...options,
+      allocationRebalance: { Default: { mode: 'calendar', frequency: 'Daily' } },
+    });
+    const drift20 = await backtest(strategy, {
+      ...options,
+      allocationRebalance: { Default: { mode: 'drift', driftPct: 20 } },
+    });
+    const drift10 = await backtest(strategy, {
+      ...options,
+      allocationRebalance: { Default: { mode: 'drift', driftPct: 10 } },
+    });
+
+    expect(onChange.summary.tradeCount).toBe(2);
+    expect(daily.summary.tradeCount).toBeGreaterThan(onChange.summary.tradeCount);
+    expect(drift20.summary.tradeCount).toBe(2);
+    expect(drift10.summary.tradeCount).toBeGreaterThan(drift20.summary.tradeCount);
+  });
+
+  it('computes lot-based realized gains in annual tax output', async () => {
+    const signal = {
+      left: { type: 'Price' as const, ticker: { symbol: 'QQQ', leverage: 1 }, lookback: 1, delay: 0, unit: '$' as const, threshold: null },
+      comparison: '>' as const,
+      right: { type: 'Threshold' as const, ticker: { symbol: '', leverage: 1 }, lookback: 1, delay: 0, unit: null, threshold: 50 },
+      tolerance: 0,
+    };
+    const strategy: Strategy = {
+      linkId: 'x',
+      name: 'x',
+      trading: { frequency: 'Daily', offset: 0 },
+      signals: [{ name: 'RiskOn', signal }],
+      allocations: [
+        {
+          name: 'Risk On',
+          allocation: {
+            condition: { kind: 'signal', signal },
+            holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
+          },
+        },
+        {
+          name: 'Default',
+          allocation: {
+            condition: { kind: 'and', args: [] },
+            holdings: [
+              { ticker: { symbol: 'SPY', leverage: 1 }, weight: 50 },
+              { ticker: { symbol: 'BIL', leverage: 1 }, weight: 50 },
+            ],
+          },
+        },
+      ],
+    };
+    const options = makeOptions();
+    options.batchSeries = {
+      SPY: [
+        { timestamp: '2024-01-02T21:00:00.000Z', value: 50 },
+        { timestamp: '2024-01-03T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-04T21:00:00.000Z', value: 200 },
+        { timestamp: '2024-01-05T21:00:00.000Z', value: 150 },
+      ],
+      QQQ: [
+        { timestamp: '2024-01-02T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-03T21:00:00.000Z', value: 0 },
+        { timestamp: '2024-01-04T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-05T21:00:00.000Z', value: 0 },
+      ],
+      BIL: [
+        { timestamp: '2024-01-02T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-03T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-04T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-05T21:00:00.000Z', value: 100 },
+      ],
+    };
+    const result = await backtest(strategy, options);
+    const tax = result.annualTax.find((row) => row.year === 2024);
+    expect(tax).toBeDefined();
+    expect(tax!.shortTermRealizedGains).toBeCloseTo(75_000, 6);
+  });
+
+  it('defers loss with wash-sale replacement buys', async () => {
+    const signal = {
+      left: { type: 'Price' as const, ticker: { symbol: 'QQQ', leverage: 1 }, lookback: 1, delay: 0, unit: '$' as const, threshold: null },
+      comparison: '>' as const,
+      right: { type: 'Threshold' as const, ticker: { symbol: '', leverage: 1 }, lookback: 1, delay: 0, unit: null, threshold: 50 },
+      tolerance: 0,
+    };
+    const strategy: Strategy = {
+      linkId: 'x',
+      name: 'x',
+      trading: { frequency: 'Daily', offset: 0 },
+      signals: [{ name: 'RiskOn', signal }],
+      allocations: [
+        {
+          name: 'Risk On',
+          allocation: {
+            condition: { kind: 'signal', signal },
+            holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
+          },
+        },
+        {
+          name: 'Default',
+          allocation: {
+            condition: { kind: 'and', args: [] },
+            holdings: [{ ticker: { symbol: 'BIL', leverage: 1 }, weight: 100 }],
+          },
+        },
+      ],
+    };
+    const options = makeOptions();
+    options.batchSeries = {
+      SPY: [
+        { timestamp: '2024-01-02T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-03T21:00:00.000Z', value: 50 },
+        { timestamp: '2024-01-04T21:00:00.000Z', value: 50 },
+        { timestamp: '2024-01-05T21:00:00.000Z', value: 50 },
+      ],
+      QQQ: [
+        { timestamp: '2024-01-02T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-03T21:00:00.000Z', value: 0 },
+        { timestamp: '2024-01-04T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-05T21:00:00.000Z', value: 100 },
+      ],
+      BIL: [
+        { timestamp: '2024-01-02T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-03T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-04T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-05T21:00:00.000Z', value: 100 },
+      ],
+    };
+
+    const result = await backtest(strategy, options);
+    const tax = result.annualTax.find((row) => row.year === 2024);
+    expect(tax).toBeDefined();
+    expect(tax!.shortTermRealizedGains).toBeCloseTo(0, 6);
+    expect(tax!.longTermRealizedGains).toBeCloseTo(0, 6);
   });
 });

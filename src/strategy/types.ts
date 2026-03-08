@@ -229,7 +229,13 @@ export interface BacktestOptions {
   initialCapital?: number;
   batchSeries?: Record<string, Observation[]>;
   tradingDays?: TradingDay[];
+  allocationRebalance?: Record<string, BacktestRebalanceConfig>;
 }
+
+export type BacktestRebalanceConfig =
+  | { mode: 'on_change' }
+  | { mode: 'drift'; driftPct: number }
+  | { mode: 'calendar'; frequency: 'Daily' | 'Monthly' | 'Yearly' };
 
 export interface BacktestTrade {
   date: string;
@@ -261,10 +267,17 @@ export interface BacktestSummary {
   tradeCount: number;
 }
 
+export interface BacktestAnnualTax {
+  year: number;
+  shortTermRealizedGains: number;
+  longTermRealizedGains: number;
+}
+
 export interface BacktestResult {
   timeseries: BacktestTimeseries;
   summary: BacktestSummary;
   trades: BacktestTrade[];
+  annualTax: BacktestAnnualTax[];
 }
 
 // ---------------------------------------------------------------------------

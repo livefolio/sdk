@@ -1,5 +1,7 @@
 import type {
+  BacktestAnnualTax,
   BacktestOptions,
+  BacktestRebalanceConfig,
   BacktestResult,
   BacktestTrade,
   Strategy,
@@ -9,11 +11,22 @@ import { evaluate } from './evaluate';
 
 type PositionMap = Record<string, number>;
 type PricePoint = { timestamp: number; value: number };
+type TaxTerm = 'shortTerm' | 'longTerm';
 
 const EPSILON = 1e-8;
 
 function toDateYmd(value: Date): string {
   return value.toISOString().slice(0, 10);
+}
+
+function addDaysToYmd(ymd: string, days: number): string {
+  const date = new Date(`${ymd}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function taxYearFromDate(ymd: string): number {
+  return Number(ymd.slice(0, 4));
 }
 
 function normalizeSeries(batchSeries: Record<string, Observation[]>): Record<string, PricePoint[]> {
@@ -58,13 +71,18 @@ function parsePositionKey(key: string): { symbol: string; leverage: number } {
 
 function getRequiredSymbols(strategy: Strategy): string[] {
   const symbols = new Set<string>();
+  const push = (symbol: string) => {
+    const normalized = symbol.trim();
+    if (!normalized) return;
+    symbols.add(normalized);
+  };
   for (const ns of strategy.signals) {
-    symbols.add(ns.signal.left.ticker.symbol);
-    symbols.add(ns.signal.right.ticker.symbol);
+    push(ns.signal.left.ticker.symbol);
+    push(ns.signal.right.ticker.symbol);
   }
   for (const allocation of strategy.allocations) {
     for (const holding of allocation.allocation.holdings) {
-      symbols.add(holding.ticker.symbol);
+      push(holding.ticker.symbol);
     }
   }
   return [...symbols];
@@ -160,6 +178,218 @@ function standardDeviation(values: number[]): number {
   return Math.sqrt(Math.max(variance, 0));
 }
 
+interface TaxLot {
+  shares: number;
+  costPerShare: number;
+  acquiredDate: string;
+}
+
+interface RealizedTaxBreakdown {
+  shortTerm: number;
+  longTerm: number;
+}
+
+interface PendingWashEntry {
+  saleDate: string;
+  windowEndDate: string;
+  remainingShares: number;
+  lossPerShare: number;
+  term: TaxTerm;
+}
+
+interface SoldLotChunk {
+  shares: number;
+  costPerShare: number;
+  acquiredDate: string;
+}
+
+function isLongTermLot(acquiredDate: string, soldDate: string): boolean {
+  const acquired = new Date(`${acquiredDate}T00:00:00.000Z`);
+  const threshold = new Date(acquired);
+  threshold.setUTCFullYear(threshold.getUTCFullYear() + 1);
+  const sold = new Date(`${soldDate}T00:00:00.000Z`);
+  return sold.getTime() > threshold.getTime();
+}
+
+function addAnnualTaxForTerm(
+  annualTaxByYear: Map<number, RealizedTaxBreakdown>,
+  year: number,
+  term: TaxTerm,
+  amount: number,
+): void {
+  const current = annualTaxByYear.get(year) ?? { shortTerm: 0, longTerm: 0 };
+  current[term] += amount;
+  annualTaxByYear.set(year, current);
+}
+
+function sellLotsHifo(lots: TaxLot[], sharesToSell: number): SoldLotChunk[] {
+  const sorted = [...lots].sort((a, b) => b.costPerShare - a.costPerShare);
+  let remaining = sharesToSell;
+  const sold: SoldLotChunk[] = [];
+
+  for (const lot of sorted) {
+    if (remaining <= EPSILON) break;
+    if (lot.shares <= EPSILON) continue;
+    const consumed = Math.min(lot.shares, remaining);
+    sold.push({
+      shares: consumed,
+      costPerShare: lot.costPerShare,
+      acquiredDate: lot.acquiredDate,
+    });
+    lot.shares -= consumed;
+    remaining -= consumed;
+  }
+
+  lots.length = 0;
+  for (const lot of sorted) {
+    if (lot.shares > EPSILON) lots.push(lot);
+  }
+  return sold;
+}
+
+function applyWashToExistingReplacementLots(
+  lots: TaxLot[],
+  soldDate: string,
+  lossPerShare: number,
+  sharesToMatch: number,
+): number {
+  if (sharesToMatch <= EPSILON) return 0;
+  const windowStart = addDaysToYmd(soldDate, -30);
+  let remaining = sharesToMatch;
+  let matched = 0;
+  const nextLots: TaxLot[] = [];
+
+  for (const lot of lots) {
+    if (remaining <= EPSILON || lot.shares <= EPSILON) {
+      nextLots.push(lot);
+      continue;
+    }
+    const inWindow = lot.acquiredDate >= windowStart && lot.acquiredDate <= soldDate;
+    if (!inWindow) {
+      nextLots.push(lot);
+      continue;
+    }
+
+    const consumed = Math.min(lot.shares, remaining);
+    if (consumed >= lot.shares - EPSILON) {
+      nextLots.push({
+        shares: lot.shares,
+        costPerShare: lot.costPerShare + lossPerShare,
+        acquiredDate: lot.acquiredDate,
+      });
+    } else {
+      nextLots.push({
+        shares: consumed,
+        costPerShare: lot.costPerShare + lossPerShare,
+        acquiredDate: lot.acquiredDate,
+      });
+      nextLots.push({
+        shares: lot.shares - consumed,
+        costPerShare: lot.costPerShare,
+        acquiredDate: lot.acquiredDate,
+      });
+    }
+    remaining -= consumed;
+    matched += consumed;
+  }
+
+  lots.length = 0;
+  for (const lot of nextLots) {
+    if (lot.shares > EPSILON) lots.push(lot);
+  }
+  return matched;
+}
+
+function applyPendingWashToNewBuy(
+  pending: PendingWashEntry[],
+  buyDate: string,
+  buyPrice: number,
+  buyShares: number,
+  annualTaxByYear: Map<number, RealizedTaxBreakdown>,
+): TaxLot[] {
+  const active = pending.filter(
+    (entry) => entry.remainingShares > EPSILON && buyDate <= entry.windowEndDate,
+  );
+  pending.length = 0;
+  pending.push(...active);
+
+  let remaining = buyShares;
+  const newLots: TaxLot[] = [];
+  for (const entry of pending) {
+    if (remaining <= EPSILON) break;
+    if (entry.remainingShares <= EPSILON) continue;
+    const matched = Math.min(remaining, entry.remainingShares);
+    if (matched <= EPSILON) continue;
+
+    newLots.push({
+      shares: matched,
+      costPerShare: buyPrice + entry.lossPerShare,
+      acquiredDate: buyDate,
+    });
+    entry.remainingShares -= matched;
+    remaining -= matched;
+
+    addAnnualTaxForTerm(
+      annualTaxByYear,
+      taxYearFromDate(entry.saleDate),
+      entry.term,
+      matched * entry.lossPerShare,
+    );
+  }
+
+  if (remaining > EPSILON) {
+    newLots.push({
+      shares: remaining,
+      costPerShare: buyPrice,
+      acquiredDate: buyDate,
+    });
+  }
+
+  const unresolved = pending.filter((entry) => entry.remainingShares > EPSILON);
+  pending.length = 0;
+  pending.push(...unresolved);
+  return newLots;
+}
+
+function isCalendarRebalanceDue(
+  frequency: 'Daily' | 'Monthly' | 'Yearly',
+  date: string,
+  lastRebalancedDate: string | undefined,
+): boolean {
+  if (!lastRebalancedDate) return true;
+  if (frequency === 'Daily') return date !== lastRebalancedDate;
+  if (frequency === 'Monthly') return date.slice(0, 7) !== lastRebalancedDate.slice(0, 7);
+  return date.slice(0, 4) !== lastRebalancedDate.slice(0, 4);
+}
+
+function getRebalanceConfig(
+  options: BacktestOptions,
+  allocationName: string,
+): BacktestRebalanceConfig {
+  return options.allocationRebalance?.[allocationName] ?? { mode: 'on_change' };
+}
+
+function computeAllocationDriftPct(
+  positions: PositionMap,
+  pricesByPosition: Record<string, number>,
+  targetShares: Record<string, number>,
+  totalValue: number,
+): number {
+  if (!Number.isFinite(totalValue) || totalValue <= 0) return 0;
+  let maxDrift = 0;
+  const keys = new Set<string>([...Object.keys(positions), ...Object.keys(targetShares)]);
+  for (const key of keys) {
+    const price = pricesByPosition[key];
+    if (!Number.isFinite(price) || price <= 0) continue;
+    const currentValue = (positions[key] ?? 0) * price;
+    const targetValue = (targetShares[key] ?? 0) * price;
+    const currentWeight = (currentValue / totalValue) * 100;
+    const targetWeight = (targetValue / totalValue) * 100;
+    maxDrift = Math.max(maxDrift, Math.abs(currentWeight - targetWeight));
+  }
+  return maxDrift;
+}
+
 export async function backtest(strategy: Strategy, options: BacktestOptions): Promise<BacktestResult> {
   validateDefaultAllocation(strategy);
   if (!options.batchSeries) {
@@ -197,7 +427,11 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
   let cash = initialCapital;
   let previousSignalStates: Record<string, boolean> = {};
   let previousIndicatorMetadata: Record<string, unknown> = {};
-  let lastRebalanceDate: string | null = null;
+  let previousAllocationName: string | null = null;
+  const lastRebalancedDateByAllocation = new Map<string, string>();
+  const lotsByPosition = new Map<string, TaxLot[]>();
+  const pendingWashByPosition = new Map<string, PendingWashEntry[]>();
+  const annualTaxByYear = new Map<number, RealizedTaxBreakdown>();
   let runningPeak = initialCapital;
 
   const trades: BacktestTrade[] = [];
@@ -227,9 +461,40 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
     }
 
     const asOfDate = toDateYmd(evaluation.asOf);
-    const shouldRebalance = asOfDate === currentDate && asOfDate !== lastRebalanceDate;
+    const evaluationDue = asOfDate === currentDate;
+    const allocationChanged = previousAllocationName !== evaluation.allocation.name;
+    const rebalanceConfig = getRebalanceConfig(options, evaluation.allocation.name);
+    const lastRebalancedDate = lastRebalancedDateByAllocation.get(evaluation.allocation.name);
+    let shouldRebalance = false;
+
+    if (evaluationDue) {
+      shouldRebalance = allocationChanged;
+      if (!shouldRebalance) {
+        if (rebalanceConfig.mode === 'calendar') {
+          shouldRebalance = isCalendarRebalanceDue(rebalanceConfig.frequency, currentDate, lastRebalancedDate);
+        } else if (rebalanceConfig.mode === 'drift') {
+          const totalValue = computePortfolioValue(positions, pricesByPosition, cash);
+          const targetSharesForDrift: Record<string, number> = {};
+          for (const holding of evaluation.allocation.holdings) {
+            const key = positionKey(holding.ticker.symbol, holding.ticker.leverage);
+            const price = pricesByPosition[key];
+            if (!Number.isFinite(price) || price <= 0) continue;
+            const targetValue = totalValue * (holding.weight / 100);
+            targetSharesForDrift[key] = targetValue / price;
+          }
+          const driftPct = computeAllocationDriftPct(
+            positions,
+            pricesByPosition,
+            targetSharesForDrift,
+            totalValue,
+          );
+          shouldRebalance = driftPct >= rebalanceConfig.driftPct;
+        }
+      }
+    }
+
     if (shouldRebalance) {
-      lastRebalanceDate = asOfDate;
+      lastRebalancedDateByAllocation.set(evaluation.allocation.name, currentDate);
       const totalValue = computePortfolioValue(positions, pricesByPosition, cash);
       const targetShares: Record<string, number> = {};
 
@@ -241,7 +506,9 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
         targetShares[key] = targetValue / price;
       }
 
-      for (const [key, currentShares] of Object.entries(positions)) {
+      const keysToTrade = new Set<string>([...Object.keys(positions), ...Object.keys(targetShares)]);
+      for (const key of keysToTrade) {
+        const currentShares = positions[key] ?? 0;
         const target = targetShares[key] ?? 0;
         const delta = target - currentShares;
         if (Math.abs(delta) <= EPSILON) continue;
@@ -249,8 +516,77 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
         if (!Number.isFinite(price) || price <= 0) continue;
 
         const tradeValue = delta * price;
-        positions[key] = target;
+        if (Math.abs(target) <= EPSILON) {
+          delete positions[key];
+        } else {
+          positions[key] = target;
+        }
         cash -= tradeValue;
+
+        if (delta > 0) {
+          const lots = lotsByPosition.get(key) ?? [];
+          const pending = pendingWashByPosition.get(key) ?? [];
+          const buyLots = applyPendingWashToNewBuy(
+            pending,
+            currentDate,
+            price,
+            delta,
+            annualTaxByYear,
+          );
+          lots.push(...buyLots);
+          lotsByPosition.set(key, lots);
+          pendingWashByPosition.set(key, pending);
+        } else {
+          const lots = lotsByPosition.get(key) ?? [];
+          const soldLots = sellLotsHifo(lots, Math.abs(delta));
+          lotsByPosition.set(key, lots);
+          const pending = pendingWashByPosition.get(key) ?? [];
+
+          for (const soldLot of soldLots) {
+            const realized = (price - soldLot.costPerShare) * soldLot.shares;
+            const term: TaxTerm = isLongTermLot(soldLot.acquiredDate, currentDate)
+              ? 'longTerm'
+              : 'shortTerm';
+
+            if (realized >= 0) {
+              addAnnualTaxForTerm(
+                annualTaxByYear,
+                taxYearFromDate(currentDate),
+                term,
+                realized,
+              );
+              continue;
+            }
+
+            const lossPerShare = soldLot.costPerShare - price;
+            const preMatchedShares = applyWashToExistingReplacementLots(
+              lots,
+              currentDate,
+              lossPerShare,
+              soldLot.shares,
+            );
+            const disallowedPre = preMatchedShares * lossPerShare;
+            const taxableNow = realized + disallowedPre;
+            addAnnualTaxForTerm(
+              annualTaxByYear,
+              taxYearFromDate(currentDate),
+              term,
+              taxableNow,
+            );
+
+            const remainingForFuture = soldLot.shares - preMatchedShares;
+            if (remainingForFuture > EPSILON) {
+              pending.push({
+                saleDate: currentDate,
+                windowEndDate: addDaysToYmd(currentDate, 30),
+                remainingShares: remainingForFuture,
+                lossPerShare,
+                term,
+              });
+            }
+          }
+          pendingWashByPosition.set(key, pending);
+        }
 
         const parsed = parsePositionKey(key);
         trades.push({
@@ -261,29 +597,6 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
           price,
           value: tradeValue,
           action: delta > 0 ? 'buy' : 'sell',
-          allocation: evaluation.allocation.name,
-        });
-      }
-
-      for (const [key, target] of Object.entries(targetShares)) {
-        if (key in positions) continue;
-        if (Math.abs(target) <= EPSILON) continue;
-        const price = pricesByPosition[key];
-        if (!Number.isFinite(price) || price <= 0) continue;
-
-        positions[key] = target;
-        const tradeValue = target * price;
-        cash -= tradeValue;
-
-        const parsed = parsePositionKey(key);
-        trades.push({
-          date: currentDate,
-          ticker: parsed.symbol,
-          leverage: parsed.leverage,
-          shares: target,
-          price,
-          value: tradeValue,
-          action: 'buy',
           allocation: evaluation.allocation.name,
         });
       }
@@ -304,6 +617,7 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
     allocationSeries.push(evaluation.allocation.name);
 
     previousSignalStates = evaluation.signals;
+    previousAllocationName = evaluation.allocation.name;
     previousIndicatorMetadata = Object.fromEntries(
       Object.entries(evaluation.indicators)
         .filter(([, indicator]) => indicator.metadata !== undefined)
@@ -331,6 +645,13 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
       : 0;
   const sharpe = volatility > 0 ? (meanDailyReturn * Math.sqrt(252)) / volatility : 0;
   const maxDrawdown = drawdownPct.length ? Math.min(...drawdownPct) : 0;
+  const annualTax: BacktestAnnualTax[] = [...annualTaxByYear.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([year, totals]) => ({
+      year,
+      shortTermRealizedGains: totals.shortTerm,
+      longTermRealizedGains: totals.longTerm,
+    }));
 
   return {
     timeseries: {
@@ -351,5 +672,6 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
       tradeCount: trades.length,
     },
     trades,
+    annualTax,
   };
 }

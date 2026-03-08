@@ -32,10 +32,12 @@ export type {
   SignalNameOrExpr,
   SignalNameCondition,
   BacktestOptions,
+  BacktestRebalanceConfig,
   BacktestResult,
   BacktestTrade,
   BacktestTimeseries,
   BacktestSummary,
+  BacktestAnnualTax,
 } from './types';
 
 export { createStrategy } from './client';
