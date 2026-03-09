@@ -14,8 +14,16 @@ function isDefaultName(name: string): boolean {
 
 function validateHoldingsWeights(strategyDraft: StrategyDraft): void {
   for (const allocation of strategyDraft.allocations) {
+    if (!allocation.holdings.length) {
+      throw new Error(`Allocation "${allocation.name}" must include at least one holding.`);
+    }
+    for (const holding of allocation.holdings) {
+      if (!Number.isFinite(holding.weight)) {
+        throw new Error(`Allocation "${allocation.name}" has a non-finite holding weight.`);
+      }
+    }
     const total = allocation.holdings.reduce((sum, holding) => sum + holding.weight, 0);
-    if (Math.abs(total - 100) > 1e-6) {
+    if (!Number.isFinite(total) || Math.abs(total - 100) > 1e-6) {
       throw new Error(`Allocation "${allocation.name}" weights must sum to 100.`);
     }
   }
@@ -59,10 +67,25 @@ export function compileRules(strategyDraft: StrategyDraft): Strategy {
 
   const signalByName = new Map<string, Signal>();
   for (const signal of strategyDraft.signals) {
+    if (!signal.name.trim()) {
+      throw new Error('Signal names must be non-empty.');
+    }
     if (signalByName.has(signal.name)) {
       throw new Error(`Duplicate signal name: "${signal.name}".`);
     }
     signalByName.set(signal.name, signal.signal);
+  }
+
+  const allocationNames = new Set<string>();
+  for (const allocation of strategyDraft.allocations) {
+    const normalized = allocation.name.trim().toLowerCase();
+    if (!normalized) {
+      throw new Error('Allocation names must be non-empty.');
+    }
+    if (allocationNames.has(normalized)) {
+      throw new Error(`Duplicate allocation name: "${allocation.name}".`);
+    }
+    allocationNames.add(normalized);
   }
 
   const defaultAllocations = strategyDraft.allocations.filter((allocation) => isDefaultName(allocation.name));

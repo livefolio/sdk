@@ -112,6 +112,75 @@ describe('backtest', () => {
     const variance = returns.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (returns.length - 1);
     const expectedSharpe = variance > 0 ? (mean / Math.sqrt(variance)) * Math.sqrt(252) : 0;
     expect(result.summary.sharpeRatio).toBeCloseTo(expectedSharpe, 8);
+    expect(result.summary.totalReturnPct).toBeCloseTo(-2, 8);
+    expect(result.summary.maxDrawdownPct).toBeLessThanOrEqual(0);
+    expect(result.summary.annualizedVolatilityPct).toBeGreaterThan(0);
+    expect(result.summary.cagrPct).toBeLessThan(0);
+  });
+
+  it('returns finite summary metrics when initial capital is zero', async () => {
+    const strategy: Strategy = {
+      linkId: 'x',
+      name: 'x',
+      trading: { frequency: 'Daily', offset: 0 },
+      signals: [],
+      allocations: [
+        {
+          name: 'Default',
+          allocation: {
+            condition: { kind: 'and', args: [] },
+            holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
+          },
+        },
+      ],
+    };
+    const result = await backtest(strategy, {
+      ...makeOptions(),
+      initialCapital: 0,
+    });
+
+    expect(result.summary.initialValue).toBe(0);
+    expect(result.summary.finalValue).toBe(0);
+    expect(result.summary.totalReturnPct).toBe(0);
+    expect(result.summary.cagrPct).toBe(0);
+    expect(result.summary.annualizedVolatilityPct).toBe(0);
+    expect(result.summary.maxDrawdownPct).toBe(0);
+    expect(result.summary.sharpeRatio).toBe(0);
+  });
+
+  it('handles single-day windows with zeroed return metrics', async () => {
+    const strategy: Strategy = {
+      linkId: 'x',
+      name: 'x',
+      trading: { frequency: 'Daily', offset: 0 },
+      signals: [],
+      allocations: [
+        {
+          name: 'Default',
+          allocation: {
+            condition: { kind: 'and', args: [] },
+            holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
+          },
+        },
+      ],
+    };
+    const result = await backtest(strategy, {
+      ...makeOptions(),
+      startDate: '2024-01-02',
+      endDate: '2024-01-02',
+      tradingDays: [makeOptions().tradingDays![0]],
+      batchSeries: {
+        SPY: [{ timestamp: '2024-01-02T21:00:00.000Z', value: 100 }],
+        BIL: [{ timestamp: '2024-01-02T21:00:00.000Z', value: 100 }],
+      },
+    });
+
+    expect(result.timeseries.dates).toEqual(['2024-01-02']);
+    expect(result.summary.totalReturnPct).toBe(0);
+    expect(result.summary.cagrPct).toBe(0);
+    expect(result.summary.annualizedVolatilityPct).toBe(0);
+    expect(result.summary.sharpeRatio).toBe(0);
+    expect(result.summary.maxDrawdownPct).toBe(0);
   });
 
   it('switches between signal allocation and default', async () => {
@@ -208,6 +277,17 @@ describe('backtest', () => {
     expect(daily.summary.tradeCount).toBeGreaterThan(onChange.summary.tradeCount);
     expect(drift20.summary.tradeCount).toBe(2);
     expect(drift10.summary.tradeCount).toBeGreaterThan(drift20.summary.tradeCount);
+
+    const monthly = await backtest(strategy, {
+      ...options,
+      allocationRebalance: { Default: { mode: 'calendar', frequency: 'Monthly' } },
+    });
+    const yearly = await backtest(strategy, {
+      ...options,
+      allocationRebalance: { Default: { mode: 'calendar', frequency: 'Yearly' } },
+    });
+    expect(monthly.summary.tradeCount).toBe(2);
+    expect(yearly.summary.tradeCount).toBe(2);
   });
 
   it('starts at the earliest common ticker availability date', async () => {
@@ -533,5 +613,76 @@ describe('backtest', () => {
     expect(tax).toBeDefined();
     expect(tax!.shortTermRealizedGains).toBeCloseTo(0, 6);
     expect(tax!.longTermRealizedGains).toBeCloseTo(0, 6);
+  });
+
+  it('classifies gains as long-term when held for more than one year', async () => {
+    const signal = {
+      left: { type: 'Price' as const, ticker: { symbol: 'QQQ', leverage: 1 }, lookback: 1, delay: 0, unit: '$' as const, threshold: null },
+      comparison: '>' as const,
+      right: { type: 'Threshold' as const, ticker: { symbol: '', leverage: 1 }, lookback: 1, delay: 0, unit: null, threshold: 50 },
+      tolerance: 0,
+    };
+    const strategy: Strategy = {
+      linkId: 'x',
+      name: 'x',
+      trading: { frequency: 'Daily', offset: 0 },
+      signals: [{ name: 'RiskOn', signal }],
+      allocations: [
+        {
+          name: 'Risk On',
+          allocation: {
+            condition: { kind: 'signal', signal },
+            holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
+          },
+        },
+        {
+          name: 'Default',
+          allocation: {
+            condition: { kind: 'and', args: [] },
+            holdings: [{ ticker: { symbol: 'BIL', leverage: 1 }, weight: 100 }],
+          },
+        },
+      ],
+    };
+    const result = await backtest(strategy, {
+      startDate: '2024-01-02',
+      endDate: '2025-01-03',
+      initialCapital: 100_000,
+      tradingDays: [
+        {
+          date: '2024-01-02',
+          open: '2024-01-02T14:30:00.000Z',
+          close: '2024-01-02T21:00:00.000Z',
+          extended_open: '2024-01-02T09:00:00.000Z',
+          extended_close: '2024-01-02T22:00:00.000Z',
+        },
+        {
+          date: '2025-01-03',
+          open: '2025-01-03T14:30:00.000Z',
+          close: '2025-01-03T21:00:00.000Z',
+          extended_open: '2025-01-03T09:00:00.000Z',
+          extended_close: '2025-01-03T22:00:00.000Z',
+        },
+      ],
+      batchSeries: {
+        SPY: [
+          { timestamp: '2024-01-02T21:00:00.000Z', value: 100 },
+          { timestamp: '2025-01-03T21:00:00.000Z', value: 120 },
+        ],
+        QQQ: [
+          { timestamp: '2024-01-02T21:00:00.000Z', value: 100 },
+          { timestamp: '2025-01-03T21:00:00.000Z', value: 0 },
+        ],
+        BIL: [
+          { timestamp: '2024-01-02T21:00:00.000Z', value: 100 },
+          { timestamp: '2025-01-03T21:00:00.000Z', value: 100 },
+        ],
+      },
+    });
+
+    const tax2025 = result.annualTax.find((row) => row.year === 2025);
+    expect(tax2025).toBeDefined();
+    expect(tax2025!.shortTermRealizedGains).toBeCloseTo(0, 6);
+    expect(tax2025!.longTermRealizedGains).toBeCloseTo(20_000, 6);
   });
 });

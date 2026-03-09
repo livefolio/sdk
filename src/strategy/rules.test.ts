@@ -70,4 +70,32 @@ describe('compileRules', () => {
 
     expect(() => compileRules(draft)).toThrow('Unknown signal reference: "Missing".');
   });
+
+  it('throws when a signal name is empty', () => {
+    const draft = makeDraft();
+    draft.signals[0].name = ' ';
+
+    expect(() => compileRules(draft)).toThrow('Signal names must be non-empty.');
+  });
+
+  it('throws when allocation names are duplicated (case-insensitive)', () => {
+    const draft = makeDraft();
+    draft.allocations[0].name = 'DEFAULT';
+
+    expect(() => compileRules(draft)).toThrow('Duplicate allocation name: "Default".');
+  });
+
+  it('throws when allocation has no holdings', () => {
+    const draft = makeDraft();
+    draft.allocations[0].holdings = [];
+
+    expect(() => compileRules(draft)).toThrow('Allocation "Risk On" must include at least one holding.');
+  });
+
+  it('throws when allocation includes non-finite holding weight', () => {
+    const draft = makeDraft();
+    draft.allocations[0].holdings = [{ ticker: { symbol: 'TQQQ', leverage: 1 }, weight: Number.NaN }];
+
+    expect(() => compileRules(draft)).toThrow('Allocation "Risk On" has a non-finite holding weight.');
+  });
 });

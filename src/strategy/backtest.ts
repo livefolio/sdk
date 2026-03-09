@@ -240,6 +240,10 @@ function standardDeviation(values: number[]): number {
   return Math.sqrt(Math.max(variance, 0));
 }
 
+function finiteOrZero(value: number): number {
+  return Number.isFinite(value) ? value : 0;
+}
+
 interface TaxLot {
   shares: number;
   costPerShare: number;
@@ -769,7 +773,10 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
 
   const daysSpan = Math.max(tradingDays.length - 1, 0);
   const yearsSpan = daysSpan / 252;
-  const cagr = yearsSpan > 0 ? (finalValue / initialCapital) ** (1 / yearsSpan) - 1 : totalReturn;
+  let cagr = totalReturn;
+  if (yearsSpan > 0 && initialCapital > 0 && finalValue > 0) {
+    cagr = (finalValue / initialCapital) ** (1 / yearsSpan) - 1;
+  }
   const volatility = standardDeviation(dailyReturns) * Math.sqrt(252);
   const meanDailyReturn =
     dailyReturns.length > 0
@@ -796,12 +803,12 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
     },
     summary: {
       initialValue: initialCapital,
-      finalValue,
-      totalReturnPct: totalReturn * 100,
-      cagrPct: cagr * 100,
-      maxDrawdownPct: maxDrawdown,
-      annualizedVolatilityPct: volatility * 100,
-      sharpeRatio: sharpe,
+      finalValue: finiteOrZero(finalValue),
+      totalReturnPct: finiteOrZero(totalReturn * 100),
+      cagrPct: finiteOrZero(cagr * 100),
+      maxDrawdownPct: finiteOrZero(maxDrawdown),
+      annualizedVolatilityPct: finiteOrZero(volatility * 100),
+      sharpeRatio: finiteOrZero(sharpe),
       tradeCount: trades.length,
     },
     trades,
