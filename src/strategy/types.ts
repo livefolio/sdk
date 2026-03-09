@@ -1,4 +1,4 @@
-import type { Observation } from '../market/types';
+import type { Observation, TradingDay } from '../market/types';
 
 // ---------------------------------------------------------------------------
 // Primitives
@@ -139,6 +139,48 @@ export interface Strategy {
 }
 
 // ---------------------------------------------------------------------------
+// Rules-based strategy authoring (for builders/UI)
+// ---------------------------------------------------------------------------
+
+export interface SignalNameExpr {
+  kind: 'signal';
+  signalName: string;
+}
+
+export interface NotSignalNameExpr {
+  kind: 'not';
+  signalName: string;
+}
+
+export type SignalNameUnaryExpr = SignalNameExpr | NotSignalNameExpr;
+
+export interface SignalNameAndExpr {
+  kind: 'and';
+  args: SignalNameUnaryExpr[];
+}
+
+export interface SignalNameOrExpr {
+  kind: 'or';
+  args: SignalNameAndExpr[];
+}
+
+export type SignalNameCondition = SignalNameOrExpr | SignalNameAndExpr | SignalNameUnaryExpr;
+
+export interface StrategyAllocationDraft {
+  name: string;
+  condition: SignalNameCondition;
+  holdings: Holding[];
+}
+
+export interface StrategyDraft {
+  linkId: string;
+  name: string;
+  trading: Trading;
+  signals: NamedSignal[];
+  allocations: StrategyAllocationDraft[];
+}
+
+// ---------------------------------------------------------------------------
 // Evaluation
 // ---------------------------------------------------------------------------
 
@@ -184,9 +226,64 @@ export interface StreamObservation {
 export interface BacktestOptions {
   startDate: string;
   endDate: string;
+  initialCapital?: number;
+  batchSeries?: Record<string, Observation[]>;
+  tradingDays?: TradingDay[];
+  allocationRebalance?: Record<string, BacktestRebalanceConfig>;
+  debug?: boolean | BacktestDebugOptions;
 }
 
-export interface BacktestResult {}
+export interface BacktestDebugOptions {
+  logEveryDays?: number;
+}
+
+export type BacktestRebalanceConfig =
+  | { mode: 'on_change' }
+  | { mode: 'drift'; driftPct: number }
+  | { mode: 'calendar'; frequency: 'Daily' | 'Monthly' | 'Yearly' };
+
+export interface BacktestTrade {
+  date: string;
+  ticker: string;
+  leverage: number;
+  shares: number;
+  price: number;
+  value: number;
+  action: 'buy' | 'sell';
+  allocation: string;
+}
+
+export interface BacktestTimeseries {
+  dates: string[];
+  portfolio: number[];
+  cash: number[];
+  drawdownPct: number[];
+  allocation: string[];
+}
+
+export interface BacktestSummary {
+  initialValue: number;
+  finalValue: number;
+  totalReturnPct: number;
+  cagrPct: number;
+  maxDrawdownPct: number;
+  annualizedVolatilityPct: number;
+  sharpeRatio: number;
+  tradeCount: number;
+}
+
+export interface BacktestAnnualTax {
+  year: number;
+  shortTermRealizedGains: number;
+  longTermRealizedGains: number;
+}
+
+export interface BacktestResult {
+  timeseries: BacktestTimeseries;
+  summary: BacktestSummary;
+  trades: BacktestTrade[];
+  annualTax: BacktestAnnualTax[];
+}
 
 // ---------------------------------------------------------------------------
 // Module interface
@@ -210,6 +307,8 @@ export interface StrategyModule {
 
   // Utilities
   extractSymbols(strategy: Strategy): string[];
+  compileRules(strategyDraft: StrategyDraft): Strategy;
+  backtestRules(strategyDraft: StrategyDraft, options: BacktestOptions): Promise<BacktestResult>;
 
   // Live streaming (evaluate with incoming observations merged into historical series)
   stream(strategy: Strategy, observation: StreamObservation | StreamObservation[]): Promise<StrategyEvaluation>;

@@ -14,6 +14,7 @@ function createMockClient() {
   // Chainable query builder
   const queryBuilder = {
     select: vi.fn().mockReturnThis(),
+    in: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
     gte: vi.fn().mockReturnThis(),
     lte: vi.fn().mockReturnThis(),
@@ -53,6 +54,13 @@ const TRADING_DAY_ROW = {
   regular: '2025-01-10T09:30:00Z',
   post: '2025-01-10T16:00:00Z',
   close: '2025-01-10T20:00:00Z',
+};
+
+const PRICE_OBSERVATION_ROW = {
+  symbol: 'SPY',
+  date: '2025-01-10',
+  price_400pm_et: 590.25,
+  timestamp_400pm_et: '2025-01-10T16:00:00Z',
 };
 
 // ---------------------------------------------------------------------------
@@ -98,6 +106,60 @@ describe('createMarket', () => {
   });
 
   // -----------------------------------------------------------------------
+  // getBatchSeriesFromDb
+  // -----------------------------------------------------------------------
+
+  describe('getBatchSeriesFromDb', () => {
+    it('queries price_observations and groups rows by symbol', async () => {
+      mock.mockOrder.mockResolvedValue({
+        data: [
+          PRICE_OBSERVATION_ROW,
+          {
+            symbol: 'QQQ',
+            date: '2025-01-10',
+            price_400pm_et: 480.1,
+            timestamp_400pm_et: '2025-01-10T16:00:00Z',
+          },
+        ],
+        error: null,
+      });
+
+      const result = await market.getBatchSeriesFromDb(['SPY', 'QQQ'], '2025-01-01', '2025-01-31');
+
+      expect(mock.mockFrom).toHaveBeenCalledWith('price_observations');
+      expect(mock.queryBuilder.select).toHaveBeenCalledWith('symbol, date, price_400pm_et, timestamp_400pm_et');
+      expect(mock.queryBuilder.in).toHaveBeenCalledWith('symbol', ['SPY', 'QQQ']);
+      expect(mock.queryBuilder.gte).toHaveBeenCalledWith('date', '2025-01-01');
+      expect(mock.queryBuilder.lte).toHaveBeenCalledWith('date', '2025-01-31');
+      expect(result).toEqual({
+        SPY: [{ timestamp: '2025-01-10T16:00:00Z', value: 590.25 }],
+        QQQ: [{ timestamp: '2025-01-10T16:00:00Z', value: 480.1 }],
+      });
+    });
+
+    it('falls back to synthetic timestamp when timestamp_400pm_et is null', async () => {
+      mock.mockOrder.mockResolvedValue({
+        data: [{ ...PRICE_OBSERVATION_ROW, timestamp_400pm_et: null }],
+        error: null,
+      });
+
+      const result = await market.getBatchSeriesFromDb(['SPY'], '2025-01-01', '2025-01-31');
+      expect(result.SPY[0]).toEqual({ timestamp: '2025-01-10T21:00:00.000Z', value: 590.25 });
+    });
+
+    it('throws on query error', async () => {
+      mock.mockOrder.mockResolvedValue({
+        data: null,
+        error: { message: 'db down' },
+      });
+
+      await expect(market.getBatchSeriesFromDb(['SPY'], '2025-01-01', '2025-01-31')).rejects.toThrow(
+        'Failed to fetch price observations: db down',
+      );
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // getSeries (thin wrapper)
   // -----------------------------------------------------------------------
 
@@ -114,6 +176,20 @@ describe('createMarket', () => {
         body: { symbols: ['SPY'] },
       });
       expect(result).toEqual(SERIES_DATA);
+    });
+  });
+
+  describe('getSeriesFromDb', () => {
+    it('delegates to getBatchSeriesFromDb and extracts symbol rows', async () => {
+      mock.mockOrder.mockResolvedValue({
+        data: [PRICE_OBSERVATION_ROW],
+        error: null,
+      });
+
+      const result = await market.getSeriesFromDb('SPY', '2025-01-01', '2025-01-31');
+
+      expect(mock.mockFrom).toHaveBeenCalledWith('price_observations');
+      expect(result).toEqual([{ timestamp: '2025-01-10T16:00:00Z', value: 590.25 }]);
     });
   });
 

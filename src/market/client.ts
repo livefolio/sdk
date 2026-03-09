@@ -14,6 +14,37 @@ export function createMarket(client: TypedSupabaseClient): MarketModule {
       return result[symbol];
     },
 
+    async getBatchSeriesFromDb(symbols: string[], startDate: string, endDate: string): Promise<Record<string, Observation[]>> {
+      const out: Record<string, Observation[]> = Object.fromEntries(symbols.map((symbol) => [symbol, []]));
+      if (symbols.length === 0) return out;
+
+      const { data, error } = await client
+        .from('price_observations')
+        .select('symbol, date, price_400pm_et, timestamp_400pm_et')
+        .in('symbol', symbols)
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date', { ascending: true });
+
+      if (error) throw new Error(`Failed to fetch price observations: ${error.message}`);
+
+      for (const row of data ?? []) {
+        const symbol = row.symbol;
+        if (!out[symbol]) out[symbol] = [];
+        out[symbol].push({
+          timestamp: row.timestamp_400pm_et ?? `${row.date}T21:00:00.000Z`,
+          value: row.price_400pm_et,
+        });
+      }
+
+      return out;
+    },
+
+    async getSeriesFromDb(symbol: string, startDate: string, endDate: string): Promise<Observation[]> {
+      const result = await this.getBatchSeriesFromDb([symbol], startDate, endDate);
+      return result[symbol];
+    },
+
     async getBatchQuotes(symbols: string[]): Promise<Record<string, Observation>> {
       const { data, error } = await client.functions.invoke('quote', { body: { symbols } });
       if (error) throw error;

@@ -23,15 +23,30 @@ export type {
   IndicatorEvaluation,
   StrategyEvaluation,
   StreamObservation,
+  StrategyDraft,
+  StrategyAllocationDraft,
+  SignalNameExpr,
+  NotSignalNameExpr,
+  SignalNameUnaryExpr,
+  SignalNameAndExpr,
+  SignalNameOrExpr,
+  SignalNameCondition,
   BacktestOptions,
+  BacktestDebugOptions,
+  BacktestRebalanceConfig,
   BacktestResult,
+  BacktestTrade,
+  BacktestTimeseries,
+  BacktestSummary,
+  BacktestAnnualTax,
 } from './types';
 
 export { createStrategy } from './client';
 export { get, getMany } from './get';
 export { evaluateCached } from './cache';
 export { stream } from './stream';
-export { backtest } from './backtest';
+export { backtest, backtestWithMarketData, backtestRulesWithMarketData } from './backtest';
+export { compileRules } from './rules';
 export { evaluateIndicator, evaluateSignal, evaluateAllocation, evaluate, getEvaluationDate, indicatorKey, signalKey } from './evaluate';
 export { extractSymbols, INDICATOR_SYMBOL_MAP } from './symbols';
 export { utcToET, isAtMarketClose } from './time';

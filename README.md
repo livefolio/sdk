@@ -56,6 +56,9 @@ Full method reference, arguments, return types, and usage examples: **[docs/](./
 ```bash
 npm run build    # compile TypeScript → dist/
 npm test         # run tests
+npm run ingest:init   # backfill price_observations from Yahoo
+npm run ingest:daily  # refresh latest daily bars
+npm run backtest:smoke -- --linkId <strategy-link-id>
 ```
 
 PRs to `main` run build + tests and enforce a version bump. Merges auto-publish to npm.
