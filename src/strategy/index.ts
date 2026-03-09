@@ -50,3 +50,17 @@ export { compileRules } from './rules';
 export { evaluateIndicator, evaluateSignal, evaluateAllocation, evaluate, getEvaluationDate, indicatorKey, signalKey } from './evaluate';
 export { extractSymbols, INDICATOR_SYMBOL_MAP } from './symbols';
 export { utcToET, isAtMarketClose } from './time';
+
+export {
+  canonicalizeLivefolioDefinition,
+  hashLivefolioDefinition,
+  deriveLivefolioLinkId,
+  hashLivefolioStrategyDraft,
+  ensureLivefolioStrategy,
+} from './livefolio';
+
+export type {
+  LivefolioEnsureAdapter,
+  LivefolioEnsureAdapterInput,
+  LivefolioEnsureAdapterResult,
+} from './livefolio';
