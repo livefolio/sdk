@@ -94,9 +94,13 @@ function getRequiredSymbols(strategy: Strategy): string[] {
     if (!normalized) return;
     symbols.add(normalized);
   };
+  const pushIndicatorSymbol = (indicator: Strategy['signals'][number]['signal']['left']) => {
+    if (indicator.type === 'Threshold') return;
+    push(indicator.ticker.symbol);
+  };
   for (const ns of strategy.signals) {
-    push(ns.signal.left.ticker.symbol);
-    push(ns.signal.right.ticker.symbol);
+    pushIndicatorSymbol(ns.signal.left);
+    pushIndicatorSymbol(ns.signal.right);
   }
   for (const allocation of strategy.allocations) {
     for (const holding of allocation.allocation.holdings) {
@@ -117,6 +121,46 @@ function normalizeTradingDays(tradingDays: TradingDay[], startDate: string, endD
   return tradingDays
     .filter((day) => day.date >= startDate && day.date <= endDate)
     .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function findEffectiveStartDate(
+  requiredSymbols: string[],
+  batchSeries: Record<string, Observation[]>,
+  startDate: string,
+  endDate: string,
+): string {
+  let effectiveStartDate = startDate;
+  let effectiveEndDate = endDate;
+  for (const symbol of requiredSymbols) {
+    const observations = batchSeries[symbol] ?? [];
+    let symbolEarliest: string | null = null;
+    let symbolLatest: string | null = null;
+    for (const observation of observations) {
+      const timestamp = new Date(observation.timestamp);
+      if (!Number.isFinite(timestamp.getTime())) continue;
+      const date = toDateYmd(timestamp);
+      if (date < startDate || date > endDate) continue;
+      if (!symbolEarliest || date < symbolEarliest) {
+        symbolEarliest = date;
+      }
+      if (!symbolLatest || date > symbolLatest) {
+        symbolLatest = date;
+      }
+    }
+    if (!symbolEarliest) {
+      throw new Error(`No market data for symbol ${symbol} in selected date range.`);
+    }
+    if (symbolEarliest > effectiveStartDate) {
+      effectiveStartDate = symbolEarliest;
+    }
+    if (symbolLatest && symbolLatest < effectiveEndDate) {
+      effectiveEndDate = symbolLatest;
+    }
+  }
+  if (effectiveStartDate > effectiveEndDate) {
+    throw new Error('No overlapping market-data window across required symbols.');
+  }
+  return effectiveStartDate;
 }
 
 function buildLeveragedPriceSeries(
@@ -460,12 +504,6 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
   timings.validateMs = nowMs() - tValidateStart;
 
   const initialCapital = options.initialCapital ?? 100_000;
-  const tNormalizeTradingDaysStart = nowMs();
-  const tradingDays = normalizeTradingDays(options.tradingDays, options.startDate, options.endDate);
-  timings.normalizeTradingDaysMs = nowMs() - tNormalizeTradingDaysStart;
-  if (!tradingDays.length) {
-    throw new Error('No trading days in selected date range.');
-  }
 
   const requiredPositions = new Map<string, { symbol: string; leverage: number }>();
   for (const allocation of strategy.allocations) {
@@ -482,6 +520,18 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
     if (!options.batchSeries[symbol]?.length) {
       throw new Error(`Missing market series for symbol ${symbol}.`);
     }
+  }
+  const effectiveStartDate = findEffectiveStartDate(
+    symbols,
+    options.batchSeries,
+    options.startDate,
+    options.endDate,
+  );
+  const tNormalizeTradingDaysStart = nowMs();
+  const tradingDays = normalizeTradingDays(options.tradingDays, effectiveStartDate, options.endDate);
+  timings.normalizeTradingDaysMs = nowMs() - tNormalizeTradingDaysStart;
+  if (!tradingDays.length) {
+    throw new Error('No trading days in selected date range.');
   }
 
   const tBuildPricePathsStart = nowMs();

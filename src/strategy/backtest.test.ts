@@ -210,6 +210,214 @@ describe('backtest', () => {
     expect(drift10.summary.tradeCount).toBeGreaterThan(drift20.summary.tradeCount);
   });
 
+  it('starts at the earliest common ticker availability date', async () => {
+    const signal = {
+      left: { type: 'Price' as const, ticker: { symbol: 'QQQ', leverage: 1 }, lookback: 1, delay: 0, unit: '$' as const, threshold: null },
+      comparison: '>' as const,
+      right: { type: 'Threshold' as const, ticker: { symbol: '', leverage: 1 }, lookback: 1, delay: 0, unit: null, threshold: 50 },
+      tolerance: 0,
+    };
+    const strategy: Strategy = {
+      linkId: 'x',
+      name: 'x',
+      trading: { frequency: 'Daily', offset: 0 },
+      signals: [{ name: 'Gate', signal }],
+      allocations: [
+        {
+          name: 'Risk On',
+          allocation: {
+            condition: { kind: 'signal', signal },
+            holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
+          },
+        },
+        {
+          name: 'Default',
+          allocation: {
+            condition: { kind: 'and', args: [] },
+            holdings: [{ ticker: { symbol: 'BIL', leverage: 1 }, weight: 100 }],
+          },
+        },
+      ],
+    };
+    const options = makeOptions();
+    options.batchSeries = {
+      SPY: [
+        { timestamp: '2024-01-02T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-03T21:00:00.000Z', value: 101 },
+        { timestamp: '2024-01-04T21:00:00.000Z', value: 102 },
+        { timestamp: '2024-01-05T21:00:00.000Z', value: 103 },
+      ],
+      BIL: [
+        { timestamp: '2024-01-02T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-03T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-04T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-05T21:00:00.000Z', value: 100 },
+      ],
+      QQQ: [
+        { timestamp: '2024-01-04T21:00:00.000Z', value: 55 },
+        { timestamp: '2024-01-05T21:00:00.000Z', value: 56 },
+      ],
+    };
+
+    const result = await backtest(strategy, options);
+    expect(result.timeseries.dates).toEqual(['2024-01-04', '2024-01-05']);
+  });
+
+  it('fails when any required ticker has no data in selected range', async () => {
+    const strategy: Strategy = {
+      linkId: 'x',
+      name: 'x',
+      trading: { frequency: 'Daily', offset: 0 },
+      signals: [],
+      allocations: [
+        {
+          name: 'Default',
+          allocation: {
+            condition: { kind: 'and', args: [] },
+            holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
+          },
+        },
+      ],
+    };
+    const options = makeOptions();
+    options.batchSeries = {
+      SPY: [{ timestamp: '2024-01-10T21:00:00.000Z', value: 100 }],
+      BIL: [
+        { timestamp: '2024-01-02T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-03T21:00:00.000Z', value: 100 },
+      ],
+    };
+
+    await expect(backtest(strategy, options)).rejects.toThrow(
+      'No market data for symbol SPY in selected date range.',
+    );
+  });
+
+  it('starts at later holding availability even when signals are earlier', async () => {
+    const signal = {
+      left: { type: 'Price' as const, ticker: { symbol: 'SPY', leverage: 1 }, lookback: 1, delay: 0, unit: '$' as const, threshold: null },
+      comparison: '>' as const,
+      right: { type: 'Threshold' as const, ticker: { symbol: '', leverage: 1 }, lookback: 1, delay: 0, unit: null, threshold: 0 },
+      tolerance: 0,
+    };
+    const strategy: Strategy = {
+      linkId: 'x',
+      name: 'x',
+      trading: { frequency: 'Daily', offset: 0 },
+      signals: [{ name: 'AlwaysTrue', signal }],
+      allocations: [
+        {
+          name: 'Risk On',
+          allocation: {
+            condition: { kind: 'signal', signal },
+            holdings: [{ ticker: { symbol: 'QQQ', leverage: 1 }, weight: 100 }],
+          },
+        },
+        {
+          name: 'Default',
+          allocation: {
+            condition: { kind: 'and', args: [] },
+            holdings: [{ ticker: { symbol: 'BIL', leverage: 1 }, weight: 100 }],
+          },
+        },
+      ],
+    };
+    const options = makeOptions();
+    options.batchSeries = {
+      SPY: [
+        { timestamp: '2024-01-02T21:00:00.000Z', value: 10 },
+        { timestamp: '2024-01-03T21:00:00.000Z', value: 11 },
+        { timestamp: '2024-01-04T21:00:00.000Z', value: 12 },
+        { timestamp: '2024-01-05T21:00:00.000Z', value: 13 },
+      ],
+      QQQ: [
+        { timestamp: '2024-01-04T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-05T21:00:00.000Z', value: 101 },
+      ],
+      BIL: [
+        { timestamp: '2024-01-02T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-03T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-04T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-05T21:00:00.000Z', value: 100 },
+      ],
+    };
+    const result = await backtest(strategy, options);
+    expect(result.timeseries.dates).toEqual(['2024-01-04', '2024-01-05']);
+  });
+
+  it('ignores ticker symbol attached to threshold indicators', async () => {
+    const signal = {
+      left: { type: 'Price' as const, ticker: { symbol: 'SPY', leverage: 1 }, lookback: 1, delay: 0, unit: '$' as const, threshold: null },
+      comparison: '>' as const,
+      right: { type: 'Threshold' as const, ticker: { symbol: 'SHOULD_NOT_BE_REQUIRED', leverage: 1 }, lookback: 1, delay: 0, unit: null, threshold: 0 },
+      tolerance: 0,
+    };
+    const strategy: Strategy = {
+      linkId: 'x',
+      name: 'x',
+      trading: { frequency: 'Daily', offset: 0 },
+      signals: [{ name: 'Gate', signal }],
+      allocations: [
+        {
+          name: 'Risk On',
+          allocation: {
+            condition: { kind: 'signal', signal },
+            holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
+          },
+        },
+        {
+          name: 'Default',
+          allocation: {
+            condition: { kind: 'and', args: [] },
+            holdings: [{ ticker: { symbol: 'BIL', leverage: 1 }, weight: 100 }],
+          },
+        },
+      ],
+    };
+    const result = await backtest(strategy, makeOptions());
+    expect(result.summary.tradeCount).toBeGreaterThan(0);
+  });
+
+  it('fails when required symbols do not share an overlapping availability window', async () => {
+    const strategy: Strategy = {
+      linkId: 'x',
+      name: 'x',
+      trading: { frequency: 'Daily', offset: 0 },
+      signals: [],
+      allocations: [
+        {
+          name: 'Default',
+          allocation: {
+            condition: { kind: 'and', args: [] },
+            holdings: [
+              { ticker: { symbol: 'SPY', leverage: 1 }, weight: 50 },
+              { ticker: { symbol: 'QQQ', leverage: 1 }, weight: 50 },
+            ],
+          },
+        },
+      ],
+    };
+    const options = makeOptions();
+    options.batchSeries = {
+      SPY: [
+        { timestamp: '2024-01-02T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-03T21:00:00.000Z', value: 101 },
+      ],
+      QQQ: [
+        { timestamp: '2024-01-04T21:00:00.000Z', value: 200 },
+        { timestamp: '2024-01-05T21:00:00.000Z', value: 201 },
+      ],
+      BIL: [
+        { timestamp: '2024-01-02T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-03T21:00:00.000Z', value: 100 },
+      ],
+    };
+
+    await expect(backtest(strategy, options)).rejects.toThrow(
+      'No overlapping market-data window across required symbols.',
+    );
+  });
+
   it('computes lot-based realized gains in annual tax output', async () => {
     const signal = {
       left: { type: 'Price' as const, ticker: { symbol: 'QQQ', leverage: 1 }, lookback: 1, delay: 0, unit: '$' as const, threshold: null },
