@@ -13,6 +13,8 @@ import { evaluateCached } from './cache';
 import { stream } from './stream';
 import { backtestWithMarketData, backtestRulesWithMarketData } from './backtest';
 import { compileRules as compileRulesPure } from './rules';
+import { evaluateSubscriptions as evaluateSubscriptionsFn } from './cron';
+import { ensureStrategy as ensureStrategyFn } from './ensure';
 
 export function createStrategy(client: TypedSupabaseClient): StrategyModule {
   const market = createMarket(client);
@@ -29,5 +31,7 @@ export function createStrategy(client: TypedSupabaseClient): StrategyModule {
     backtestRules: (strategyDraft, options) => backtestRulesWithMarketData(market, strategyDraft, options),
     stream: (strategy, observation) => stream(client, market, strategy, observation),
     backtest: (strategy, options) => backtestWithMarketData(market, strategy, options),
+    evaluateSubscriptions: (options) => evaluateSubscriptionsFn(client, market, options),
+    ensureStrategy: (draft) => ensureStrategyFn(client, draft),
   };
 }

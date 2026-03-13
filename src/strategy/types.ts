@@ -315,4 +315,46 @@ export interface StrategyModule {
 
   // Backtest (stub)
   backtest(strategy: Strategy, options: BacktestOptions): Promise<BacktestResult>;
+
+  // Batch evaluation (cron orchestrator)
+  evaluateSubscriptions(options: {
+    at: Date;
+    isEarly: boolean;
+    subscriptions: SubscriptionForEvaluation[];
+    strategies: Record<string, Strategy>;
+  }): Promise<EvaluationBatchResult>;
+
+  // Strategy building / ensure
+  ensureStrategy(draft: StrategyDraft): Promise<{ strategy: Strategy; strategyId: number; created: boolean }>;
+}
+
+// ---------------------------------------------------------------------------
+// Cron / batch evaluation types
+// ---------------------------------------------------------------------------
+
+export interface SubscriptionForEvaluation {
+  userId: string;
+  email: string;
+  strategyId: number;
+  strategyLinkId: string;
+  accountId: string | null;
+}
+
+export interface EvaluationBatchResult {
+  evaluations: EvaluationResultEntry[];
+  errors: EvaluationErrorEntry[];
+}
+
+export interface EvaluationResultEntry {
+  strategyLinkId: string;
+  evaluation: StrategyEvaluation;
+  strategy: Strategy;
+  previousAllocationName: string | null;
+  changed: boolean;
+  subscribers: SubscriptionForEvaluation[];
+}
+
+export interface EvaluationErrorEntry {
+  strategyLinkId: string;
+  error: string;
 }
