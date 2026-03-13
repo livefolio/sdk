@@ -39,6 +39,10 @@ export type {
   BacktestTimeseries,
   BacktestSummary,
   BacktestAnnualTax,
+  SubscriptionForEvaluation,
+  EvaluationBatchResult,
+  EvaluationResultEntry,
+  EvaluationErrorEntry,
 } from './types';
 
 export { createStrategy } from './client';
@@ -50,6 +54,8 @@ export { compileRules } from './rules';
 export { evaluateIndicator, evaluateSignal, evaluateAllocation, evaluate, getEvaluationDate, indicatorKey, signalKey } from './evaluate';
 export { extractSymbols, INDICATOR_SYMBOL_MAP } from './symbols';
 export { utcToET, isAtMarketClose } from './time';
+export { evaluateSubscriptions } from './cron';
+export { ensureStrategy } from './ensure';
 
 export {
   canonicalizeLivefolioDefinition,

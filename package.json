@@ -24,6 +24,18 @@
     "./auth": {
       "types": "./dist/auth/index.d.ts",
       "default": "./dist/auth/index.js"
+    },
+    "./broker": {
+      "types": "./dist/broker/index.d.ts",
+      "default": "./dist/broker/index.js"
+    },
+    "./subscription": {
+      "types": "./dist/subscription/index.d.ts",
+      "default": "./dist/subscription/index.js"
+    },
+    "./autodeploy": {
+      "types": "./dist/autodeploy/index.d.ts",
+      "default": "./dist/autodeploy/index.js"
     }
   },
   "files": [
