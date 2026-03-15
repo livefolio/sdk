@@ -127,21 +127,29 @@ function signalFingerprint(signal: Signal): string {
   return [
     signal.left.type,
     signal.left.ticker.symbol,
+    signal.left.ticker.leverage,
     signal.left.lookback,
     signal.left.delay,
+    signal.left.unit ?? '',
     signal.left.threshold ?? '',
     signal.comparison,
     signal.right.type,
     signal.right.ticker.symbol,
+    signal.right.ticker.leverage,
     signal.right.lookback,
     signal.right.delay,
+    signal.right.unit ?? '',
     signal.right.threshold ?? '',
     signal.tolerance ?? 0,
   ].join('|');
 }
 
 function resolveSignalName(expr: SignalExpr | NotExpr, signalNameByFingerprint: Map<string, string>): string {
-  return signalNameByFingerprint.get(signalFingerprint(expr.signal)) ?? 'Signal 1';
+  const signalName = signalNameByFingerprint.get(signalFingerprint(expr.signal));
+  if (!signalName) {
+    throw new Error('Failed to resolve strategy condition back to a named signal.');
+  }
+  return signalName;
 }
 
 function unaryToNode(
@@ -170,7 +178,13 @@ function conditionToGroups(
 export function strategyToDraft(strategy: Strategy): StrategyDraft {
   const signalNameByFingerprint = new Map<string, string>();
   for (const namedSignal of strategy.signals) {
-    signalNameByFingerprint.set(signalFingerprint(namedSignal.signal), namedSignal.name);
+    const fingerprint = signalFingerprint(namedSignal.signal);
+    if (signalNameByFingerprint.has(fingerprint)) {
+      throw new Error(
+        `Strategy contains duplicate signal definitions for "${namedSignal.name}", which cannot be round-tripped to named draft conditions.`,
+      );
+    }
+    signalNameByFingerprint.set(fingerprint, namedSignal.name);
   }
 
   return {

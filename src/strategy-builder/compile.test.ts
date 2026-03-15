@@ -76,4 +76,20 @@ describe('compileDraftStrategy', () => {
     expect(roundTrip.allocations[0].rebalance).toEqual({ mode: 'drift', driftPct: 5 });
     expect(roundTrip.allocations[1].rebalance).toEqual({ mode: 'on_change' });
   });
+
+  it('throws when strategy contains duplicate signal definitions with different names', () => {
+    const draft = makeDraft();
+    draft.signals.push({
+      ...draft.signals[0],
+      name: 'Signal 2',
+    });
+    draft.allocations[0].groups = [[{ signalName: 'Signal 2', not: false }]];
+    draft.allocations[1].groups = [[{ signalName: 'Signal 2', not: true }]];
+
+    const compiled = compileDraftStrategy(draft);
+
+    expect(() => strategyToDraft(compiled)).toThrow(
+      'Strategy contains duplicate signal definitions for "Signal 2", which cannot be round-tripped to named draft conditions.',
+    );
+  });
 });
