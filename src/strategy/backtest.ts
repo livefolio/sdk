@@ -5,6 +5,7 @@ import type {
   BacktestRebalanceConfig,
   BacktestResult,
   BacktestTrade,
+  Signal,
   Strategy,
   StrategyDraft,
 } from './types';
@@ -41,6 +42,10 @@ function addDaysToYmd(ymd: string, days: number): string {
   const date = new Date(`${ymd}T00:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+function subtractDaysFromYmd(ymd: string, days: number): string {
+  return addDaysToYmd(ymd, -days);
 }
 
 function taxYearFromDate(ymd: string): number {
@@ -108,6 +113,44 @@ function getRequiredSymbols(strategy: Strategy): string[] {
     }
   }
   return [...symbols];
+}
+
+function maxSignalWindow(signal: Signal): number {
+  const left = signal.left.lookback + signal.left.delay;
+  const right = signal.right.lookback + signal.right.delay;
+  return Math.max(left, right);
+}
+
+function calculateLookbackBufferDays(strategy: Strategy): number {
+  let maxLookback = 0;
+
+  for (const namedSignal of strategy.signals) {
+    maxLookback = Math.max(maxLookback, maxSignalWindow(namedSignal.signal));
+  }
+
+  const visitCondition = (condition: Strategy['allocations'][number]['allocation']['condition']): void => {
+    if (condition.kind === 'signal' || condition.kind === 'not') {
+      maxLookback = Math.max(maxLookback, maxSignalWindow(condition.signal));
+      return;
+    }
+
+    if (condition.kind === 'and') {
+      for (const entry of condition.args) {
+        visitCondition(entry);
+      }
+      return;
+    }
+
+    for (const group of condition.args) {
+      visitCondition(group);
+    }
+  };
+
+  for (const allocation of strategy.allocations) {
+    visitCondition(allocation.allocation.condition);
+  }
+
+  return Math.ceil(maxLookback * 1.5) + 30;
 }
 
 function validateDefaultAllocation(strategy: Strategy): void {
@@ -463,7 +506,11 @@ async function resolveBacktestInputs(
 ): Promise<BacktestOptions> {
   const batchSeries =
     options.batchSeries ??
-    (await market.getBatchSeriesFromDb(extractSymbols(strategy), options.startDate, options.endDate));
+    (await market.getBatchSeriesFromDb(
+      extractSymbols(strategy),
+      subtractDaysFromYmd(options.startDate, calculateLookbackBufferDays(strategy)),
+      options.endDate,
+    ));
   const tradingDays = options.tradingDays ?? (await market.getTradingDays(options.startDate, options.endDate));
   return { ...options, batchSeries, tradingDays };
 }

@@ -17,6 +17,10 @@
       "types": "./dist/strategy/index.d.ts",
       "default": "./dist/strategy/index.js"
     },
+    "./strategy-builder": {
+      "types": "./dist/strategy-builder/index.d.ts",
+      "default": "./dist/strategy-builder/index.js"
+    },
     "./portfolio": {
       "types": "./dist/portfolio/index.d.ts",
       "default": "./dist/portfolio/index.js"

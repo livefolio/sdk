@@ -1,6 +1,7 @@
 export * as auth from './auth';
 export * as market from './market';
 export * as strategy from './strategy';
+export * as strategyBuilder from './strategy-builder';
 export * as portfolio from './portfolio';
 
 export type { TypedSupabaseClient } from './types';
