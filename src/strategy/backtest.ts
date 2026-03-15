@@ -472,10 +472,11 @@ function isCalendarRebalanceDue(
 }
 
 function getRebalanceConfig(
+  allocation: Strategy['allocations'][number],
   options: BacktestOptions,
   allocationName: string,
 ): BacktestRebalanceConfig {
-  return options.allocationRebalance?.[allocationName] ?? { mode: 'on_change' };
+  return options.allocationRebalance?.[allocationName] ?? allocation.allocation.rebalance ?? { mode: 'on_change' };
 }
 
 function computeAllocationDriftPct(
@@ -631,7 +632,11 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
     const asOfDate = toDateYmd(evaluation.asOf);
     const evaluationDue = asOfDate === currentDate;
     const allocationChanged = previousAllocationName !== evaluation.allocation.name;
-    const rebalanceConfig = getRebalanceConfig(options, evaluation.allocation.name);
+    const currentAllocation = strategy.allocations.find((allocation) => allocation.name === evaluation.allocation.name);
+    if (!currentAllocation) {
+      throw new Error(`Evaluation selected unknown allocation: ${evaluation.allocation.name}.`);
+    }
+    const rebalanceConfig = getRebalanceConfig(currentAllocation, options, evaluation.allocation.name);
     const lastRebalancedDate = lastRebalancedDateByAllocation.get(evaluation.allocation.name);
     let shouldRebalance = false;
 

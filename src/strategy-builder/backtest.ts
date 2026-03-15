@@ -3,16 +3,12 @@ import { TRACKED_TICKERS_YFINANCE } from '../market/trackedTickers';
 import { backtestWithMarketData } from '../strategy/backtest';
 import type { BacktestOptions } from '../strategy/types';
 import { compileDraftStrategy } from './compile';
-import type { BacktestResult, BacktestTrade, DraftAllocation, StrategyDraft } from './types';
+import type { BacktestResult, BacktestTrade, StrategyDraft } from './types';
 
 export const TRACKED_TICKERS_DESCRIPTION =
   'Curated default strategy-builder ticker universe in Yahoo Finance symbol format.';
 
 export const TRACKED_TICKERS = TRACKED_TICKERS_YFINANCE;
-
-function toAllocationRebalance(allocations: DraftAllocation[]): Record<string, DraftAllocation['rebalance']> {
-  return Object.fromEntries(allocations.map((allocation) => [allocation.name.trim(), allocation.rebalance]));
-}
 
 function toBuilderTrades(trades: Awaited<ReturnType<typeof backtestWithMarketData>>['trades']): BacktestTrade[] {
   return trades.map((trade) => ({
@@ -32,10 +28,7 @@ export async function runDraftBacktest(
   options: Omit<BacktestOptions, 'allocationRebalance'>,
 ): Promise<BacktestResult> {
   const strategy = compileDraftStrategy(draft);
-  const result = await backtestWithMarketData(market, strategy, {
-    ...options,
-    allocationRebalance: toAllocationRebalance(draft.allocations),
-  });
+  const result = await backtestWithMarketData(market, strategy, options);
 
   return {
     strategy,

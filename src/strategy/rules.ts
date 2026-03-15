@@ -110,6 +110,7 @@ export function compileRules(strategyDraft: StrategyDraft): Strategy {
       allocation: {
         condition: compileRuleCondition(allocation.condition, signalByName),
         holdings: allocation.holdings.map((holding) => ({ ...holding })),
+        rebalance: allocation.rebalance,
       },
     })),
   };

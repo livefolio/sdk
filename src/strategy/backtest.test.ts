@@ -290,6 +290,45 @@ describe('backtest', () => {
     expect(yearly.summary.tradeCount).toBe(2);
   });
 
+  it('uses allocation-level rebalance config when present', async () => {
+    const strategy: Strategy = {
+      linkId: 'x',
+      name: 'x',
+      trading: { frequency: 'Daily', offset: 0 },
+      signals: [],
+      allocations: [
+        {
+          name: 'Default',
+          allocation: {
+            condition: { kind: 'and', args: [] },
+            holdings: [
+              { ticker: { symbol: 'SPY', leverage: 1 }, weight: 50 },
+              { ticker: { symbol: 'BIL', leverage: 1 }, weight: 50 },
+            ],
+            rebalance: { mode: 'calendar', frequency: 'Daily' },
+          },
+        },
+      ],
+    };
+    const options = makeOptions();
+    options.batchSeries = {
+      SPY: [
+        { timestamp: '2024-01-02T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-03T21:00:00.000Z', value: 200 },
+        { timestamp: '2024-01-04T21:00:00.000Z', value: 200 },
+      ],
+      BIL: [
+        { timestamp: '2024-01-02T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-03T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-04T21:00:00.000Z', value: 100 },
+      ],
+    };
+
+    const result = await backtest(strategy, options);
+
+    expect(result.summary.tradeCount).toBeGreaterThan(2);
+  });
+
   it('starts at the earliest common ticker availability date', async () => {
     const signal = {
       left: { type: 'Price' as const, ticker: { symbol: 'QQQ', leverage: 1 }, lookback: 1, delay: 0, unit: '$' as const, threshold: null },

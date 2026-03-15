@@ -1,10 +1,12 @@
+import { compileRules } from '../strategy/rules';
 import type {
-  AndExpr,
   Condition,
   Indicator,
   NotExpr,
   Signal,
   SignalExpr,
+  SignalNameCondition,
+  SignalNameUnaryExpr,
   Strategy,
   UnaryExpr,
 } from '../strategy/types';
@@ -49,102 +51,54 @@ function mapSignal(source: DraftSignal): Signal {
   };
 }
 
-function compileUnary(node: DraftConditionNode, signalByName: Map<string, Signal>): UnaryExpr {
-  const signal = signalByName.get(node.signalName);
-  if (!signal) {
-    throw new Error(`Unknown signal reference "${node.signalName}".`);
-  }
-  return node.not ? ({ kind: 'not', signal } satisfies NotExpr) : ({ kind: 'signal', signal } satisfies SignalExpr);
+function nodeToCondition(node: DraftConditionNode): SignalNameUnaryExpr {
+  return node.not
+    ? { kind: 'not', signalName: node.signalName }
+    : { kind: 'signal', signalName: node.signalName };
 }
 
-function compileCondition(allocation: DraftAllocation, signalByName: Map<string, Signal>): Condition {
-  const groups = allocation.groups ?? [];
+function allocationCondition(groups: DraftAllocation['groups']): SignalNameCondition {
   if (groups.length === 0) {
     return { kind: 'and', args: [] };
   }
 
-  const andExprs: AndExpr[] = groups
+  const andGroups = groups
     .filter((group) => group.length > 0)
     .map((group) => ({
-      kind: 'and',
-      args: group.map((node) => compileUnary(node, signalByName)),
+      kind: 'and' as const,
+      args: group.map(nodeToCondition),
     }));
 
-  if (andExprs.length === 0) {
+  if (andGroups.length === 0) {
     return { kind: 'and', args: [] };
   }
-  if (andExprs.length === 1) {
-    return andExprs[0];
+  if (andGroups.length === 1) {
+    return andGroups[0];
   }
-  return { kind: 'or', args: andExprs };
-}
-
-function validateHoldings(name: string, holdings: Strategy['allocations'][number]['allocation']['holdings']): void {
-  const total = holdings.reduce((sum, holding) => sum + Number(holding.weight || 0), 0);
-  if (Math.abs(total - 100) > 1e-6) {
-    throw new Error(`Allocation "${name}" holdings must sum to 100.`);
-  }
+  return { kind: 'or', args: andGroups };
 }
 
 export function compileDraftStrategy(draft: StrategyDraft): Strategy {
-  if (!draft.signals.length) {
-    throw new Error('At least one signal is required.');
-  }
-  if (!draft.allocations.length) {
-    throw new Error('At least one allocation is required.');
-  }
-
-  const signals = draft.signals.map(mapSignal);
-  const signalByName = new Map<string, Signal>();
-  for (let index = 0; index < draft.signals.length; index += 1) {
-    const name = draft.signals[index].name.trim();
-    if (!name) {
-      throw new Error('Signal name is required.');
-    }
-    if (signalByName.has(name)) {
-      throw new Error(`Duplicate signal name "${name}".`);
-    }
-    signalByName.set(name, signals[index]);
-  }
-
-  const defaultIndexes = draft.allocations
-    .map((allocation, index) => ({ allocation, index }))
-    .filter((entry) => entry.allocation.name.trim().toLowerCase() === 'default');
-
-  if (defaultIndexes.length !== 1) {
-    throw new Error('Exactly one allocation named "Default" is required.');
-  }
-  if (defaultIndexes[0].index !== draft.allocations.length - 1) {
-    throw new Error('Allocation "Default" must be last.');
-  }
-
-  return {
+  return compileRules({
     linkId: 'custom-strategy',
     name: draft.name.trim() || 'Custom Strategy',
     trading: draft.trading,
-    signals: draft.signals.map((draftSignal, index) => ({
+    signals: draft.signals.map((draftSignal) => ({
       name: draftSignal.name.trim(),
-      signal: signals[index],
+      signal: mapSignal(draftSignal),
     })),
     allocations: draft.allocations.map((allocation) => {
-      if (!allocation.name.trim()) {
-        throw new Error('Allocation name is required.');
-      }
-      const holdings = allocation.holdings.map((holding) => ({
-        ticker: { symbol: holding.ticker.symbol.trim().toUpperCase(), leverage: 1 },
-        weight: Number(holding.weight),
-      }));
-      validateHoldings(allocation.name, holdings);
-
       return {
         name: allocation.name.trim(),
-        allocation: {
-          condition: compileCondition(allocation, signalByName),
-          holdings,
-        },
+        condition: allocationCondition(allocation.groups),
+        holdings: allocation.holdings.map((holding) => ({
+          ticker: { symbol: holding.ticker.symbol.trim().toUpperCase(), leverage: 1 },
+          weight: Number(holding.weight),
+        })),
+        rebalance: allocation.rebalance,
       };
     }),
-  };
+  });
 }
 
 function toDraftSignal(namedSignal: Strategy['signals'][number]): DraftSignal {
@@ -236,7 +190,7 @@ export function strategyToDraft(strategy: Strategy): StrategyDraft {
         },
         weight: holding.weight,
       })),
-      rebalance: { mode: 'on_change' },
+      rebalance: allocation.allocation.rebalance ?? { mode: 'on_change' },
     })),
   };
 }
