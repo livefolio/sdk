@@ -153,10 +153,9 @@ function calculateLookbackBufferDays(strategy: Strategy): number {
   return Math.ceil(maxLookback * 1.5) + 30;
 }
 
-function validateDefaultAllocation(strategy: Strategy): void {
-  const defaultAllocations = strategy.allocations.filter((allocation) => allocation.name.toLowerCase() === 'default');
-  if (defaultAllocations.length !== 1) {
-    throw new Error('Strategy must include exactly one allocation named "Default".');
+function validateFallbackAllocation(strategy: Strategy): void {
+  if (strategy.allocations.length === 0) {
+    throw new Error('Strategy must include at least one allocation.');
   }
 }
 
@@ -546,7 +545,7 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
     bookkeepingMs: 0,
   };
   const tValidateStart = nowMs();
-  validateDefaultAllocation(strategy);
+  validateFallbackAllocation(strategy);
   if (!options.batchSeries) {
     throw new Error('Backtest requires batchSeries in options.');
   }

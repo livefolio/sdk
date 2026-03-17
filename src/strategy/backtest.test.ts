@@ -55,7 +55,21 @@ describe('backtest', () => {
     };
   }
 
-  it('requires an explicit Default allocation', async () => {
+  it('requires at least one allocation', async () => {
+    const strategy: Strategy = {
+      linkId: 'x',
+      name: 'x',
+      trading: { frequency: 'Daily', offset: 0 },
+      signals: [],
+      allocations: [],
+    };
+
+    await expect(backtest(strategy, makeOptions())).rejects.toThrow(
+      'Strategy must include at least one allocation.',
+    );
+  });
+
+  it('supports custom fallback allocation name', async () => {
     const strategy: Strategy = {
       linkId: 'x',
       name: 'x',
@@ -63,7 +77,7 @@ describe('backtest', () => {
       signals: [],
       allocations: [
         {
-          name: 'Risk On',
+          name: 'Cash Fallback',
           allocation: {
             condition: { kind: 'and', args: [] },
             holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
@@ -72,9 +86,13 @@ describe('backtest', () => {
       ],
     };
 
-    await expect(backtest(strategy, makeOptions())).rejects.toThrow(
-      'Strategy must include exactly one allocation named "Default".',
-    );
+    const result = await backtest(strategy, makeOptions());
+    expect(result.timeseries.allocation).toEqual([
+      'Cash Fallback',
+      'Cash Fallback',
+      'Cash Fallback',
+      'Cash Fallback',
+    ]);
   });
 
   it('uses default allocation and tracks portfolio values', async () => {

@@ -57,11 +57,12 @@ describe('compileRules', () => {
     expect(compiled.allocations[1].allocation.condition.kind).toBe('not');
   });
 
-  it('throws when Default allocation is not last', () => {
+  it('supports custom fallback allocation names', () => {
     const draft = makeDraft();
-    draft.allocations = [draft.allocations[1], draft.allocations[0]];
+    draft.allocations[1].name = 'Cash Fallback';
 
-    expect(() => compileRules(draft)).toThrow('Allocation "Default" must be the final fallback allocation.');
+    const compiled = compileRules(draft);
+    expect(compiled.allocations[1].name).toBe('Cash Fallback');
   });
 
   it('throws when a condition references unknown signal names', () => {
