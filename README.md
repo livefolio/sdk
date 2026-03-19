@@ -79,12 +79,50 @@ If you are evaluating where to contribute first, the highest-leverage work is us
 ## Development
 
 ```bash
+npm install
 npm run build    # compile TypeScript → dist/
 npm test         # run tests
 npm run ingest:init   # backfill price_observations from Yahoo
 npm run ingest:daily  # refresh latest daily bars
 npm run backtest:smoke -- --linkId <strategy-link-id>
 ```
+
+## Contributing Locally
+
+Most contributors only need the default local workflow:
+
+```bash
+git clone https://github.com/livefolio/sdk.git
+cd sdk
+npm install
+npm run build
+npm test
+```
+
+The test suite mocks Supabase at the boundary, so most SDK work does not require a running backend.
+
+If you are working on market ingestion, DB-backed backtests, or cache-through evaluation flows, set local Supabase credentials first:
+
+```bash
+export SUPABASE_URL=http://127.0.0.1:54321
+export SUPABASE_ANON_KEY=<local-anon-key>
+export SUPABASE_SERVICE_ROLE_KEY=<local-service-role-key>
+```
+
+Then you can run the data-backed workflows:
+
+```bash
+npm run ingest:init
+npm run ingest:daily
+npm run backtest:smoke -- --linkId <strategy-link-id>
+```
+
+Contributor expectations:
+
+- Run `npm run build` and `npm test` before opening a PR
+- Add unit tests for new exported behavior
+- Update `docs/` when adding or changing public module methods
+- Prefer narrow deterministic tests over large integration-only coverage
 
 ## Open Source Scope
 

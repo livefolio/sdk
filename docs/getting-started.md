@@ -52,6 +52,34 @@ High-value contribution areas include:
 - Examples, tutorials, and framework integrations
 - Benchmarks, caching, and broader test coverage
 
+## Running The SDK Locally
+
+For most contributions, the local workflow is:
+
+```bash
+npm install
+npm run build
+npm test
+```
+
+The SDK test suite is unit-test-focused and usually does not require a live Supabase backend.
+
+For ingestion or smoke-test workflows, configure local credentials first:
+
+```bash
+export SUPABASE_URL=http://127.0.0.1:54321
+export SUPABASE_ANON_KEY=<local-anon-key>
+export SUPABASE_SERVICE_ROLE_KEY=<local-service-role-key>
+```
+
+Then run:
+
+```bash
+npm run ingest:init
+npm run ingest:daily
+npm run backtest:smoke -- --linkId <strategy-link-id>
+```
+
 ## Importing individual modules
 
 You can also import module factories directly:
