@@ -46,6 +46,7 @@ export { get, getMany } from './get';
 export { evaluateCached } from './cache';
 export { stream } from './stream';
 export { backtest, backtestWithMarketData, backtestRulesWithMarketData } from './backtest';
+export { computePerformanceMetrics } from './performance';
 export { compileRules } from './rules';
 export { evaluateIndicator, evaluateSignal, evaluateAllocation, evaluate, getEvaluationDate, indicatorKey, signalKey } from './evaluate';
 export { extractSymbols, INDICATOR_SYMBOL_MAP } from './symbols';

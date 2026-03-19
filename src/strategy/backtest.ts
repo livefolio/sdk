@@ -5,6 +5,7 @@ import type {
   BacktestRebalanceConfig,
   BacktestResult,
   BacktestTrade,
+  Signal,
   Strategy,
   StrategyDraft,
 } from './types';
@@ -41,6 +42,10 @@ function addDaysToYmd(ymd: string, days: number): string {
   const date = new Date(`${ymd}T00:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+function subtractDaysFromYmd(ymd: string, days: number): string {
+  return addDaysToYmd(ymd, -days);
 }
 
 function taxYearFromDate(ymd: string): number {
@@ -110,10 +115,47 @@ function getRequiredSymbols(strategy: Strategy): string[] {
   return [...symbols];
 }
 
-function validateDefaultAllocation(strategy: Strategy): void {
-  const defaultAllocations = strategy.allocations.filter((allocation) => allocation.name.toLowerCase() === 'default');
-  if (defaultAllocations.length !== 1) {
-    throw new Error('Strategy must include exactly one allocation named "Default".');
+function maxSignalWindow(signal: Signal): number {
+  const left = signal.left.lookback + signal.left.delay;
+  const right = signal.right.lookback + signal.right.delay;
+  return Math.max(left, right);
+}
+
+function calculateLookbackBufferDays(strategy: Strategy): number {
+  let maxLookback = 0;
+
+  for (const namedSignal of strategy.signals) {
+    maxLookback = Math.max(maxLookback, maxSignalWindow(namedSignal.signal));
+  }
+
+  const visitCondition = (condition: Strategy['allocations'][number]['allocation']['condition']): void => {
+    if (condition.kind === 'signal' || condition.kind === 'not') {
+      maxLookback = Math.max(maxLookback, maxSignalWindow(condition.signal));
+      return;
+    }
+
+    if (condition.kind === 'and') {
+      for (const entry of condition.args) {
+        visitCondition(entry);
+      }
+      return;
+    }
+
+    for (const group of condition.args) {
+      visitCondition(group);
+    }
+  };
+
+  for (const allocation of strategy.allocations) {
+    visitCondition(allocation.allocation.condition);
+  }
+
+  return Math.ceil(maxLookback * 1.5) + 30;
+}
+
+function validateFallbackAllocation(strategy: Strategy): void {
+  if (strategy.allocations.length === 0) {
+    throw new Error('Strategy must include at least one allocation.');
   }
 }
 
@@ -429,10 +471,11 @@ function isCalendarRebalanceDue(
 }
 
 function getRebalanceConfig(
+  allocation: Strategy['allocations'][number],
   options: BacktestOptions,
   allocationName: string,
 ): BacktestRebalanceConfig {
-  return options.allocationRebalance?.[allocationName] ?? { mode: 'on_change' };
+  return options.allocationRebalance?.[allocationName] ?? allocation.allocation.rebalance ?? { mode: 'on_change' };
 }
 
 function computeAllocationDriftPct(
@@ -463,7 +506,11 @@ async function resolveBacktestInputs(
 ): Promise<BacktestOptions> {
   const batchSeries =
     options.batchSeries ??
-    (await market.getBatchSeriesFromDb(extractSymbols(strategy), options.startDate, options.endDate));
+    (await market.getBatchSeriesFromDb(
+      extractSymbols(strategy),
+      subtractDaysFromYmd(options.startDate, calculateLookbackBufferDays(strategy)),
+      options.endDate,
+    ));
   const tradingDays = options.tradingDays ?? (await market.getTradingDays(options.startDate, options.endDate));
   return { ...options, batchSeries, tradingDays };
 }
@@ -498,7 +545,7 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
     bookkeepingMs: 0,
   };
   const tValidateStart = nowMs();
-  validateDefaultAllocation(strategy);
+  validateFallbackAllocation(strategy);
   if (!options.batchSeries) {
     throw new Error('Backtest requires batchSeries in options.');
   }
@@ -584,7 +631,11 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
     const asOfDate = toDateYmd(evaluation.asOf);
     const evaluationDue = asOfDate === currentDate;
     const allocationChanged = previousAllocationName !== evaluation.allocation.name;
-    const rebalanceConfig = getRebalanceConfig(options, evaluation.allocation.name);
+    const currentAllocation = strategy.allocations.find((allocation) => allocation.name === evaluation.allocation.name);
+    if (!currentAllocation) {
+      throw new Error(`Evaluation selected unknown allocation: ${evaluation.allocation.name}.`);
+    }
+    const rebalanceConfig = getRebalanceConfig(currentAllocation, options, evaluation.allocation.name);
     const lastRebalancedDate = lastRebalancedDateByAllocation.get(evaluation.allocation.name);
     let shouldRebalance = false;
 
