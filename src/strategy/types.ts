@@ -77,6 +77,7 @@ export interface Holding {
 export interface Allocation {
   condition: Condition;
   holdings: Holding[];
+  rebalance?: BacktestRebalanceConfig;
 }
 
 // ---------------------------------------------------------------------------
@@ -170,6 +171,7 @@ export interface StrategyAllocationDraft {
   name: string;
   condition: SignalNameCondition;
   holdings: Holding[];
+  rebalance?: BacktestRebalanceConfig;
 }
 
 export interface StrategyDraft {

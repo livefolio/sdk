@@ -55,7 +55,21 @@ describe('backtest', () => {
     };
   }
 
-  it('requires an explicit Default allocation', async () => {
+  it('requires at least one allocation', async () => {
+    const strategy: Strategy = {
+      linkId: 'x',
+      name: 'x',
+      trading: { frequency: 'Daily', offset: 0 },
+      signals: [],
+      allocations: [],
+    };
+
+    await expect(backtest(strategy, makeOptions())).rejects.toThrow(
+      'Strategy must include at least one allocation.',
+    );
+  });
+
+  it('supports custom fallback allocation name', async () => {
     const strategy: Strategy = {
       linkId: 'x',
       name: 'x',
@@ -63,7 +77,7 @@ describe('backtest', () => {
       signals: [],
       allocations: [
         {
-          name: 'Risk On',
+          name: 'Cash Fallback',
           allocation: {
             condition: { kind: 'and', args: [] },
             holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
@@ -72,9 +86,13 @@ describe('backtest', () => {
       ],
     };
 
-    await expect(backtest(strategy, makeOptions())).rejects.toThrow(
-      'Strategy must include exactly one allocation named "Default".',
-    );
+    const result = await backtest(strategy, makeOptions());
+    expect(result.timeseries.allocation).toEqual([
+      'Cash Fallback',
+      'Cash Fallback',
+      'Cash Fallback',
+      'Cash Fallback',
+    ]);
   });
 
   it('uses default allocation and tracks portfolio values', async () => {
@@ -288,6 +306,45 @@ describe('backtest', () => {
     });
     expect(monthly.summary.tradeCount).toBe(2);
     expect(yearly.summary.tradeCount).toBe(2);
+  });
+
+  it('uses allocation-level rebalance config when present', async () => {
+    const strategy: Strategy = {
+      linkId: 'x',
+      name: 'x',
+      trading: { frequency: 'Daily', offset: 0 },
+      signals: [],
+      allocations: [
+        {
+          name: 'Default',
+          allocation: {
+            condition: { kind: 'and', args: [] },
+            holdings: [
+              { ticker: { symbol: 'SPY', leverage: 1 }, weight: 50 },
+              { ticker: { symbol: 'BIL', leverage: 1 }, weight: 50 },
+            ],
+            rebalance: { mode: 'calendar', frequency: 'Daily' },
+          },
+        },
+      ],
+    };
+    const options = makeOptions();
+    options.batchSeries = {
+      SPY: [
+        { timestamp: '2024-01-02T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-03T21:00:00.000Z', value: 200 },
+        { timestamp: '2024-01-04T21:00:00.000Z', value: 200 },
+      ],
+      BIL: [
+        { timestamp: '2024-01-02T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-03T21:00:00.000Z', value: 100 },
+        { timestamp: '2024-01-04T21:00:00.000Z', value: 100 },
+      ],
+    };
+
+    const result = await backtest(strategy, options);
+
+    expect(result.summary.tradeCount).toBeGreaterThan(2);
   });
 
   it('starts at the earliest common ticker availability date', async () => {

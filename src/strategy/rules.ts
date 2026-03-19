@@ -8,10 +8,6 @@ import type {
   Strategy,
 } from './types';
 
-function isDefaultName(name: string): boolean {
-  return name.trim().toLowerCase() === 'default';
-}
-
 function validateHoldingsWeights(strategyDraft: StrategyDraft): void {
   for (const allocation of strategyDraft.allocations) {
     if (!allocation.holdings.length) {
@@ -88,16 +84,6 @@ export function compileRules(strategyDraft: StrategyDraft): Strategy {
     allocationNames.add(normalized);
   }
 
-  const defaultAllocations = strategyDraft.allocations.filter((allocation) => isDefaultName(allocation.name));
-  if (defaultAllocations.length !== 1) {
-    throw new Error('Rule strategy must include exactly one allocation named "Default".');
-  }
-
-  const defaultIndex = strategyDraft.allocations.findIndex((allocation) => isDefaultName(allocation.name));
-  if (defaultIndex !== strategyDraft.allocations.length - 1) {
-    throw new Error('Allocation "Default" must be the final fallback allocation.');
-  }
-
   validateHoldingsWeights(strategyDraft);
 
   return {
@@ -110,6 +96,7 @@ export function compileRules(strategyDraft: StrategyDraft): Strategy {
       allocation: {
         condition: compileRuleCondition(allocation.condition, signalByName),
         holdings: allocation.holdings.map((holding) => ({ ...holding })),
+        rebalance: allocation.rebalance,
       },
     })),
   };
