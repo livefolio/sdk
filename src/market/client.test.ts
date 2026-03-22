@@ -137,14 +137,26 @@ describe('createMarket', () => {
       });
     });
 
-    it('falls back to synthetic timestamp when timestamp_400pm_et is null', async () => {
+    it('throws when timestamp_400pm_et is missing', async () => {
       mock.mockOrder.mockResolvedValue({
         data: [{ ...PRICE_OBSERVATION_ROW, timestamp_400pm_et: null }],
         error: null,
       });
 
-      const result = await market.getBatchSeriesFromDb(['SPY'], '2025-01-01', '2025-01-31');
-      expect(result.SPY[0]).toEqual({ timestamp: '2025-01-10T21:00:00.000Z', value: 590.25 });
+      await expect(market.getBatchSeriesFromDb(['SPY'], '2025-01-01', '2025-01-31')).rejects.toThrow(
+        'Missing timestamp_400pm_et for SPY on 2025-01-10',
+      );
+    });
+
+    it('throws when timestamp_400pm_et is invalid', async () => {
+      mock.mockOrder.mockResolvedValue({
+        data: [{ ...PRICE_OBSERVATION_ROW, timestamp_400pm_et: 'not-a-date' }],
+        error: null,
+      });
+
+      await expect(market.getBatchSeriesFromDb(['SPY'], '2025-01-01', '2025-01-31')).rejects.toThrow(
+        'Invalid timestamp_400pm_et for SPY on 2025-01-10: not-a-date',
+      );
     });
 
     it('throws on query error', async () => {
