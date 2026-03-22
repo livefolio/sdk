@@ -1,24 +1,23 @@
 import type { TypedSupabaseClient } from '../types';
 import type { Observation, TradingDay, MarketModule } from './types';
 
-function requireMarketCloseTimestamp(row: {
-  symbol: string;
-  date: string;
-  timestamp_400pm_et: string | null;
-}): string {
-  const raw = row.timestamp_400pm_et;
-  if (typeof raw !== 'string' || raw.length === 0) {
-    throw new Error(
-      `Missing timestamp_400pm_et for ${row.symbol} on ${row.date}. ` +
-      'Price rows without a market-close timestamp cannot be evaluated safely.',
-    );
+function requireTradingDayClose(
+  tradingDayByDate: Map<string, string>,
+  row: {
+    symbol: string;
+    date: string;
+  },
+): string {
+  const close = tradingDayByDate.get(row.date);
+  if (typeof close !== 'string' || close.length === 0) {
+    throw new Error(`Missing trading_days.post for ${row.symbol} on ${row.date}.`);
   }
 
-  if (!Number.isFinite(new Date(raw).getTime())) {
-    throw new Error(`Invalid timestamp_400pm_et for ${row.symbol} on ${row.date}: ${raw}`);
+  if (!Number.isFinite(new Date(close).getTime())) {
+    throw new Error(`Invalid trading_days.post for ${row.symbol} on ${row.date}: ${close}`);
   }
 
-  return raw;
+  return close;
 }
 
 export function createMarket(client: TypedSupabaseClient): MarketModule {
@@ -40,7 +39,7 @@ export function createMarket(client: TypedSupabaseClient): MarketModule {
 
       const { data, error } = await client
         .from('price_observations')
-        .select('symbol, date, price_400pm_et, timestamp_400pm_et')
+        .select('symbol, date, price_400pm_et')
         .in('symbol', symbols)
         .gte('date', startDate)
         .lte('date', endDate)
@@ -48,11 +47,22 @@ export function createMarket(client: TypedSupabaseClient): MarketModule {
 
       if (error) throw new Error(`Failed to fetch price observations: ${error.message}`);
 
+      const { data: tradingDays, error: tradingDaysError } = await client
+        .from('trading_days')
+        .select('date, post')
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date', { ascending: true });
+
+      if (tradingDaysError) throw new Error(`Failed to fetch trading days: ${tradingDaysError.message}`);
+
+      const tradingDayByDate = new Map((tradingDays ?? []).map((row) => [row.date, row.post]));
+
       for (const row of data ?? []) {
         const symbol = row.symbol;
         if (!out[symbol]) out[symbol] = [];
         out[symbol].push({
-          timestamp: requireMarketCloseTimestamp(row),
+          timestamp: requireTradingDayClose(tradingDayByDate, row),
           value: row.price_400pm_et,
         });
       }
