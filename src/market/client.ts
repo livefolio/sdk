@@ -1,6 +1,26 @@
 import type { TypedSupabaseClient } from '../types';
 import type { Observation, TradingDay, MarketModule } from './types';
 
+function requireMarketCloseTimestamp(row: {
+  symbol: string;
+  date: string;
+  timestamp_400pm_et: string | null;
+}): string {
+  const raw = row.timestamp_400pm_et;
+  if (typeof raw !== 'string' || raw.length === 0) {
+    throw new Error(
+      `Missing timestamp_400pm_et for ${row.symbol} on ${row.date}. ` +
+      'Price rows without a market-close timestamp cannot be evaluated safely.',
+    );
+  }
+
+  if (!Number.isFinite(new Date(raw).getTime())) {
+    throw new Error(`Invalid timestamp_400pm_et for ${row.symbol} on ${row.date}: ${raw}`);
+  }
+
+  return raw;
+}
+
 export function createMarket(client: TypedSupabaseClient): MarketModule {
   return {
     async getBatchSeries(symbols: string[]): Promise<Record<string, Observation[]>> {
@@ -32,7 +52,7 @@ export function createMarket(client: TypedSupabaseClient): MarketModule {
         const symbol = row.symbol;
         if (!out[symbol]) out[symbol] = [];
         out[symbol].push({
-          timestamp: row.timestamp_400pm_et ?? `${row.date}T21:00:00.000Z`,
+          timestamp: requireMarketCloseTimestamp(row),
           value: row.price_400pm_et,
         });
       }
