@@ -60,7 +60,6 @@ const PRICE_OBSERVATION_ROW = {
   symbol: 'SPY',
   date: '2025-01-10',
   price_400pm_et: 590.25,
-  timestamp_400pm_et: '2025-01-10T16:00:00Z',
 };
 
 // ---------------------------------------------------------------------------
@@ -111,23 +110,26 @@ describe('createMarket', () => {
 
   describe('getBatchSeriesFromDb', () => {
     it('queries price_observations and groups rows by symbol', async () => {
-      mock.mockOrder.mockResolvedValue({
+      mock.mockOrder.mockResolvedValueOnce({
         data: [
           PRICE_OBSERVATION_ROW,
           {
             symbol: 'QQQ',
             date: '2025-01-10',
             price_400pm_et: 480.1,
-            timestamp_400pm_et: '2025-01-10T16:00:00Z',
           },
         ],
+        error: null,
+      }).mockResolvedValueOnce({
+        data: [{ date: '2025-01-10', post: '2025-01-10T16:00:00Z' }],
         error: null,
       });
 
       const result = await market.getBatchSeriesFromDb(['SPY', 'QQQ'], '2025-01-01', '2025-01-31');
 
       expect(mock.mockFrom).toHaveBeenCalledWith('price_observations');
-      expect(mock.queryBuilder.select).toHaveBeenCalledWith('symbol, date, price_400pm_et, timestamp_400pm_et');
+      expect(mock.queryBuilder.select).toHaveBeenCalledWith('symbol, date, price_400pm_et');
+      expect(mock.mockFrom).toHaveBeenCalledWith('trading_days');
       expect(mock.queryBuilder.in).toHaveBeenCalledWith('symbol', ['SPY', 'QQQ']);
       expect(mock.queryBuilder.gte).toHaveBeenCalledWith('date', '2025-01-01');
       expect(mock.queryBuilder.lte).toHaveBeenCalledWith('date', '2025-01-31');
@@ -137,36 +139,55 @@ describe('createMarket', () => {
       });
     });
 
-    it('throws when timestamp_400pm_et is missing', async () => {
-      mock.mockOrder.mockResolvedValue({
-        data: [{ ...PRICE_OBSERVATION_ROW, timestamp_400pm_et: null }],
+    it('derives timestamps from trading_days.post when price rows are backfilled', async () => {
+      mock.mockOrder.mockResolvedValueOnce({
+        data: [{ ...PRICE_OBSERVATION_ROW }],
+        error: null,
+      }).mockResolvedValueOnce({
+        data: [{ date: '2025-01-10', post: '2025-01-10T21:00:00.000Z' }],
         error: null,
       });
 
-      await expect(market.getBatchSeriesFromDb(['SPY'], '2025-01-01', '2025-01-31')).rejects.toThrow(
-        'Missing timestamp_400pm_et for SPY on 2025-01-10',
-      );
+      const result = await market.getBatchSeriesFromDb(['SPY'], '2025-01-01', '2025-01-31');
+      expect(result.SPY[0]).toEqual({ timestamp: '2025-01-10T21:00:00.000Z', value: 590.25 });
     });
 
-    it('throws when timestamp_400pm_et is invalid', async () => {
-      mock.mockOrder.mockResolvedValue({
-        data: [{ ...PRICE_OBSERVATION_ROW, timestamp_400pm_et: 'not-a-date' }],
+    it('throws when trading_days.post is missing', async () => {
+      mock.mockOrder.mockResolvedValueOnce({
+        data: [{ ...PRICE_OBSERVATION_ROW }],
+        error: null,
+      }).mockResolvedValueOnce({
+        data: [],
         error: null,
       });
 
       await expect(market.getBatchSeriesFromDb(['SPY'], '2025-01-01', '2025-01-31')).rejects.toThrow(
-        'Invalid timestamp_400pm_et for SPY on 2025-01-10: not-a-date',
+        'Missing trading_days.post for SPY on 2025-01-10',
       );
     });
 
     it('throws on query error', async () => {
-      mock.mockOrder.mockResolvedValue({
+      mock.mockOrder.mockResolvedValueOnce({
         data: null,
         error: { message: 'db down' },
       });
 
       await expect(market.getBatchSeriesFromDb(['SPY'], '2025-01-01', '2025-01-31')).rejects.toThrow(
         'Failed to fetch price observations: db down',
+      );
+    });
+
+    it('throws on trading_days query error', async () => {
+      mock.mockOrder.mockResolvedValueOnce({
+        data: [PRICE_OBSERVATION_ROW],
+        error: null,
+      }).mockResolvedValueOnce({
+        data: null,
+        error: { message: 'calendar down' },
+      });
+
+      await expect(market.getBatchSeriesFromDb(['SPY'], '2025-01-01', '2025-01-31')).rejects.toThrow(
+        'Failed to fetch trading days: calendar down',
       );
     });
   });
@@ -193,8 +214,11 @@ describe('createMarket', () => {
 
   describe('getSeriesFromDb', () => {
     it('delegates to getBatchSeriesFromDb and extracts symbol rows', async () => {
-      mock.mockOrder.mockResolvedValue({
+      mock.mockOrder.mockResolvedValueOnce({
         data: [PRICE_OBSERVATION_ROW],
+        error: null,
+      }).mockResolvedValueOnce({
+        data: [{ date: '2025-01-10', post: '2025-01-10T16:00:00Z' }],
         error: null,
       });
 
