@@ -106,6 +106,7 @@ export function createMarket(client: TypedSupabaseClient): MarketModule {
 
       const result: Record<string, DualPrice> = {};
       for (const row of data ?? []) {
+        if (row.price_330pm_et == null || row.price_400pm_et == null) continue;
         result[row.symbol] = {
           signal: Number(row.price_330pm_et),
           execution: Number(row.price_400pm_et),
