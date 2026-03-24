@@ -177,7 +177,7 @@ async function fetchSignalStatesForDay(
   return result;
 }
 
-async function fetchIndicatorKeyMap(
+export async function fetchIndicatorKeyMap(
   client: TypedSupabaseClient,
   strategyId: number,
 ): Promise<Map<string, number>> {

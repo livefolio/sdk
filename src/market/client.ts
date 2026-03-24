@@ -1,5 +1,5 @@
 import type { TypedSupabaseClient } from '../types';
-import type { Observation, TradingDay, MarketModule } from './types';
+import type { Observation, DualPrice, TradingDay, MarketModule } from './types';
 
 function requireTradingDayClose(
   tradingDayByDate: Map<string, string>,
@@ -86,6 +86,32 @@ export function createMarket(client: TypedSupabaseClient): MarketModule {
       const quote = result[symbol];
       if (quote == null) throw new Error(`No quote available for ${symbol}`);
       return quote;
+    },
+
+    async getSignalAndExecutionPrices(symbol: string, date: string): Promise<DualPrice | null> {
+      const result = await this.getBatchSignalAndExecutionPrices([symbol], date);
+      return result[symbol] ?? null;
+    },
+
+    async getBatchSignalAndExecutionPrices(symbols: string[], date: string): Promise<Record<string, DualPrice>> {
+      if (symbols.length === 0) return {};
+
+      const { data, error } = await client
+        .from('price_observations')
+        .select('symbol, price_330pm_et, price_400pm_et')
+        .in('symbol', symbols)
+        .eq('date', date);
+
+      if (error) throw new Error(`Failed to fetch dual prices: ${error.message}`);
+
+      const result: Record<string, DualPrice> = {};
+      for (const row of data ?? []) {
+        result[row.symbol] = {
+          signal: Number(row.price_330pm_et),
+          execution: Number(row.price_400pm_et),
+        };
+      }
+      return result;
     },
 
     async getTradingDays(startDate: string, endDate: string): Promise<TradingDay[]> {

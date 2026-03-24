@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createMarket } from './client';
-import type { Observation, TradingDay } from './types';
+import type { Observation, DualPrice, TradingDay } from './types';
 
 // ---------------------------------------------------------------------------
 // Mock Supabase client
@@ -289,6 +289,83 @@ describe('createMarket', () => {
       await expect(market.getQuote('INVALID')).rejects.toThrow(
         'No quote available for INVALID'
       );
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // getSignalAndExecutionPrices / getBatchSignalAndExecutionPrices
+  // -----------------------------------------------------------------------
+
+  describe('getBatchSignalAndExecutionPrices', () => {
+    it('queries price_observations and returns signal + execution prices', async () => {
+      mock.queryBuilder.eq.mockResolvedValueOnce({
+        data: [
+          { symbol: 'SPY', price_330pm_et: 590.10, price_400pm_et: 590.25 },
+          { symbol: 'QQQ', price_330pm_et: 479.80, price_400pm_et: 480.10 },
+        ],
+        error: null,
+      });
+
+      const result = await market.getBatchSignalAndExecutionPrices(['SPY', 'QQQ'], '2025-01-10');
+
+      expect(mock.mockFrom).toHaveBeenCalledWith('price_observations');
+      expect(mock.queryBuilder.select).toHaveBeenCalledWith('symbol, price_330pm_et, price_400pm_et');
+      expect(mock.queryBuilder.in).toHaveBeenCalledWith('symbol', ['SPY', 'QQQ']);
+      expect(mock.queryBuilder.eq).toHaveBeenCalledWith('date', '2025-01-10');
+      expect(result).toEqual({
+        SPY: { signal: 590.10, execution: 590.25 },
+        QQQ: { signal: 479.80, execution: 480.10 },
+      } satisfies Record<string, DualPrice>);
+    });
+
+    it('returns empty object for empty symbols array', async () => {
+      const result = await market.getBatchSignalAndExecutionPrices([], '2025-01-10');
+      expect(result).toEqual({});
+      expect(mock.mockFrom).not.toHaveBeenCalled();
+    });
+
+    it('throws on query error', async () => {
+      mock.queryBuilder.eq.mockResolvedValueOnce({
+        data: null,
+        error: { message: 'db down' },
+      });
+
+      await expect(
+        market.getBatchSignalAndExecutionPrices(['SPY'], '2025-01-10')
+      ).rejects.toThrow('Failed to fetch dual prices: db down');
+    });
+
+    it('returns empty object when no rows match', async () => {
+      mock.queryBuilder.eq.mockResolvedValueOnce({
+        data: [],
+        error: null,
+      });
+
+      const result = await market.getBatchSignalAndExecutionPrices(['INVALID'], '2025-01-10');
+      expect(result).toEqual({});
+    });
+  });
+
+  describe('getSignalAndExecutionPrices', () => {
+    it('delegates to getBatchSignalAndExecutionPrices and extracts symbol', async () => {
+      mock.queryBuilder.eq.mockResolvedValueOnce({
+        data: [{ symbol: 'SPY', price_330pm_et: 590.10, price_400pm_et: 590.25 }],
+        error: null,
+      });
+
+      const result = await market.getSignalAndExecutionPrices('SPY', '2025-01-10');
+
+      expect(result).toEqual({ signal: 590.10, execution: 590.25 } satisfies DualPrice);
+    });
+
+    it('returns null when symbol not found', async () => {
+      mock.queryBuilder.eq.mockResolvedValueOnce({
+        data: [],
+        error: null,
+      });
+
+      const result = await market.getSignalAndExecutionPrices('INVALID', '2025-01-10');
+      expect(result).toBeNull();
     });
   });
 
