@@ -381,6 +381,73 @@ describe('evaluateCached', () => {
     });
   });
 
+  it('includes signal name in upsert_evaluation call for shadow mode', async () => {
+    mock.mockRpc.mockResolvedValue({ error: null });
+
+    mock.mockFrom.mockImplementation((table: string) => {
+      if (table === 'strategies') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              limit: vi.fn().mockReturnValue({
+                maybeSingle: vi.fn().mockResolvedValue({ data: { id: 1 }, error: null }),
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === 'trading_days') return makeTradingDaysMock()();
+      if (table === 'strategy_evaluations') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                limit: vi.fn().mockReturnValue({
+                  maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+                }),
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === 'named_signals') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+          }),
+        };
+      }
+      if (table === 'signal_evaluations') {
+        return {
+          select: vi.fn().mockReturnValue({
+            in: vi.fn().mockReturnValue({
+              order: vi.fn().mockResolvedValue({ data: [], error: null }),
+            }),
+          }),
+        };
+      }
+      return {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            limit: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            }),
+          }),
+        }),
+      };
+    });
+
+    await evaluateCached(mock.client, market, testStrategy, evalAt);
+
+    await vi.waitFor(() => {
+      expect(mock.mockRpc).toHaveBeenCalledWith('upsert_evaluation', expect.objectContaining({
+        p_signal_results: expect.arrayContaining([
+          expect.objectContaining({ name: 'SPY above SMA5' }),
+        ]),
+      }));
+    });
+  });
+
   it('does not propagate store failure', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     mock.mockRpc.mockResolvedValue({ error: { message: 'DB error' } });

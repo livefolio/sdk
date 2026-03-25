@@ -43,7 +43,7 @@ export type {
 
 export { createStrategy } from './client';
 export { get, getMany } from './get';
-export { evaluateCached } from './cache';
+export { evaluateCached, fetchIndicatorKeyMap } from './cache';
 export { stream } from './stream';
 export { backtest, backtestWithMarketData, backtestRulesWithMarketData } from './backtest';
 export { computePerformanceMetrics } from './performance';
