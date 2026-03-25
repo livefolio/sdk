@@ -137,6 +137,11 @@ export interface Strategy {
   trading: Trading;
   allocations: NamedAllocation[];
   signals: NamedSignal[];
+  // App-specific rendering fields (optional — SDK does not consume these)
+  narrative?: unknown;
+  definition?: unknown;
+  backtest?: unknown;
+  backtestRefreshedAt?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -189,6 +194,7 @@ export interface StrategyDraft {
 export interface EvaluationOptions {
   at: Date;
   batchSeries: Record<string, Observation[]>;
+  tradingDays?: ReadonlySet<string>;
   previousSignalStates?: Record<string, boolean>;
   previousIndicatorMetadata?: Record<string, unknown>;
 }
