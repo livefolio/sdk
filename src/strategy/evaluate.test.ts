@@ -8,6 +8,7 @@ import {
   indicatorKey,
   signalKey,
   findAllSignals,
+  filterByTradingDays,
 } from './evaluate';
 import { extractSymbols } from './symbols';
 import type {
@@ -902,6 +903,151 @@ describe('extractSymbols', () => {
     expect(symbols).toContain('SPY'); // From the SPY named signal
     expect(symbols).toContain('QQQ');
     expect(symbols).toContain('TLT');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// tradingDays filtering
+// ---------------------------------------------------------------------------
+
+describe('filterByTradingDays', () => {
+  const series: Observation[] = [
+    { timestamp: marketCloseUTC('2025-01-06'), value: 100 },
+    { timestamp: marketCloseUTC('2025-01-07'), value: 101 },
+    { timestamp: marketCloseUTC('2025-01-08'), value: 102 },
+    { timestamp: marketCloseUTC('2025-01-09'), value: 103 },
+    { timestamp: marketCloseUTC('2025-01-10'), value: 104 },
+  ];
+
+  it('excludes observations not in trading day set', () => {
+    // Only include Mon, Wed, Fri (skip Tue, Thu)
+    const tradingDays = new Set(['2025-01-06', '2025-01-08', '2025-01-10']);
+    const filtered = filterByTradingDays(series, tradingDays);
+    expect(filtered).toHaveLength(3);
+    expect(filtered.map((o) => o.value)).toEqual([100, 102, 104]);
+  });
+
+  it('returns all observations when all days are in set', () => {
+    const tradingDays = new Set(['2025-01-06', '2025-01-07', '2025-01-08', '2025-01-09', '2025-01-10']);
+    const filtered = filterByTradingDays(series, tradingDays);
+    expect(filtered).toHaveLength(5);
+  });
+
+  it('returns empty array when no days match', () => {
+    const tradingDays = new Set(['2025-02-01']);
+    const filtered = filterByTradingDays(series, tradingDays);
+    expect(filtered).toHaveLength(0);
+  });
+
+  it('caches result for same series ref + tradingDays ref', () => {
+    const tradingDays = new Set(['2025-01-06', '2025-01-10']);
+    const result1 = filterByTradingDays(series, tradingDays);
+    const result2 = filterByTradingDays(series, tradingDays);
+    expect(result1).toBe(result2); // Same reference
+  });
+});
+
+describe('evaluate with tradingDays', () => {
+  // Series with 5 trading days + 2 non-trading days mixed in
+  const allDates = ['2025-01-06', '2025-01-07', '2025-01-08', '2025-01-09', '2025-01-10'];
+  const prices = [100, 102, 101, 103, 104];
+  const fullSeries = makeSeries(allDates, prices);
+
+  // Only 3 of 5 days are "trading days"
+  const tradingDays = new Set(['2025-01-06', '2025-01-08', '2025-01-10']);
+
+  it('SMA with tradingDays excludes non-trading-day observations', () => {
+    const indicator = makeIndicator({ type: 'SMA', lookback: 3 });
+    const optionsWithTD: EvaluationOptions = {
+      at: new Date(marketCloseUTC('2025-01-10')),
+      batchSeries: { SPY: fullSeries },
+      tradingDays,
+    };
+    const optionsWithoutTD: EvaluationOptions = {
+      at: new Date(marketCloseUTC('2025-01-10')),
+      batchSeries: { SPY: fullSeries },
+    };
+
+    const withTD = evaluateIndicator(indicator, optionsWithTD);
+    const withoutTD = evaluateIndicator(indicator, optionsWithoutTD);
+
+    // With tradingDays {Jan6,Jan8,Jan10}: SMA of [100, 101, 104] = 101.667
+    expect(withTD.value).toBeCloseTo(101.6667, 3);
+    // Without tradingDays: SMA of last 3 [101, 103, 104] = 102.667
+    expect(withoutTD.value).toBeCloseTo(102.6667, 3);
+    // They differ because filtering changes which observations enter the SMA
+    expect(withTD.value).not.toBeCloseTo(withoutTD.value, 1);
+  });
+
+  it('evaluate() without tradingDays produces same results as before (backward compat)', () => {
+    const signal = makeSignal();
+    const strategy: Strategy = {
+      linkId: 'test',
+      name: 'Test',
+      trading: { frequency: 'Daily', offset: 0 },
+      allocations: {
+        Aggressive: {
+          condition: { kind: 'signal', signal },
+          holdings: [{ ticker: SPY_TICKER, weight: 100 }],
+        },
+        Default: {
+          condition: { kind: 'signal', signal: { ...signal, comparison: '<' } },
+          holdings: [{ ticker: { symbol: 'BND', leverage: 1 }, weight: 100 }],
+        },
+      },
+      signals: { 'Signal 1': signal },
+    };
+
+    const options: EvaluationOptions = {
+      at: new Date(marketCloseUTC('2025-01-10')),
+      batchSeries: { SPY: fullSeries },
+    };
+
+    // Should not throw and should return valid result without tradingDays
+    const result = evaluate(strategy, options);
+    expect(result.allocation.name).toBeDefined();
+    expect(result.asOf).toBeInstanceOf(Date);
+    expect(Object.keys(result.signals).length).toBeGreaterThan(0);
+  });
+
+  it('evaluate() with tradingDays filters series before computation', () => {
+    const signal = makeSignal({
+      left: makeIndicator({ type: 'SMA', lookback: 3 }),
+      right: makeIndicator({ type: 'Threshold', threshold: 102, lookback: 0 }),
+      comparison: '>',
+    });
+    const strategy: Strategy = {
+      linkId: 'test',
+      name: 'Test',
+      trading: { frequency: 'Daily', offset: 0 },
+      allocations: {
+        Above: {
+          condition: { kind: 'signal', signal },
+          holdings: [{ ticker: SPY_TICKER, weight: 100 }],
+        },
+        Below: {
+          condition: { kind: 'signal', signal: { ...signal, comparison: '<' } },
+          holdings: [{ ticker: { symbol: 'BND', leverage: 1 }, weight: 100 }],
+        },
+      },
+      signals: { 'SMA vs 102': signal },
+    };
+
+    // With tradingDays: SMA(3) of [100, 102, 104] = 102, NOT > 102 → Below
+    const resultWithTD = evaluate(strategy, {
+      at: new Date(marketCloseUTC('2025-01-10')),
+      batchSeries: { SPY: fullSeries },
+      tradingDays,
+    });
+
+    // Without tradingDays: SMA(3) of [101, 103, 104] ≈ 102.67 > 102 → Above
+    const resultWithoutTD = evaluate(strategy, {
+      at: new Date(marketCloseUTC('2025-01-10')),
+      batchSeries: { SPY: fullSeries },
+    });
+
+    expect(resultWithTD.allocation.name).toBe('Below');
+    expect(resultWithoutTD.allocation.name).toBe('Above');
   });
 });
 

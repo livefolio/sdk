@@ -29,3 +29,8 @@ export function isAtMarketClose(timestamp: Date): boolean {
   const et = utcToET(timestamp);
   return (et.hour === 16 && et.minute === 0) || (et.hour === 13 && et.minute === 0);
 }
+
+export function toTradingDayKey(timestamp: Date): string {
+  const et = utcToET(timestamp);
+  return `${et.year}-${String(et.month).padStart(2, '0')}-${String(et.day).padStart(2, '0')}`;
+}

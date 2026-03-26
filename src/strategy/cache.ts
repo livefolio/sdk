@@ -1,5 +1,5 @@
 import type { TypedSupabaseClient } from '../types';
-import type { MarketModule } from '../market/types';
+import type { MarketModule, Observation } from '../market/types';
 import type {
   Indicator,
   IndicatorEvaluation,
@@ -17,6 +17,7 @@ import {
   signalKey,
   indicatorKey,
 } from './evaluate';
+import { toTradingDayKey } from './time';
 import { extractSymbols as extractSymbolsPure } from './symbols';
 
 // ---------------------------------------------------------------------------
@@ -329,6 +330,30 @@ async function storeResult(
 }
 
 // ---------------------------------------------------------------------------
+// Trading day set builder (mirrors App's loadTradingDaySetForSeries)
+// ---------------------------------------------------------------------------
+
+async function buildTradingDaySetFromSeries(
+  market: MarketModule,
+  batchSeries: Record<string, Observation[]>,
+  at: Date,
+): Promise<ReadonlySet<string>> {
+  let start = toTradingDayKey(at);
+  let end = start;
+
+  for (const series of Object.values(batchSeries)) {
+    if (series.length === 0) continue;
+    const firstDay = toTradingDayKey(new Date(series[0].timestamp));
+    const lastDay = toTradingDayKey(new Date(series[series.length - 1].timestamp));
+    if (firstDay < start) start = firstDay;
+    if (lastDay > end) end = lastDay;
+  }
+
+  const tradingDays = await market.getTradingDays(start, end);
+  return new Set(tradingDays.map((d) => d.date));
+}
+
+// ---------------------------------------------------------------------------
 // Cache-through evaluation (exported)
 // ---------------------------------------------------------------------------
 
@@ -353,14 +378,17 @@ export async function evaluateCached(
       .then(({ data }) => data),
   ]);
 
-  // 2. Build options for pure evaluation
-  const options = { at, batchSeries };
+  // 2. Build tradingDays set from series bounds
+  const tradingDays = await buildTradingDaySetFromSeries(market, batchSeries, at);
+
+  // 3. Build options for pure evaluation (with tradingDays)
+  const options = { at, batchSeries, tradingDays };
   const evaluationDate = getEvaluationDatePure(strategy.trading, options);
 
-  // 3. No DB strategy → pure eval
+  // 4. No DB strategy → pure eval
   if (!stratRow) return evaluatePure(strategy, options);
 
-  // 4. Resolve trading_day_id
+  // 5. Resolve trading_day_id
   const { data: tdRow } = await db
     .from('trading_days')
     .select('id')

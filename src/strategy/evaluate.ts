@@ -13,7 +13,7 @@ import type {
   Trading,
 } from './types';
 import { INDICATOR_SYMBOL_MAP } from './symbols';
-import { isAtMarketClose } from './time';
+import { isAtMarketClose, toTradingDayKey } from './time';
 
 // ---------------------------------------------------------------------------
 // Internal observation format (Date timestamps, price field)
@@ -32,6 +32,40 @@ function toInternalSeries(series: Observation[]): InternalObs[] {
   const normalized = series.map((o) => ({ timestamp: new Date(o.timestamp), price: o.value }));
   INTERNAL_SERIES_CACHE.set(series, normalized);
   return normalized;
+}
+
+// ---------------------------------------------------------------------------
+// Trading day filtering (matches App's filterSeriesByTradingCalendar)
+// ---------------------------------------------------------------------------
+
+const FILTERED_SERIES_CACHE = new WeakMap<Observation[], Map<ReadonlySet<string>, Observation[]>>();
+
+export function filterByTradingDays(
+  series: Observation[],
+  tradingDays: ReadonlySet<string>,
+): Observation[] {
+  let byCalendar = FILTERED_SERIES_CACHE.get(series);
+  if (!byCalendar) {
+    byCalendar = new Map();
+    FILTERED_SERIES_CACHE.set(series, byCalendar);
+  }
+  const cached = byCalendar.get(tradingDays);
+  if (cached) return cached;
+
+  const filtered = series.filter((obs) => tradingDays.has(toTradingDayKey(new Date(obs.timestamp))));
+  byCalendar.set(tradingDays, filtered);
+  return filtered;
+}
+
+function filterBatchSeries(
+  batchSeries: Record<string, Observation[]>,
+  tradingDays: ReadonlySet<string>,
+): Record<string, Observation[]> {
+  const result: Record<string, Observation[]> = {};
+  for (const [symbol, series] of Object.entries(batchSeries)) {
+    result[symbol] = filterByTradingDays(series, tradingDays);
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -337,10 +371,15 @@ export function evaluateIndicator(
 
   const delay = indicator.delay;
 
+  // Pre-filter series by trading calendar when provided
+  const batchSeries = options.tradingDays
+    ? filterBatchSeries(options.batchSeries, options.tradingDays)
+    : options.batchSeries;
+
   // Temporal indicators don't depend on series
   if (['Month', 'Day of Week', 'Day of Month', 'Day of Year'].includes(indicator.type)) {
     return INDICATOR_FNS[indicator.type](
-      options.batchSeries, indicator.ticker, options.at, indicator.lookback, delay,
+      batchSeries, indicator.ticker, options.at, indicator.lookback, delay,
     );
   }
 
@@ -349,7 +388,7 @@ export function evaluateIndicator(
   const prevMeta = options.previousIndicatorMetadata?.[key];
 
   return INDICATOR_FNS[indicator.type](
-    options.batchSeries, indicator.ticker, options.at, indicator.lookback, delay, prevMeta,
+    batchSeries, indicator.ticker, options.at, indicator.lookback, delay, prevMeta,
   );
 }
 
@@ -533,10 +572,15 @@ export function findAllSignals(condition: Condition): Signal[] {
 // ---------------------------------------------------------------------------
 
 export function getEvaluationDate(trading: Trading, options: EvaluationOptions): Date {
-  const series = Object.values(options.batchSeries)[0];
-  if (!series || series.length === 0) {
+  const rawSeries = Object.values(options.batchSeries)[0];
+  if (!rawSeries || rawSeries.length === 0) {
     return options.at;
   }
+
+  const series = options.tradingDays
+    ? filterByTradingDays(rawSeries, options.tradingDays)
+    : rawSeries;
+  if (series.length === 0) return options.at;
 
   const internalSeries = toInternalSeries(series);
 
