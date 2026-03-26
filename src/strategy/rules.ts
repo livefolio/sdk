@@ -86,18 +86,25 @@ export function compileRules(strategyDraft: StrategyDraft): Strategy {
 
   validateHoldingsWeights(strategyDraft);
 
+  const signals: Strategy['signals'] = {};
+  for (const s of strategyDraft.signals) {
+    signals[s.name] = { ...s.signal };
+  }
+
+  const allocations: Strategy['allocations'] = {};
+  for (const allocation of strategyDraft.allocations) {
+    allocations[allocation.name] = {
+      condition: compileRuleCondition(allocation.condition, signalByName),
+      holdings: allocation.holdings.map((holding) => ({ ...holding })),
+      rebalance: allocation.rebalance,
+    };
+  }
+
   return {
     linkId: strategyDraft.linkId,
     name: strategyDraft.name,
     trading: strategyDraft.trading,
-    signals: strategyDraft.signals.map((signal) => ({ ...signal })),
-    allocations: strategyDraft.allocations.map((allocation) => ({
-      name: allocation.name,
-      allocation: {
-        condition: compileRuleCondition(allocation.condition, signalByName),
-        holdings: allocation.holdings.map((holding) => ({ ...holding })),
-        rebalance: allocation.rebalance,
-      },
-    })),
+    signals,
+    allocations,
   };
 }

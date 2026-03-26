@@ -1,7 +1,6 @@
 export type {
   StrategyModule,
   Strategy,
-  NamedSignal,
   AllocationEvaluation,
   Signal,
   Allocation,

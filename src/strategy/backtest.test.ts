@@ -60,8 +60,8 @@ describe('backtest', () => {
       linkId: 'x',
       name: 'x',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [],
-      allocations: [],
+      signals: {},
+      allocations: {},
     };
 
     await expect(backtest(strategy, makeOptions())).rejects.toThrow(
@@ -74,16 +74,13 @@ describe('backtest', () => {
       linkId: 'x',
       name: 'x',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [],
-      allocations: [
-        {
-          name: 'Cash Fallback',
-          allocation: {
-            condition: { kind: 'and', args: [] },
-            holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
-          },
+      signals: {},
+      allocations: {
+        'Cash Fallback': {
+          condition: { kind: 'and', args: [] },
+          holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
         },
-      ],
+      },
     };
 
     const result = await backtest(strategy, makeOptions());
@@ -100,16 +97,13 @@ describe('backtest', () => {
       linkId: 'x',
       name: 'x',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [],
-      allocations: [
-        {
-          name: 'Default',
-          allocation: {
-            condition: { kind: 'and', args: [] },
-            holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
-          },
+      signals: {},
+      allocations: {
+        Default: {
+          condition: { kind: 'and', args: [] },
+          holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
         },
-      ],
+      },
     };
 
     const result = await backtest(strategy, makeOptions());
@@ -141,16 +135,13 @@ describe('backtest', () => {
       linkId: 'x',
       name: 'x',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [],
-      allocations: [
-        {
-          name: 'Default',
-          allocation: {
-            condition: { kind: 'and', args: [] },
-            holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
-          },
+      signals: {},
+      allocations: {
+        Default: {
+          condition: { kind: 'and', args: [] },
+          holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
         },
-      ],
+      },
     };
     const result = await backtest(strategy, {
       ...makeOptions(),
@@ -171,16 +162,13 @@ describe('backtest', () => {
       linkId: 'x',
       name: 'x',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [],
-      allocations: [
-        {
-          name: 'Default',
-          allocation: {
-            condition: { kind: 'and', args: [] },
-            holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
-          },
+      signals: {},
+      allocations: {
+        Default: {
+          condition: { kind: 'and', args: [] },
+          holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
         },
-      ],
+      },
     };
     const result = await backtest(strategy, {
       ...makeOptions(),
@@ -213,23 +201,17 @@ describe('backtest', () => {
       linkId: 'x',
       name: 'x',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [{ name: 'Trend', signal }],
-      allocations: [
-        {
-          name: 'Risk On',
-          allocation: {
-            condition: { kind: 'signal', signal },
-            holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
-          },
+      signals: { Trend: signal },
+      allocations: {
+        'Risk On': {
+          condition: { kind: 'signal', signal },
+          holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
         },
-        {
-          name: 'Default',
-          allocation: {
-            condition: { kind: 'and', args: [] },
-            holdings: [{ ticker: { symbol: 'BIL', leverage: 1 }, weight: 100 }],
-          },
+        Default: {
+          condition: { kind: 'and', args: [] },
+          holdings: [{ ticker: { symbol: 'BIL', leverage: 1 }, weight: 100 }],
         },
-      ],
+      },
     };
 
     const result = await backtest(strategy, makeOptions());
@@ -244,19 +226,16 @@ describe('backtest', () => {
       linkId: 'x',
       name: 'x',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [],
-      allocations: [
-        {
-          name: 'Default',
-          allocation: {
-            condition: { kind: 'and', args: [] },
-            holdings: [
-              { ticker: { symbol: 'SPY', leverage: 1 }, weight: 50 },
-              { ticker: { symbol: 'BIL', leverage: 1 }, weight: 50 },
-            ],
-          },
+      signals: {},
+      allocations: {
+        Default: {
+          condition: { kind: 'and', args: [] },
+          holdings: [
+            { ticker: { symbol: 'SPY', leverage: 1 }, weight: 50 },
+            { ticker: { symbol: 'BIL', leverage: 1 }, weight: 50 },
+          ],
         },
-      ],
+      },
     };
     const options = makeOptions();
     options.batchSeries = {
@@ -313,20 +292,17 @@ describe('backtest', () => {
       linkId: 'x',
       name: 'x',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [],
-      allocations: [
-        {
-          name: 'Default',
-          allocation: {
-            condition: { kind: 'and', args: [] },
-            holdings: [
-              { ticker: { symbol: 'SPY', leverage: 1 }, weight: 50 },
-              { ticker: { symbol: 'BIL', leverage: 1 }, weight: 50 },
-            ],
-            rebalance: { mode: 'calendar', frequency: 'Daily' },
-          },
+      signals: {},
+      allocations: {
+        Default: {
+          condition: { kind: 'and', args: [] },
+          holdings: [
+            { ticker: { symbol: 'SPY', leverage: 1 }, weight: 50 },
+            { ticker: { symbol: 'BIL', leverage: 1 }, weight: 50 },
+          ],
+          rebalance: { mode: 'calendar', frequency: 'Daily' },
         },
-      ],
+      },
     };
     const options = makeOptions();
     options.batchSeries = {
@@ -358,23 +334,17 @@ describe('backtest', () => {
       linkId: 'x',
       name: 'x',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [{ name: 'Gate', signal }],
-      allocations: [
-        {
-          name: 'Risk On',
-          allocation: {
-            condition: { kind: 'signal', signal },
-            holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
-          },
+      signals: { Gate: signal },
+      allocations: {
+        'Risk On': {
+          condition: { kind: 'signal', signal },
+          holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
         },
-        {
-          name: 'Default',
-          allocation: {
-            condition: { kind: 'and', args: [] },
-            holdings: [{ ticker: { symbol: 'BIL', leverage: 1 }, weight: 100 }],
-          },
+        Default: {
+          condition: { kind: 'and', args: [] },
+          holdings: [{ ticker: { symbol: 'BIL', leverage: 1 }, weight: 100 }],
         },
-      ],
+      },
     };
     const options = makeOptions();
     options.batchSeries = {
@@ -405,16 +375,13 @@ describe('backtest', () => {
       linkId: 'x',
       name: 'x',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [],
-      allocations: [
-        {
-          name: 'Default',
-          allocation: {
-            condition: { kind: 'and', args: [] },
-            holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
-          },
+      signals: {},
+      allocations: {
+        Default: {
+          condition: { kind: 'and', args: [] },
+          holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
         },
-      ],
+      },
     };
     const options = makeOptions();
     options.batchSeries = {
@@ -441,23 +408,17 @@ describe('backtest', () => {
       linkId: 'x',
       name: 'x',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [{ name: 'AlwaysTrue', signal }],
-      allocations: [
-        {
-          name: 'Risk On',
-          allocation: {
-            condition: { kind: 'signal', signal },
-            holdings: [{ ticker: { symbol: 'QQQ', leverage: 1 }, weight: 100 }],
-          },
+      signals: { AlwaysTrue: signal },
+      allocations: {
+        'Risk On': {
+          condition: { kind: 'signal', signal },
+          holdings: [{ ticker: { symbol: 'QQQ', leverage: 1 }, weight: 100 }],
         },
-        {
-          name: 'Default',
-          allocation: {
-            condition: { kind: 'and', args: [] },
-            holdings: [{ ticker: { symbol: 'BIL', leverage: 1 }, weight: 100 }],
-          },
+        Default: {
+          condition: { kind: 'and', args: [] },
+          holdings: [{ ticker: { symbol: 'BIL', leverage: 1 }, weight: 100 }],
         },
-      ],
+      },
     };
     const options = makeOptions();
     options.batchSeries = {
@@ -493,23 +454,17 @@ describe('backtest', () => {
       linkId: 'x',
       name: 'x',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [{ name: 'Gate', signal }],
-      allocations: [
-        {
-          name: 'Risk On',
-          allocation: {
-            condition: { kind: 'signal', signal },
-            holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
-          },
+      signals: { Gate: signal },
+      allocations: {
+        'Risk On': {
+          condition: { kind: 'signal', signal },
+          holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
         },
-        {
-          name: 'Default',
-          allocation: {
-            condition: { kind: 'and', args: [] },
-            holdings: [{ ticker: { symbol: 'BIL', leverage: 1 }, weight: 100 }],
-          },
+        Default: {
+          condition: { kind: 'and', args: [] },
+          holdings: [{ ticker: { symbol: 'BIL', leverage: 1 }, weight: 100 }],
         },
-      ],
+      },
     };
     const result = await backtest(strategy, makeOptions());
     expect(result.summary.tradeCount).toBeGreaterThan(0);
@@ -520,19 +475,16 @@ describe('backtest', () => {
       linkId: 'x',
       name: 'x',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [],
-      allocations: [
-        {
-          name: 'Default',
-          allocation: {
-            condition: { kind: 'and', args: [] },
-            holdings: [
-              { ticker: { symbol: 'SPY', leverage: 1 }, weight: 50 },
-              { ticker: { symbol: 'QQQ', leverage: 1 }, weight: 50 },
-            ],
-          },
+      signals: {},
+      allocations: {
+        Default: {
+          condition: { kind: 'and', args: [] },
+          holdings: [
+            { ticker: { symbol: 'SPY', leverage: 1 }, weight: 50 },
+            { ticker: { symbol: 'QQQ', leverage: 1 }, weight: 50 },
+          ],
         },
-      ],
+      },
     };
     const options = makeOptions();
     options.batchSeries = {
@@ -566,26 +518,20 @@ describe('backtest', () => {
       linkId: 'x',
       name: 'x',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [{ name: 'RiskOn', signal }],
-      allocations: [
-        {
-          name: 'Risk On',
-          allocation: {
-            condition: { kind: 'signal', signal },
-            holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
-          },
+      signals: { RiskOn: signal },
+      allocations: {
+        'Risk On': {
+          condition: { kind: 'signal', signal },
+          holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
         },
-        {
-          name: 'Default',
-          allocation: {
-            condition: { kind: 'and', args: [] },
-            holdings: [
-              { ticker: { symbol: 'SPY', leverage: 1 }, weight: 50 },
-              { ticker: { symbol: 'BIL', leverage: 1 }, weight: 50 },
-            ],
-          },
+        Default: {
+          condition: { kind: 'and', args: [] },
+          holdings: [
+            { ticker: { symbol: 'SPY', leverage: 1 }, weight: 50 },
+            { ticker: { symbol: 'BIL', leverage: 1 }, weight: 50 },
+          ],
         },
-      ],
+      },
     };
     const options = makeOptions();
     options.batchSeries = {
@@ -625,23 +571,17 @@ describe('backtest', () => {
       linkId: 'x',
       name: 'x',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [{ name: 'RiskOn', signal }],
-      allocations: [
-        {
-          name: 'Risk On',
-          allocation: {
-            condition: { kind: 'signal', signal },
-            holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
-          },
+      signals: { RiskOn: signal },
+      allocations: {
+        'Risk On': {
+          condition: { kind: 'signal', signal },
+          holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
         },
-        {
-          name: 'Default',
-          allocation: {
-            condition: { kind: 'and', args: [] },
-            holdings: [{ ticker: { symbol: 'BIL', leverage: 1 }, weight: 100 }],
-          },
+        Default: {
+          condition: { kind: 'and', args: [] },
+          holdings: [{ ticker: { symbol: 'BIL', leverage: 1 }, weight: 100 }],
         },
-      ],
+      },
     };
     const options = makeOptions();
     options.batchSeries = {
@@ -683,23 +623,17 @@ describe('backtest', () => {
       linkId: 'x',
       name: 'x',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [{ name: 'RiskOn', signal }],
-      allocations: [
-        {
-          name: 'Risk On',
-          allocation: {
-            condition: { kind: 'signal', signal },
-            holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
-          },
+      signals: { RiskOn: signal },
+      allocations: {
+        'Risk On': {
+          condition: { kind: 'signal', signal },
+          holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
         },
-        {
-          name: 'Default',
-          allocation: {
-            condition: { kind: 'and', args: [] },
-            holdings: [{ ticker: { symbol: 'BIL', leverage: 1 }, weight: 100 }],
-          },
+        Default: {
+          condition: { kind: 'and', args: [] },
+          holdings: [{ ticker: { symbol: 'BIL', leverage: 1 }, weight: 100 }],
         },
-      ],
+      },
     };
     const result = await backtest(strategy, {
       startDate: '2024-01-02',

@@ -1,6 +1,6 @@
 {
   "name": "@livefolio/sdk",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "description": "Livefolio SDK — market data, strategy evaluation, and portfolio management",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
