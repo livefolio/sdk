@@ -88,16 +88,13 @@ describe('createStrategy', () => {
         linkId: 'x',
         name: 'x',
         trading: { frequency: 'Daily', offset: 0 },
-        allocations: [
-          {
-            name: 'Default',
-            allocation: {
-              condition: { kind: 'and', args: [] },
-              holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
-            },
+        allocations: {
+          Default: {
+            condition: { kind: 'and', args: [] },
+            holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
           },
-        ],
-        signals: [],
+        },
+        signals: {},
       },
       { startDate: '2024-01-02', endDate: '2024-01-02' },
     );

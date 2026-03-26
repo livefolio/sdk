@@ -27,13 +27,13 @@ function addIndicatorSymbol(indicator: Indicator, symbols: Set<string>): void {
 export function extractSymbols(strategy: Strategy): string[] {
   const symbols = new Set<string>();
 
-  for (const ns of strategy.signals) {
-    addIndicatorSymbol(ns.signal.left, symbols);
-    addIndicatorSymbol(ns.signal.right, symbols);
+  for (const signal of Object.values(strategy.signals)) {
+    addIndicatorSymbol(signal.left, symbols);
+    addIndicatorSymbol(signal.right, symbols);
   }
 
-  for (const na of strategy.allocations) {
-    for (const holding of na.allocation.holdings) {
+  for (const allocation of Object.values(strategy.allocations)) {
+    for (const holding of allocation.holdings) {
       symbols.add(holding.ticker.symbol);
     }
   }

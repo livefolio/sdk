@@ -48,49 +48,40 @@ const streamStrategy: Strategy = {
   linkId: 'abc-123',
   name: 'Test Strategy',
   trading: { frequency: 'Daily' as const, offset: 0 },
-  allocations: [
-    {
-      name: 'Aggressive',
-      allocation: {
-        condition: {
-          kind: 'signal' as const,
-          signal: {
-            left: { type: 'Price' as const, ticker: { symbol: 'SPY', leverage: 1 }, lookback: 1, delay: 0, unit: null, threshold: null },
-            comparison: '>' as const,
-            right: { type: 'SMA' as const, ticker: { symbol: 'SPY', leverage: 1 }, lookback: 5, delay: 0, unit: null, threshold: null },
-            tolerance: 0,
-          },
+  allocations: {
+    Aggressive: {
+      condition: {
+        kind: 'signal' as const,
+        signal: {
+          left: { type: 'Price' as const, ticker: { symbol: 'SPY', leverage: 1 }, lookback: 1, delay: 0, unit: null, threshold: null },
+          comparison: '>' as const,
+          right: { type: 'SMA' as const, ticker: { symbol: 'SPY', leverage: 1 }, lookback: 5, delay: 0, unit: null, threshold: null },
+          tolerance: 0,
         },
-        holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
       },
+      holdings: [{ ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }],
     },
-    {
-      name: 'Default',
-      allocation: {
-        condition: {
-          kind: 'signal' as const,
-          signal: {
-            left: { type: 'Threshold' as const, ticker: { symbol: '', leverage: 1 }, lookback: 0, delay: 0, unit: null, threshold: 1 },
-            comparison: '>' as const,
-            right: { type: 'Threshold' as const, ticker: { symbol: '', leverage: 1 }, lookback: 0, delay: 0, unit: null, threshold: 0 },
-            tolerance: 0,
-          },
+    Default: {
+      condition: {
+        kind: 'signal' as const,
+        signal: {
+          left: { type: 'Threshold' as const, ticker: { symbol: '', leverage: 1 }, lookback: 0, delay: 0, unit: null, threshold: 1 },
+          comparison: '>' as const,
+          right: { type: 'Threshold' as const, ticker: { symbol: '', leverage: 1 }, lookback: 0, delay: 0, unit: null, threshold: 0 },
+          tolerance: 0,
         },
-        holdings: [{ ticker: { symbol: 'BND', leverage: 1 }, weight: 100 }],
       },
+      holdings: [{ ticker: { symbol: 'BND', leverage: 1 }, weight: 100 }],
     },
-  ],
-  signals: [
-    {
-      name: 'SPY above SMA5',
-      signal: {
-        left: { type: 'Price' as const, ticker: { symbol: 'SPY', leverage: 1 }, lookback: 1, delay: 0, unit: null, threshold: null },
-        comparison: '>' as const,
-        right: { type: 'SMA' as const, ticker: { symbol: 'SPY', leverage: 1 }, lookback: 5, delay: 0, unit: null, threshold: null },
-        tolerance: 0,
-      },
+  },
+  signals: {
+    'SPY above SMA5': {
+      left: { type: 'Price' as const, ticker: { symbol: 'SPY', leverage: 1 }, lookback: 1, delay: 0, unit: null, threshold: null },
+      comparison: '>' as const,
+      right: { type: 'SMA' as const, ticker: { symbol: 'SPY', leverage: 1 }, lookback: 5, delay: 0, unit: null, threshold: null },
+      tolerance: 0,
     },
-  ],
+  },
 };
 
 // ---------------------------------------------------------------------------

@@ -109,20 +109,6 @@ export interface OrExpr {
 export type Condition = OrExpr | AndExpr | UnaryExpr;
 
 // ---------------------------------------------------------------------------
-// Named instances (strategy-scoped)
-// ---------------------------------------------------------------------------
-
-export interface NamedSignal {
-  name: string;
-  signal: Signal;
-}
-
-export interface NamedAllocation {
-  name: string;
-  allocation: Allocation;
-}
-
-// ---------------------------------------------------------------------------
 // Strategy (fully resolved, ready for evaluation)
 // ---------------------------------------------------------------------------
 
@@ -135,8 +121,8 @@ export interface Strategy {
   linkId: string;
   name: string;
   trading: Trading;
-  allocations: NamedAllocation[];
-  signals: NamedSignal[];
+  allocations: Record<string, Allocation>;
+  signals: Record<string, Signal>;
   // App-specific rendering fields (optional — SDK does not consume these)
   narrative?: unknown;
   definition?: unknown;
@@ -183,7 +169,7 @@ export interface StrategyDraft {
   linkId: string;
   name: string;
   trading: Trading;
-  signals: NamedSignal[];
+  signals: { name: string; signal: Signal }[];
   allocations: StrategyAllocationDraft[];
 }
 

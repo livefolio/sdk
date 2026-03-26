@@ -51,10 +51,10 @@ describe('compileRules', () => {
   it('compiles a draft into executable strategy', () => {
     const compiled = compileRules(makeDraft());
 
-    expect(compiled.signals).toHaveLength(1);
-    expect(compiled.allocations).toHaveLength(2);
-    expect(compiled.allocations[0].allocation.condition.kind).toBe('signal');
-    expect(compiled.allocations[1].allocation.condition.kind).toBe('not');
+    expect(Object.keys(compiled.signals)).toHaveLength(1);
+    expect(Object.keys(compiled.allocations)).toHaveLength(2);
+    expect(compiled.allocations['Risk On'].condition.kind).toBe('signal');
+    expect(compiled.allocations['Default'].condition.kind).toBe('not');
   });
 
   it('supports custom fallback allocation names', () => {
@@ -62,7 +62,7 @@ describe('compileRules', () => {
     draft.allocations[1].name = 'Cash Fallback';
 
     const compiled = compileRules(draft);
-    expect(compiled.allocations[1].name).toBe('Cash Fallback');
+    expect(compiled.allocations['Cash Fallback']).toBeDefined();
   });
 
   it('throws when a condition references unknown signal names', () => {

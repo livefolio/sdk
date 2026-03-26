@@ -15,7 +15,6 @@ import type {
   Condition,
   EvaluationOptions,
   Indicator,
-  NamedAllocation,
   Signal,
   Strategy,
 } from './types';
@@ -653,39 +652,34 @@ describe('evaluate', () => {
   const trueSignal = makeSignal({ comparison: '>' });
   const falseSignal = makeSignal({ comparison: '<' });
 
-  function makeStrategy(allocs: NamedAllocation[]): Strategy {
-    const signals = new Set<Signal>();
-    for (const na of allocs) {
-      for (const s of findAllSignals(na.allocation.condition)) signals.add(s);
+  function makeStrategy(allocs: Record<string, Allocation>): Strategy {
+    const signals: Strategy['signals'] = {};
+    let i = 0;
+    for (const allocation of Object.values(allocs)) {
+      for (const s of findAllSignals(allocation.condition)) {
+        signals[`Signal ${i++}`] = s;
+      }
     }
     return {
       linkId: 'test-123',
       name: 'Test Strategy',
       trading: { frequency: 'Daily', offset: 0 },
       allocations: allocs,
-      signals: [...signals].map((s, i) => ({ name: `Signal ${i}`, signal: s })),
+      signals,
     };
   }
 
   it('returns first matching named allocation', () => {
-    const strategy = makeStrategy([
-      {
-        name: 'Aggressive',
-
-        allocation: {
-          condition: { kind: 'signal', signal: trueSignal },
-          holdings: [{ ticker: SPY_TICKER, weight: 100 }],
-        },
+    const strategy = makeStrategy({
+      Aggressive: {
+        condition: { kind: 'signal', signal: trueSignal },
+        holdings: [{ ticker: SPY_TICKER, weight: 100 }],
       },
-      {
-        name: 'Default',
-
-        allocation: {
-          condition: { kind: 'signal', signal: trueSignal },
-          holdings: [{ ticker: SPY_TICKER, weight: 50 }],
-        },
+      Default: {
+        condition: { kind: 'signal', signal: trueSignal },
+        holdings: [{ ticker: SPY_TICKER, weight: 50 }],
       },
-    ]);
+    });
 
     const result = evaluate(strategy, makeOptions());
     expect(result.allocation.name).toBe('Aggressive');
@@ -693,40 +687,28 @@ describe('evaluate', () => {
   });
 
   it('falls back to last allocation', () => {
-    const strategy = makeStrategy([
-      {
-        name: 'Aggressive',
-
-        allocation: {
-          condition: { kind: 'signal', signal: falseSignal },
-          holdings: [{ ticker: SPY_TICKER, weight: 100 }],
-        },
+    const strategy = makeStrategy({
+      Aggressive: {
+        condition: { kind: 'signal', signal: falseSignal },
+        holdings: [{ ticker: SPY_TICKER, weight: 100 }],
       },
-      {
-        name: 'Default',
-
-        allocation: {
-          condition: { kind: 'signal', signal: falseSignal },
-          holdings: [{ ticker: SPY_TICKER, weight: 50 }],
-        },
+      Default: {
+        condition: { kind: 'signal', signal: falseSignal },
+        holdings: [{ ticker: SPY_TICKER, weight: 50 }],
       },
-    ]);
+    });
 
     const result = evaluate(strategy, makeOptions());
     expect(result.allocation.name).toBe('Default');
   });
 
   it('populates diagnostics with all signals and indicators', () => {
-    const strategy = makeStrategy([
-      {
-        name: 'First',
-
-        allocation: {
-          condition: { kind: 'signal', signal: trueSignal },
-          holdings: [],
-        },
+    const strategy = makeStrategy({
+      First: {
+        condition: { kind: 'signal', signal: trueSignal },
+        holdings: [],
       },
-    ]);
+    });
 
     const opts = makeOptions();
     const result = evaluate(strategy, opts);
@@ -738,24 +720,16 @@ describe('evaluate', () => {
   it('deduplicates shared indicators across allocations', () => {
     // Two allocations use the exact same signal → indicators evaluated once
     const sharedSignal = makeSignal({ comparison: '>' });
-    const strategy = makeStrategy([
-      {
-        name: 'A',
-
-        allocation: {
-          condition: { kind: 'signal', signal: sharedSignal },
-          holdings: [],
-        },
+    const strategy = makeStrategy({
+      A: {
+        condition: { kind: 'signal', signal: sharedSignal },
+        holdings: [],
       },
-      {
-        name: 'B',
-
-        allocation: {
-          condition: { kind: 'signal', signal: sharedSignal },
-          holdings: [],
-        },
+      B: {
+        condition: { kind: 'signal', signal: sharedSignal },
+        holdings: [],
       },
-    ]);
+    });
 
     const result = evaluate(strategy, makeOptions());
     // Should still have only 2 indicator keys (left + right), not 4
@@ -768,16 +742,12 @@ describe('evaluate', () => {
       right: makeIndicator({ type: 'Threshold', threshold: 100 }),
     });
 
-    const strategy = makeStrategy([
-      {
-        name: 'EMA Test',
-
-        allocation: {
-          condition: { kind: 'signal', signal: emaSignal },
-          holdings: [],
-        },
+    const strategy = makeStrategy({
+      'EMA Test': {
+        condition: { kind: 'signal', signal: emaSignal },
+        holdings: [],
       },
-    ]);
+    });
 
     const result = evaluate(strategy, makeOptions());
     const emaKey = indicatorKey(emaSignal.left);
@@ -912,23 +882,19 @@ describe('extractSymbols', () => {
       linkId: 'test',
       name: 'Test',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [
-        { name: 'S1', signal: vixSignal },
-        { name: 'S2', signal: spySignal },
-      ],
-      allocations: [
-        {
-          name: 'A1',
-  
-          allocation: {
-            condition: { kind: 'signal', signal: spySignal },
-            holdings: [
-              { ticker: { symbol: 'QQQ', leverage: 1 }, weight: 60 },
-              { ticker: { symbol: 'TLT', leverage: 1 }, weight: 40 },
-            ],
-          },
+      signals: {
+        S1: vixSignal,
+        S2: spySignal,
+      },
+      allocations: {
+        A1: {
+          condition: { kind: 'signal', signal: spySignal },
+          holdings: [
+            { ticker: { symbol: 'QQQ', leverage: 1 }, weight: 60 },
+            { ticker: { symbol: 'TLT', leverage: 1 }, weight: 40 },
+          ],
         },
-      ],
+      },
     };
 
     const symbols = extractSymbols(strategy);

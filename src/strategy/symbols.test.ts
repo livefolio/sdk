@@ -74,10 +74,8 @@ describe('extractSymbols', () => {
       linkId: 'test',
       name: 'Test',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [
-        { name: 'S1', signal: makeSignal() }, // SPY on both sides
-      ],
-      allocations: [],
+      signals: { S1: makeSignal() },
+      allocations: {},
     };
 
     const symbols = extractSymbols(strategy);
@@ -89,23 +87,17 @@ describe('extractSymbols', () => {
       linkId: 'test',
       name: 'Test',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [
-        {
-          name: 'VIX check',
-          signal: makeSignal({
-            left: makeIndicator({ type: 'VIX' }),
-            right: makeIndicator({ type: 'Threshold', threshold: 20 }),
-          }),
-        },
-        {
-          name: 'T10Y check',
-          signal: makeSignal({
-            left: makeIndicator({ type: 'T10Y' }),
-            right: makeIndicator({ type: 'T2Y' }),
-          }),
-        },
-      ],
-      allocations: [],
+      signals: {
+        'VIX check': makeSignal({
+          left: makeIndicator({ type: 'VIX' }),
+          right: makeIndicator({ type: 'Threshold', threshold: 20 }),
+        }),
+        'T10Y check': makeSignal({
+          left: makeIndicator({ type: 'T10Y' }),
+          right: makeIndicator({ type: 'T2Y' }),
+        }),
+      },
+      allocations: {},
     };
 
     const symbols = extractSymbols(strategy);
@@ -119,16 +111,13 @@ describe('extractSymbols', () => {
       linkId: 'test',
       name: 'Test',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [
-        {
-          name: 'Threshold signal',
-          signal: makeSignal({
-            left: makeIndicator({ type: 'Price', lookback: 1 }),
-            right: makeIndicator({ type: 'Threshold', threshold: 100 }),
-          }),
-        },
-      ],
-      allocations: [],
+      signals: {
+        'Threshold signal': makeSignal({
+          left: makeIndicator({ type: 'Price', lookback: 1 }),
+          right: makeIndicator({ type: 'Threshold', threshold: 100 }),
+        }),
+      },
+      allocations: {},
     };
 
     const symbols = extractSymbols(strategy);
@@ -142,20 +131,16 @@ describe('extractSymbols', () => {
       linkId: 'test',
       name: 'Test',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [],
-      allocations: [
-        {
-          name: 'A1',
-
-          allocation: {
-            condition: { kind: 'signal', signal: makeSignal() },
-            holdings: [
-              { ticker: { symbol: 'QQQ', leverage: 1 }, weight: 60 },
-              { ticker: { symbol: 'TLT', leverage: 1 }, weight: 40 },
-            ],
-          },
+      signals: {},
+      allocations: {
+        A1: {
+          condition: { kind: 'signal', signal: makeSignal() },
+          holdings: [
+            { ticker: { symbol: 'QQQ', leverage: 1 }, weight: 60 },
+            { ticker: { symbol: 'TLT', leverage: 1 }, weight: 40 },
+          ],
         },
-      ],
+      },
     };
 
     const symbols = extractSymbols(strategy);
@@ -168,21 +153,15 @@ describe('extractSymbols', () => {
       linkId: 'test',
       name: 'Test',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [
-        { name: 'S1', signal: makeSignal() }, // SPY
-      ],
-      allocations: [
-        {
-          name: 'A1',
-
-          allocation: {
-            condition: { kind: 'signal', signal: makeSignal() },
-            holdings: [
-              { ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }, // duplicate
-            ],
-          },
+      signals: { S1: makeSignal() },
+      allocations: {
+        A1: {
+          condition: { kind: 'signal', signal: makeSignal() },
+          holdings: [
+            { ticker: { symbol: 'SPY', leverage: 1 }, weight: 100 }, // duplicate
+          ],
         },
-      ],
+      },
     };
 
     const symbols = extractSymbols(strategy);
@@ -195,8 +174,8 @@ describe('extractSymbols', () => {
       linkId: 'test',
       name: 'Test',
       trading: { frequency: 'Daily', offset: 0 },
-      signals: [],
-      allocations: [],
+      signals: {},
+      allocations: {},
     };
 
     expect(extractSymbols(strategy)).toEqual([]);

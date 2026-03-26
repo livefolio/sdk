@@ -429,13 +429,16 @@ export function evaluate(strategy: Strategy, options: EvaluationOptions): Strate
     signals[signalKey(signal)] = evaluateSignal(signal, options);
   }
 
-  // Find first matching allocation (array is pre-sorted by position from DB)
-  const allocations = strategy.allocations;
+  // Find first matching allocation (insertion order = priority order from DB)
+  const allocationEntries = Object.entries(strategy.allocations);
+  const lastEntry = allocationEntries[allocationEntries.length - 1];
 
-  let winning = allocations[allocations.length - 1];
-  for (const na of allocations) {
-    if (evaluateConditionWithSignalValues(na.allocation.condition, signals)) {
-      winning = na;
+  let winningName = lastEntry[0];
+  let winningAllocation = lastEntry[1];
+  for (const [name, allocation] of allocationEntries) {
+    if (evaluateConditionWithSignalValues(allocation.condition, signals)) {
+      winningName = name;
+      winningAllocation = allocation;
       break;
     }
   }
@@ -444,8 +447,8 @@ export function evaluate(strategy: Strategy, options: EvaluationOptions): Strate
 
   return {
     allocation: {
-      name: winning.name,
-      holdings: winning.allocation.holdings,
+      name: winningName,
+      holdings: winningAllocation.holdings,
     },
     asOf,
     signals,
@@ -477,8 +480,8 @@ function getAllSignalsFromStrategy(strategy: Strategy): Signal[] {
   const seen = new Set<string>();
   const out: Signal[] = [];
 
-  for (const na of strategy.allocations) {
-    for (const s of findAllSignals(na.allocation.condition)) {
+  for (const allocation of Object.values(strategy.allocations)) {
+    for (const s of findAllSignals(allocation.condition)) {
       const key = signalKey(s);
       if (!seen.has(key)) {
         seen.add(key);

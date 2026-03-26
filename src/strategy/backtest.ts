@@ -99,16 +99,16 @@ function getRequiredSymbols(strategy: Strategy): string[] {
     if (!normalized) return;
     symbols.add(normalized);
   };
-  const pushIndicatorSymbol = (indicator: Strategy['signals'][number]['signal']['left']) => {
+  const pushIndicatorSymbol = (indicator: Signal['left']) => {
     if (indicator.type === 'Threshold') return;
     push(indicator.ticker.symbol);
   };
-  for (const ns of strategy.signals) {
-    pushIndicatorSymbol(ns.signal.left);
-    pushIndicatorSymbol(ns.signal.right);
+  for (const signal of Object.values(strategy.signals)) {
+    pushIndicatorSymbol(signal.left);
+    pushIndicatorSymbol(signal.right);
   }
-  for (const allocation of strategy.allocations) {
-    for (const holding of allocation.allocation.holdings) {
+  for (const allocation of Object.values(strategy.allocations)) {
+    for (const holding of allocation.holdings) {
       push(holding.ticker.symbol);
     }
   }
@@ -124,11 +124,11 @@ function maxSignalWindow(signal: Signal): number {
 function calculateLookbackBufferDays(strategy: Strategy): number {
   let maxLookback = 0;
 
-  for (const namedSignal of strategy.signals) {
-    maxLookback = Math.max(maxLookback, maxSignalWindow(namedSignal.signal));
+  for (const signal of Object.values(strategy.signals)) {
+    maxLookback = Math.max(maxLookback, maxSignalWindow(signal));
   }
 
-  const visitCondition = (condition: Strategy['allocations'][number]['allocation']['condition']): void => {
+  const visitCondition = (condition: Strategy['allocations'][string]['condition']): void => {
     if (condition.kind === 'signal' || condition.kind === 'not') {
       maxLookback = Math.max(maxLookback, maxSignalWindow(condition.signal));
       return;
@@ -146,15 +146,15 @@ function calculateLookbackBufferDays(strategy: Strategy): number {
     }
   };
 
-  for (const allocation of strategy.allocations) {
-    visitCondition(allocation.allocation.condition);
+  for (const allocation of Object.values(strategy.allocations)) {
+    visitCondition(allocation.condition);
   }
 
   return Math.ceil(maxLookback * 1.5) + 30;
 }
 
 function validateFallbackAllocation(strategy: Strategy): void {
-  if (strategy.allocations.length === 0) {
+  if (Object.keys(strategy.allocations).length === 0) {
     throw new Error('Strategy must include at least one allocation.');
   }
 }
@@ -471,11 +471,11 @@ function isCalendarRebalanceDue(
 }
 
 function getRebalanceConfig(
-  allocation: Strategy['allocations'][number],
+  allocation: Strategy['allocations'][string],
   options: BacktestOptions,
   allocationName: string,
 ): BacktestRebalanceConfig {
-  return options.allocationRebalance?.[allocationName] ?? allocation.allocation.rebalance ?? { mode: 'on_change' };
+  return options.allocationRebalance?.[allocationName] ?? allocation.rebalance ?? { mode: 'on_change' };
 }
 
 function computeAllocationDriftPct(
@@ -557,8 +557,8 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
   const initialCapital = options.initialCapital ?? 100_000;
 
   const requiredPositions = new Map<string, { symbol: string; leverage: number }>();
-  for (const allocation of strategy.allocations) {
-    for (const holding of allocation.allocation.holdings) {
+  for (const allocation of Object.values(strategy.allocations)) {
+    for (const holding of allocation.holdings) {
       requiredPositions.set(positionKey(holding.ticker.symbol, holding.ticker.leverage), {
         symbol: holding.ticker.symbol,
         leverage: holding.ticker.leverage,
@@ -631,7 +631,7 @@ export async function backtest(strategy: Strategy, options: BacktestOptions): Pr
     const asOfDate = toDateYmd(evaluation.asOf);
     const evaluationDue = asOfDate === currentDate;
     const allocationChanged = previousAllocationName !== evaluation.allocation.name;
-    const currentAllocation = strategy.allocations.find((allocation) => allocation.name === evaluation.allocation.name);
+    const currentAllocation = strategy.allocations[evaluation.allocation.name];
     if (!currentAllocation) {
       throw new Error(`Evaluation selected unknown allocation: ${evaluation.allocation.name}.`);
     }

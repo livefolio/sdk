@@ -302,10 +302,10 @@ async function storeResult(
     .maybeSingle();
 
   const signalResults = Object.entries(result.signals).map(([_key, sigResult]) => {
-    const ns = strategy.signals.find(
-      (ns) => signalKey(ns.signal) === _key,
-    );
-    return { name: ns?.name ?? _key, result: sigResult };
+    const name = Object.entries(strategy.signals).find(
+      ([, sig]) => signalKey(sig) === _key,
+    )?.[0] ?? _key;
+    return { name, result: sigResult };
   });
 
   const keyToId = stratRow ? await fetchIndicatorKeyMap(client, stratRow.id) : new Map<string, number>();
@@ -389,8 +389,9 @@ export async function evaluateCached(
       .limit(1)
       .maybeSingle();
 
-    const namedAlloc = strategy.allocations.find(na => na.name === allocRow?.name)
-      ?? strategy.allocations[strategy.allocations.length - 1];
+    const allocName = allocRow?.name ?? Object.keys(strategy.allocations).at(-1)!;
+    const allocEntry = strategy.allocations[allocName]
+      ?? strategy.allocations[Object.keys(strategy.allocations).at(-1)!];
 
     const [signals, indicators] = await Promise.all([
       fetchSignalStatesForDay(client, stratRow.id, tdRow.id),
@@ -398,8 +399,8 @@ export async function evaluateCached(
     ]);
     return {
       allocation: {
-        name: namedAlloc.name,
-        holdings: namedAlloc.allocation.holdings,
+        name: allocName,
+        holdings: allocEntry.holdings,
       },
       asOf: evaluationDate,
       signals,
