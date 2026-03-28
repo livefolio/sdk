@@ -18,8 +18,24 @@ function createMockClient() {
 }
 
 function createMockMarket(seriesData: Record<string, { timestamp: string; value: number }[]>): MarketModule {
+  // Derive trading days from series timestamps (ET date strings)
+  const dates = new Set<string>();
+  for (const series of Object.values(seriesData)) {
+    for (const obs of series) {
+      dates.add(obs.timestamp.slice(0, 10));
+    }
+  }
+  const tradingDays = [...dates].sort().map((date) => ({
+    date,
+    open: `${date}T14:30:00.000Z`,
+    close: `${date}T21:00:00.000Z`,
+    extended_open: `${date}T09:00:00.000Z`,
+    extended_close: `${date}T01:00:00.000Z`,
+  }));
+
   return {
     getBatchSeries: vi.fn().mockResolvedValue(seriesData),
+    getTradingDays: vi.fn().mockResolvedValue(tradingDays),
   } as any;
 }
 

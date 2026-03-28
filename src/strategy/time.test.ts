@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { utcToET, isAtMarketClose } from './time';
+import { utcToET, isAtMarketClose, toTradingDayKey } from './time';
 
 // ---------------------------------------------------------------------------
 // utcToET
@@ -66,6 +66,31 @@ describe('isAtMarketClose', () => {
 
   it('handles EDT (summer) 4:00 PM ET = 20:00 UTC', () => {
     expect(isAtMarketClose(new Date('2025-07-10T20:00:00.000Z'))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// toTradingDayKey
+// ---------------------------------------------------------------------------
+
+describe('toTradingDayKey', () => {
+  it('converts market-close UTC timestamp to ET date string (EST)', () => {
+    // 2025-01-10 21:00 UTC = 2025-01-10 16:00 ET
+    expect(toTradingDayKey(new Date('2025-01-10T21:00:00.000Z'))).toBe('2025-01-10');
+  });
+
+  it('converts market-close UTC timestamp to ET date string (EDT)', () => {
+    // 2025-07-10 20:00 UTC = 2025-07-10 16:00 ET
+    expect(toTradingDayKey(new Date('2025-07-10T20:00:00.000Z'))).toBe('2025-07-10');
+  });
+
+  it('handles UTC date rollover (next-day UTC is same ET day)', () => {
+    // 2025-01-11 02:00 UTC = 2025-01-10 21:00 ET → key is '2025-01-10'
+    expect(toTradingDayKey(new Date('2025-01-11T02:00:00.000Z'))).toBe('2025-01-10');
+  });
+
+  it('pads single-digit month and day', () => {
+    expect(toTradingDayKey(new Date('2025-03-05T21:00:00.000Z'))).toBe('2025-03-05');
   });
 });
 

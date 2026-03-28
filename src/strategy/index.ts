@@ -47,9 +47,9 @@ export { stream } from './stream';
 export { backtest, backtestWithMarketData, backtestRulesWithMarketData } from './backtest';
 export { computePerformanceMetrics } from './performance';
 export { compileRules } from './rules';
-export { evaluateIndicator, evaluateSignal, evaluateAllocation, evaluate, getEvaluationDate, indicatorKey, signalKey } from './evaluate';
+export { evaluateIndicator, evaluateSignal, evaluateAllocation, evaluate, getEvaluationDate, indicatorKey, signalKey, filterByTradingDays } from './evaluate';
 export { extractSymbols, INDICATOR_SYMBOL_MAP } from './symbols';
-export { utcToET, isAtMarketClose } from './time';
+export { utcToET, isAtMarketClose, toTradingDayKey } from './time';
 
 export {
   canonicalizeLivefolioDefinition,
