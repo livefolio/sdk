@@ -1,17 +1,21 @@
 import { describe, it, expect } from 'vitest';
-import { createClient, type LivefolioClient, type TypedSupabaseClient } from './index.js';
+import { createClient, type LivefolioClient } from './index.js';
+
+const TEST_OPTIONS = {
+  supabaseUrl: 'https://test.supabase.co',
+  supabaseKey: 'test-anon-key',
+};
 
 describe('createClient', () => {
   it('returns a LivefolioClient', () => {
-    const supabase = {} as TypedSupabaseClient;
-    const client: LivefolioClient = createClient(supabase);
+    const client: LivefolioClient = createClient(TEST_OPTIONS);
     expect(client).toBeDefined();
     expect(typeof client).toBe('object');
   });
 
   it('does not expose supabase on the returned client', () => {
-    const supabase = {} as TypedSupabaseClient;
-    const client = createClient(supabase);
+    const client = createClient(TEST_OPTIONS);
     expect(client).not.toHaveProperty('supabase');
+    expect(client).not.toHaveProperty('_supabase');
   });
 });
