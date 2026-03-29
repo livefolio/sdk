@@ -42,32 +42,34 @@ describe('createStrategy', () => {
 
   it('delegates backtest to the backtest module', async () => {
     const mockInvoke = vi.fn();
-    const mockOrder = vi.fn().mockResolvedValue({
-      data: [
-        {
-          date: '2024-01-02',
-          overnight: '2024-01-02T09:00:00.000Z',
-          pre: '2024-01-02T13:00:00.000Z',
-          regular: '2024-01-02T14:30:00.000Z',
-          post: '2024-01-02T21:00:00.000Z',
-          close: '2024-01-02T22:00:00.000Z',
-        },
-      ],
-      error: null,
-    });
+    const mockOrder = vi.fn();
     const mockLte = vi.fn(() => ({ order: mockOrder }));
     const mockGte = vi.fn(() => ({ lte: mockLte }));
-    const mockIn = vi.fn(() => ({ gte: mockGte }));
-    const mockSelect = vi.fn(() => ({ in: mockIn, gte: mockGte }));
+    const mockEq = vi.fn(() => ({ eq: mockEq, gte: mockGte }));
+    const mockSelect = vi.fn(() => ({ eq: mockEq, gte: mockGte }));
     const mockFrom = vi.fn((table: string) => {
-      if (table === 'price_observations') {
+      if (table === 'daily_observations') {
         mockOrder.mockResolvedValueOnce({
           data: [
             {
-              symbol: 'SPY',
+              value: 100,
+              tickers: { symbol: 'SPY' },
+              trading_days: { date: '2024-01-02', post: '2024-01-02T21:00:00.000Z' },
+            },
+          ],
+          error: null,
+        });
+      }
+      if (table === 'trading_days') {
+        mockOrder.mockResolvedValueOnce({
+          data: [
+            {
               date: '2024-01-02',
-              price_400pm_et: 100,
-              timestamp_400pm_et: '2024-01-02T21:00:00.000Z',
+              overnight: '2024-01-02T09:00:00.000Z',
+              pre: '2024-01-02T13:00:00.000Z',
+              regular: '2024-01-02T14:30:00.000Z',
+              post: '2024-01-02T21:00:00.000Z',
+              close: '2024-01-02T22:00:00.000Z',
             },
           ],
           error: null,
@@ -100,7 +102,7 @@ describe('createStrategy', () => {
     );
 
     expect(mockInvoke).not.toHaveBeenCalled();
-    expect(mockFrom).toHaveBeenCalledWith('price_observations');
+    expect(mockFrom).toHaveBeenCalledWith('daily_observations');
     expect(mockFrom).toHaveBeenCalledWith('trading_days');
     expect(result.summary.tradeCount).toBe(1);
   });

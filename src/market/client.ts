@@ -1,25 +1,6 @@
 import type { TypedSupabaseClient } from '../types';
 import type { Observation, DualPrice, TradingDay, MarketModule } from './types';
 
-function requireTradingDayClose(
-  tradingDayByDate: Map<string, string>,
-  row: {
-    symbol: string;
-    date: string;
-  },
-): string {
-  const close = tradingDayByDate.get(row.date);
-  if (typeof close !== 'string' || close.length === 0) {
-    throw new Error(`Missing trading_days.post for ${row.symbol} on ${row.date}.`);
-  }
-
-  if (!Number.isFinite(new Date(close).getTime())) {
-    throw new Error(`Invalid trading_days.post for ${row.symbol} on ${row.date}: ${close}`);
-  }
-
-  return close;
-}
-
 export function createMarket(client: TypedSupabaseClient): MarketModule {
   return {
     async getBatchSeries(symbols: string[]): Promise<Record<string, Observation[]>> {
@@ -37,34 +18,22 @@ export function createMarket(client: TypedSupabaseClient): MarketModule {
       const out: Record<string, Observation[]> = Object.fromEntries(symbols.map((symbol) => [symbol, []]));
       if (symbols.length === 0) return out;
 
-      const { data, error } = await client
-        .from('price_observations')
-        .select('symbol, date, price_400pm_et')
-        .in('symbol', symbols)
-        .gte('date', startDate)
-        .lte('date', endDate)
-        .order('date', { ascending: true });
+      for (const symbol of symbols) {
+        const { data, error } = await client
+          .from('daily_observations')
+          .select('value, tickers!inner(symbol), trading_days!inner(date, post)')
+          .eq('tickers.symbol', symbol)
+          .eq('tickers.leverage', 1)
+          .gte('trading_days.date', startDate)
+          .lte('trading_days.date', endDate)
+          .order('trading_days(date)', { ascending: true });
 
-      if (error) throw new Error(`Failed to fetch price observations: ${error.message}`);
+        if (error) throw new Error(`Failed to fetch observations for ${symbol}: ${error.message}`);
 
-      const { data: tradingDays, error: tradingDaysError } = await client
-        .from('trading_days')
-        .select('date, post')
-        .gte('date', startDate)
-        .lte('date', endDate)
-        .order('date', { ascending: true });
-
-      if (tradingDaysError) throw new Error(`Failed to fetch trading days: ${tradingDaysError.message}`);
-
-      const tradingDayByDate = new Map((tradingDays ?? []).map((row) => [row.date, row.post]));
-
-      for (const row of data ?? []) {
-        const symbol = row.symbol;
-        if (!out[symbol]) out[symbol] = [];
-        out[symbol].push({
-          timestamp: requireTradingDayClose(tradingDayByDate, row),
-          value: row.price_400pm_et,
-        });
+        out[symbol] = (data ?? []).map((row: { value: number; trading_days: { date: string; post: string } }) => ({
+          timestamp: row.trading_days.post,
+          value: Number(row.value),
+        }));
       }
 
       return out;
