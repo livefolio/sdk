@@ -24,10 +24,6 @@
     "./auth": {
       "types": "./dist/auth/index.d.ts",
       "default": "./dist/auth/index.js"
-    },
-    "./billing": {
-      "types": "./dist/billing/index.d.ts",
-      "default": "./dist/billing/index.js"
     }
   },
   "files": [
