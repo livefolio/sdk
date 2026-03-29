@@ -12,10 +12,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./auth": {
-      "types": "./dist/auth/index.d.ts",
-      "import": "./dist/auth/index.js"
     }
   },
   "scripts": {
@@ -24,10 +20,11 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "dependencies": {
+  "peerDependencies": {
     "@supabase/supabase-js": "^2"
   },
   "devDependencies": {
+    "@supabase/supabase-js": "^2",
     "typescript": "^5.8",
     "vitest": "^3"
   }

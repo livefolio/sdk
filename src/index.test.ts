@@ -1,29 +1,25 @@
 import { describe, it, expect } from 'vitest';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createClient, type LivefolioClient } from './index.js';
 
-const TEST_OPTIONS = {
-  supabaseUrl: 'https://test.supabase.co',
-  supabaseKey: 'test-anon-key',
-};
+function createTestSupabase() {
+  return createSupabaseClient('https://test.supabase.co', 'test-anon-key');
+}
 
 describe('createClient', () => {
   it('returns a LivefolioClient', () => {
-    const client: LivefolioClient = createClient(TEST_OPTIONS);
+    const client: LivefolioClient = createClient({
+      supabase: createTestSupabase(),
+    });
     expect(client).toBeDefined();
     expect(typeof client).toBe('object');
   });
 
   it('does not expose supabase on the returned client', () => {
-    const client = createClient(TEST_OPTIONS);
+    const client = createClient({
+      supabase: createTestSupabase(),
+    });
     expect(client).not.toHaveProperty('supabase');
     expect(client).not.toHaveProperty('_supabase');
-  });
-
-  it('has an auth module', () => {
-    const client = createClient(TEST_OPTIONS);
-    expect(client).toHaveProperty('auth');
-    expect(typeof client.auth.getUser).toBe('function');
-    expect(typeof client.auth.getSession).toBe('function');
-    expect(typeof client.auth.signOut).toBe('function');
   });
 });
