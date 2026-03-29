@@ -18,4 +18,12 @@ describe('createClient', () => {
     expect(client).not.toHaveProperty('supabase');
     expect(client).not.toHaveProperty('_supabase');
   });
+
+  it('has an auth module', () => {
+    const client = createClient(TEST_OPTIONS);
+    expect(client).toHaveProperty('auth');
+    expect(typeof client.auth.getUser).toBe('function');
+    expect(typeof client.auth.getSession).toBe('function');
+    expect(typeof client.auth.signOut).toBe('function');
+  });
 });

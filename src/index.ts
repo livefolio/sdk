@@ -1,11 +1,12 @@
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import type { LivefolioClientOptions } from './types.js';
+import type { LivefolioClientOptions, LivefolioClient } from './types.js';
+import { createAuth } from './auth/client.js';
 
-export type { LivefolioClientOptions } from './types.js';
-
-export interface LivefolioClient {}
+export type { LivefolioClientOptions, LivefolioClient } from './types.js';
+export type { AuthModule, User, Session } from './auth/types.js';
 
 export function createClient(options: LivefolioClientOptions): LivefolioClient {
-  const _supabase = createSupabaseClient(options.supabaseUrl, options.supabaseKey);
-  return {};
+  const supabase = createSupabaseClient(options.supabaseUrl, options.supabaseKey);
+  const auth = createAuth(supabase);
+  return { auth };
 }
