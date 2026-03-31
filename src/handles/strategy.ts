@@ -64,6 +64,14 @@ export class StrategyHandle {
       if (lastRule.when && lastRule.when.length > 0) {
         throw new Error('Last rule must be a fallback (no when clause)');
       }
+      for (let i = 0; i < opts.rules.length - 1; i++) {
+        const rule = opts.rules[i];
+        if (rule.when !== undefined && rule.when.length === 0) {
+          throw new Error(
+            `Rule ${i} has an empty when clause and will match unconditionally, making subsequent rules unreachable`,
+          );
+        }
+      }
       this._linkId = null;
       this._name = opts.name;
       this._freq = opts.freq ?? 'Daily';

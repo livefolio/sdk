@@ -56,6 +56,33 @@ describe('computeRebalanceDates', () => {
     const days = ['2024-12-30', '2024-12-31', '2025-12-30', '2025-12-31'];
     expect(computeRebalanceDates(days, 'Yearly', 0)).toEqual(new Set(['2024-12-31', '2025-12-31']));
   });
+
+  it('Bi-monthly returns last trading day of each two-month period', () => {
+    // Jan-Feb period, Mar-Apr period
+    const days = [
+      '2025-01-30',
+      '2025-01-31',
+      '2025-02-27',
+      '2025-02-28',
+      '2025-03-28',
+      '2025-03-31',
+      '2025-04-29',
+      '2025-04-30',
+    ];
+    expect(computeRebalanceDates(days, 'Bi-monthly', 0)).toEqual(new Set(['2025-02-28', '2025-04-30']));
+  });
+
+  it('Every 4 Months returns last trading day of each 4-month period', () => {
+    // Jan-Apr period, May-Aug period
+    const days = ['2025-04-29', '2025-04-30', '2025-08-28', '2025-08-29'];
+    expect(computeRebalanceDates(days, 'Every 4 Months', 0)).toEqual(new Set(['2025-04-30', '2025-08-29']));
+  });
+
+  it('Semiannually returns last trading day of each half-year', () => {
+    // Jan-Jun period, Jul-Dec period
+    const days = ['2025-06-27', '2025-06-30', '2025-12-30', '2025-12-31'];
+    expect(computeRebalanceDates(days, 'Semiannually', 0)).toEqual(new Set(['2025-06-30', '2025-12-31']));
+  });
 });
 
 describe('evaluateStrategy', () => {

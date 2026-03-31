@@ -69,6 +69,14 @@ describe('StrategyHandle construction - create mode', () => {
     expect(() => new StrategyHandle(sb, { name: 'Bad', rules: [{ when: [signal], hold: alloc }] })).toThrow('fallback');
   });
 
+  it('throws if a non-last rule has an empty when array', () => {
+    const alloc1 = makeAllocation();
+    const alloc2 = makeAllocation();
+    expect(
+      () => new StrategyHandle(sb, { name: 'Bad', rules: [{ when: [], hold: alloc1 }, { hold: alloc2 }] }),
+    ).toThrow('unreachable');
+  });
+
   it('throws on .id before resolution', () => {
     const alloc = makeAllocation();
     const handle = new StrategyHandle(sb, { name: 'Test', rules: [{ hold: alloc }] });

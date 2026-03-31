@@ -156,18 +156,86 @@ const current = await bullish.value();         // 0 or 1
 
 Signal handles support the same `.series(range?)`, `.value(date?)`, and `.resolve()` methods as indicator handles. Data is automatically synced -- both underlying indicators are refreshed before computing the signal.
 
+### Allocations
+
+Define portfolio holdings as weighted ticker pairs.
+
+```ts
+sdk.allocation(...holdings: [TickerHandle, number][])
+```
+
+Weights must sum to 1. Allocations are deduplicated by holdings -- creating the same allocation twice returns the same database row.
+
+```ts
+const aggressive = sdk.allocation([spy, 0.75], [gld, 0.25]);
+const defensive = sdk.allocation([shy, 1.0]);
+```
+
+### Strategies
+
+Compose signals and allocations into a priority-ordered rule list evaluated on a rebalancing schedule.
+
+```ts
+// Create a new strategy
+sdk.strategy(options: StrategyOptions)
+
+// Reference an existing strategy by link ID
+sdk.strategy(linkId: string)
+```
+
+Each rule's `when` array is AND-ed together. OR is expressed by having multiple rules point to the same allocation. The last rule must be a fallback with no `when` clause. Rules are evaluated top-to-bottom; first match wins.
+
+```ts
+const spy = sdk.ticker('SPY');
+const shy = sdk.ticker('SHY');
+const price = sdk.price(spy);
+const sma200 = sdk.sma(spy, 200);
+
+const bullish = sdk.gt(price, sma200, 5);
+
+const aggressive = sdk.allocation([spy, 1.0]);
+const defensive = sdk.allocation([shy, 1.0]);
+
+const strategy = sdk.strategy({
+  name: 'Tactical SPY/SHY',
+  freq: 'Monthly',       // rebalance on last trading day of each month
+  offset: 0,             // positive = earlier, negative = later
+  rules: [
+    { when: [bullish], hold: aggressive },
+    { hold: defensive },  // fallback
+  ],
+});
+
+const history = await strategy.series();
+// StrategyBar[] — { date: string, allocation: AllocationHandle }
+
+const current = await strategy.value();
+// AllocationHandle for the latest trading day
+```
+
+Trading frequencies: `'Daily'`, `'Weekly'`, `'Monthly'`, `'Bi-monthly'`, `'Quarterly'`, `'Every 4 Months'`, `'Semiannually'`, `'Yearly'`.
+
+Strategy series are **dense** -- one row per trading day. On rebalance dates the rules are evaluated; on other days the previous allocation carries forward.
+
+Each strategy gets a unique `link_id` (nanoid) on creation. Reference an existing strategy by its link ID to reload it without recreating.
+
 ### Handle Methods
 
-Every `IndicatorHandle` and `SignalHandle` exposes:
+Every `IndicatorHandle`, `SignalHandle`, and `StrategyHandle` exposes:
 
 #### `.series(range?)`
 
-Returns the full time series as `DailyBar[]`.
+Returns the full time series. For indicators and signals this is `DailyBar[]`; for strategies it is `StrategyBar[]`.
 
 ```ts
 interface DailyBar {
   date: string;  // 'YYYY-MM-DD'
   value: number;
+}
+
+interface StrategyBar {
+  date: string;
+  allocation: AllocationHandle;
 }
 
 const all = await sma200.series();
@@ -176,7 +244,7 @@ const subset = await sma200.series({ from: '2024-01-01', to: '2024-12-31' });
 
 #### `.value(date?)`
 
-Returns the latest value, or the value for a specific date. Returns `null` if no data exists.
+Returns the latest value, or the value for a specific date. Returns `null` if no data exists. For strategies, returns `AllocationHandle | null`.
 
 ```ts
 const latest = await sma200.value();
@@ -212,6 +280,9 @@ The SDK uses Supabase as its backing store. Schema files are in `supabase/schema
 - `indicators_series` -- daily indicator values linked to trading days
 - `signals` -- signal definitions (two indicators, comparison, tolerance)
 - `signals_series` -- daily boolean signal values linked to trading days
+- `allocations` -- portfolio holdings as JSONB (deduplicated)
+- `strategies` -- strategy definitions with rebalance frequency and rule JSONB
+- `strategies_series` -- active allocation per trading day per strategy (dense)
 
 Run `supabase db reset` to set up the local database from the schema and seed files.
 
