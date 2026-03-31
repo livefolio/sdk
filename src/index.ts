@@ -4,3 +4,5 @@ export type { TypedSupabaseClient, Database } from './types.js';
 export { TickerHandle } from './handles/ticker.js';
 export { IndicatorHandle } from './handles/indicator.js';
 export type { IndicatorIdentity, DateRange, DailyBar } from './handles/indicator.js';
+export { SignalHandle } from './handles/signal.js';
+export type { SignalIdentity } from './handles/signal.js';

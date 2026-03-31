@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createClient } from './client.js';
 import { TickerHandle } from './handles/ticker.js';
 import { IndicatorHandle } from './handles/indicator.js';
+import { SignalHandle } from './handles/signal.js';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import type { TypedSupabaseClient } from './types.js';
 
@@ -124,5 +125,39 @@ describe('threshold factory', () => {
     const h = sdk.threshold(5, '%');
     expect(h.threshold).toBe(5);
     expect(h.unit).toBe('%');
+  });
+});
+
+describe('signal factories', () => {
+  const sdk = createClient({ supabase: testSupabase() });
+  const spy = sdk.ticker('SPY');
+  const price = sdk.price(spy);
+  const sma = sdk.sma(spy, 200);
+
+  it('sdk.gt()', () => {
+    const h = sdk.gt(price, sma);
+    expect(h).toBeInstanceOf(SignalHandle);
+    expect(h.comparison).toBe('>');
+    expect(h.tolerance).toBe(0);
+    expect(h.indicator1).toBe(price);
+    expect(h.indicator2).toBe(sma);
+  });
+
+  it('sdk.gt() with tolerance', () => {
+    const h = sdk.gt(price, sma, 5);
+    expect(h.tolerance).toBe(5);
+  });
+
+  it('sdk.lt()', () => {
+    const h = sdk.lt(price, sma);
+    expect(h).toBeInstanceOf(SignalHandle);
+    expect(h.comparison).toBe('<');
+  });
+
+  it('sdk.eq()', () => {
+    const h = sdk.eq(price, sma, 1);
+    expect(h).toBeInstanceOf(SignalHandle);
+    expect(h.comparison).toBe('=');
+    expect(h.tolerance).toBe(1);
   });
 });
