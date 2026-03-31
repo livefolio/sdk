@@ -1,10 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from './database.types.js';
 
-// TODO: replace with SupabaseClient<Database> when @livefolio/db v2 is available
-export type TypedSupabaseClient = SupabaseClient<any>;
+export type { Database };
 
-export interface LivefolioClientOptions {
-  supabase: TypedSupabaseClient;
-}
-
-export interface LivefolioClient {}
+export type TypedSupabaseClient = SupabaseClient<Database>;

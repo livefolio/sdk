@@ -14,14 +14,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./strategy": {
-      "types": "./dist/strategy/index.d.ts",
-      "import": "./dist/strategy/index.js"
-    },
-    "./evaluation": {
-      "types": "./dist/evaluation/index.d.ts",
-      "import": "./dist/evaluation/index.js"
     }
   },
   "scripts": {
