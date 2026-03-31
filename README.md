@@ -1,0 +1,190 @@
+# @livefolio/sdk
+
+TypeScript SDK for building and backtesting trading strategies. Provides lazy handles for tickers and indicators that automatically fetch market data from Yahoo Finance and FRED, compute derived indicators, and cache results in a Supabase database.
+
+## Install
+
+```bash
+npm install @livefolio/sdk @supabase/supabase-js
+```
+
+## Quick Start
+
+```ts
+import { createClient } from '@livefolio/sdk';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+
+const supabase = createSupabaseClient(SUPABASE_URL, SUPABASE_KEY);
+
+const sdk = createClient({
+  supabase,
+  fredApiKey: 'your-fred-api-key', // optional, required for treasury indicators
+});
+
+const spy = sdk.ticker('SPY');
+const sma200 = sdk.sma(spy, 200);
+
+// First call fetches SPY prices from Yahoo Finance, computes the 200-day SMA,
+// stores everything in the database, and returns the result.
+// Subsequent calls return cached data instantly.
+const series = await sma200.series();
+const latest = await sma200.value();
+```
+
+## Concepts
+
+### Lazy Handles
+
+Everything in the SDK is a **lazy handle** -- a lightweight object that describes *what* you want without hitting the database or any external API. Data is only fetched when you call `.series()` or `.value()`.
+
+```ts
+const spy = sdk.ticker('SPY');           // no DB call
+const sma200 = sdk.sma(spy, 200);       // no DB call
+const series = await sma200.series();    // NOW: resolve -> fetch -> compute -> return
+```
+
+### Automatic Sync
+
+Indicator series data is fetched and computed transparently. When you call `.series()` or `.value()`:
+
+1. The indicator and its dependencies are resolved (upserted) in the database
+2. If the series is stale or missing, raw data is fetched from the appropriate source
+3. Derived indicators are computed from their dependencies
+4. Results are upserted to the database and cached in memory
+
+Since market data is daily closing prices, data is immutable once the trading day closes. The SDK takes advantage of this for aggressive caching.
+
+## API Reference
+
+### `createClient(options)`
+
+```ts
+createClient({
+  supabase: SupabaseClient,  // required
+  fredApiKey?: string,       // required for treasury indicators
+})
+```
+
+Returns a `LivefolioClient` with the factory methods below.
+
+### Tickers
+
+```ts
+sdk.ticker(symbol: string, leverage?: number)
+```
+
+Creates a `TickerHandle`. Leverage defaults to `1`.
+
+```ts
+const spy = sdk.ticker('SPY');
+const spxl = sdk.ticker('SPXL', 3);
+```
+
+### Ticker-Bound Indicators
+
+These require a `TickerHandle` and compute from that ticker's price history.
+
+```ts
+sdk.sma(ticker, lookback, opts?)         // Simple Moving Average
+sdk.ema(ticker, lookback, opts?)         // Exponential Moving Average
+sdk.rsi(ticker, lookback, opts?)         // Relative Strength Index
+sdk.price(ticker, opts?)                 // Raw closing price
+sdk.returns(ticker, lookback, opts?)     // Period returns
+sdk.volatility(ticker, lookback, opts?)  // Rolling standard deviation
+sdk.drawdown(ticker, lookback, opts?)    // Drawdown from rolling max
+```
+
+`opts` is `{ delay?: number }` -- defaults to `0`.
+
+```ts
+const spy = sdk.ticker('SPY');
+const sma200 = sdk.sma(spy, 200);
+const rsi14 = sdk.rsi(spy, 14);
+const delayed = sdk.sma(spy, 50, { delay: 1 });
+```
+
+### Standalone Indicators
+
+No ticker required. Data comes directly from external APIs.
+
+```ts
+sdk.vix(opts?)                           // CBOE Volatility Index
+sdk.vix3m(opts?)                         // CBOE 3-Month Volatility Index
+sdk.treasury(tenor, opts?)               // Treasury rates (requires fredApiKey)
+sdk.calendar(period, opts?)              // Date components from trading calendar
+sdk.threshold(value, unit?)              // Constant value
+```
+
+Treasury tenors: `'T3M'`, `'T6M'`, `'T1Y'`, `'T2Y'`, `'T3Y'`, `'T5Y'`, `'T7Y'`, `'T10Y'`, `'T20Y'`, `'T30Y'`
+
+Calendar periods: `'Month'`, `'Day of Week'`, `'Day of Month'`, `'Day of Year'`
+
+Threshold units: `'%'`, `'$'`, or omit for unitless.
+
+```ts
+const vix = sdk.vix();
+const t10y = sdk.treasury('T10Y');
+const month = sdk.calendar('Month');
+const half = sdk.threshold(0.5);
+```
+
+### Handle Methods
+
+Every `IndicatorHandle` exposes:
+
+#### `.series(range?)`
+
+Returns the full time series as `DailyBar[]`.
+
+```ts
+interface DailyBar {
+  date: string;  // 'YYYY-MM-DD'
+  value: number;
+}
+
+const all = await sma200.series();
+const subset = await sma200.series({ from: '2024-01-01', to: '2024-12-31' });
+```
+
+#### `.value(date?)`
+
+Returns the latest value, or the value for a specific date. Returns `null` if no data exists.
+
+```ts
+const latest = await sma200.value();
+const specific = await sma200.value('2024-06-15');
+```
+
+#### `.resolve()`
+
+Explicitly upserts the indicator to the database and returns the row. Normally you don't need to call this -- `.series()` and `.value()` call it automatically.
+
+```ts
+const row = await sma200.resolve();
+console.log(row.id); // database ID
+```
+
+## Data Sources
+
+| Indicator Type | Source |
+|---|---|
+| Price, VIX, VIX3M | Yahoo Finance |
+| Treasury rates (T3M--T30Y) | FRED API |
+| SMA, EMA, RSI, Returns, Volatility, Drawdown | Computed from Price |
+| Calendar (Month, Day of Week, etc.) | Computed from trading days |
+| Threshold | Constant (no external data) |
+
+## Database
+
+The SDK uses Supabase as its backing store. Schema files are in `supabase/schemas/`. Key tables:
+
+- `trading_days` -- market calendar with session timestamps
+- `tickers` -- symbols with leverage multiplier
+- `indicators` -- indicator definitions (type, params, ticker reference)
+- `indicators_series` -- daily indicator values linked to trading days
+
+Run `supabase db reset` to set up the local database from the schema and seed files.
+
+## License
+
+MIT
