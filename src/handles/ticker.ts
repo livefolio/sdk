@@ -29,6 +29,12 @@ export class TickerHandle {
     return this._resolving;
   }
 
+  static fromRow(supabase: TypedSupabaseClient, row: TickerRow): TickerHandle {
+    const handle = new TickerHandle(supabase, row.symbol, row.leverage);
+    handle._resolved = row;
+    return handle;
+  }
+
   private async _doResolve(): Promise<TickerRow> {
     // Note: We use update-on-conflict (default) rather than ignoreDuplicates: true
     // because PostgREST does not return the existing row with ignoreDuplicates.

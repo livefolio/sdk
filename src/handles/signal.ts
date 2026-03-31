@@ -68,6 +68,22 @@ export class SignalHandle {
     return this._resolving;
   }
 
+  static fromRow(
+    supabase: TypedSupabaseClient,
+    row: SignalRow,
+    indicator1: IndicatorHandle,
+    indicator2: IndicatorHandle,
+    config?: IndicatorConfig,
+  ): SignalHandle {
+    const handle = new SignalHandle(
+      supabase,
+      { indicator1, indicator2, comparison: row.comparison, tolerance: row.tolerance },
+      config,
+    );
+    handle._resolved = row;
+    return handle;
+  }
+
   private async _doResolve(): Promise<SignalRow> {
     const [ind1Row, ind2Row] = await Promise.all([this.indicator1.resolve(), this.indicator2.resolve()]);
 

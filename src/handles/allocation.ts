@@ -1,6 +1,6 @@
 import type { TypedSupabaseClient } from '../types.js';
 import type { Tables } from '../database.types.js';
-import type { TickerHandle } from './ticker.js';
+import { TickerHandle } from './ticker.js';
 
 type AllocationRow = Tables<'allocations'>;
 
@@ -30,6 +30,20 @@ export class AllocationHandle {
     if (this._resolved) return this._resolved;
     if (!this._resolving) this._resolving = this._doResolve();
     return this._resolving;
+  }
+
+  static fromRow(supabase: TypedSupabaseClient, row: AllocationRow): AllocationHandle {
+    const holdingsJson = row.holdings as Record<string, number>;
+    const holdings: [TickerHandle, number][] = [];
+    for (const [key, weight] of Object.entries(holdingsJson)) {
+      const match = key.match(/^(.+)\?L=(.+)$/);
+      const symbol = match ? match[1] : key;
+      const leverage = match ? Number(match[2]) : 1;
+      holdings.push([new TickerHandle(supabase, symbol, leverage), weight]);
+    }
+    const handle = new AllocationHandle(supabase, holdings);
+    handle._resolved = row;
+    return handle;
   }
 
   private async _doResolve(): Promise<AllocationRow> {

@@ -74,6 +74,21 @@ export class IndicatorHandle {
     return this._resolving;
   }
 
+  static fromRow(
+    supabase: TypedSupabaseClient,
+    row: IndicatorRow,
+    ticker: TickerHandle | null,
+    config?: IndicatorConfig,
+  ): IndicatorHandle {
+    const handle = new IndicatorHandle(
+      supabase,
+      { type: row.type, ticker, lookback: row.lookback, delay: row.delay, unit: row.unit, threshold: row.threshold },
+      config,
+    );
+    handle._resolved = row;
+    return handle;
+  }
+
   private async _doResolve(): Promise<IndicatorRow> {
     const tickerId = this.ticker ? (await this.ticker.resolve()).id : null;
 
