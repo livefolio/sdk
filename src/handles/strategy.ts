@@ -1,3 +1,4 @@
+import { nanoid } from 'nanoid';
 import type { TypedSupabaseClient } from '../types.js';
 import type { Tables, Database } from '../database.types.js';
 import { SignalHandle } from './signal.js';
@@ -104,7 +105,47 @@ export class StrategyHandle {
   }
 
   private async _doResolveCreate(): Promise<StrategyRow> {
-    throw new Error('Not implemented');
+    const allSignals = new Set<SignalHandle>();
+    const allAllocations = new Set<AllocationHandle>();
+    for (const rule of this._rules) {
+      if (rule.when) rule.when.forEach((s) => allSignals.add(s));
+      allAllocations.add(rule.hold);
+    }
+
+    await Promise.all([
+      ...Array.from(allSignals).map((s) => s.resolve()),
+      ...Array.from(allAllocations).map((a) => a.resolve()),
+    ]);
+
+    const definition = {
+      rules: this._rules.map((rule) => ({
+        signalIds: (rule.when ?? []).map((s) => s.id),
+        allocationId: rule.hold.id,
+      })),
+    };
+
+    const linkId = nanoid();
+
+    const { data, error } = await this._supabase
+      .from('strategies')
+      .insert({
+        link_id: linkId,
+        name: this._name!,
+        trading_freq: this._freq,
+        trading_offset: this._offset,
+        definition,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    this._resolved = data;
+
+    for (const rule of this._rules) {
+      this._allocationMap.set(rule.hold.id, rule.hold);
+    }
+
+    return data;
   }
 
   private async _doResolveReference(): Promise<StrategyRow> {
