@@ -3,13 +3,13 @@ import type { Tables, Database } from '../database.types.js';
 import type { TickerHandle } from './ticker.js';
 
 type IndicatorRow = Tables<'indicators'>;
-type IndicatorSeriesRow = Tables<'indicators_series'>;
 type IndicatorType = Database['public']['Enums']['indicator_type'];
 type Unit = Database['public']['Enums']['unit'];
 
-export type IndicatorSeriesWithDate = IndicatorSeriesRow & {
-  trading_days: { date: string };
-};
+export interface DailyBar {
+  date: string;
+  value: number;
+}
 
 export interface IndicatorIdentity {
   type: IndicatorType;
@@ -85,11 +85,11 @@ export class IndicatorHandle {
     return data;
   }
 
-  async series(range?: DateRange): Promise<IndicatorSeriesWithDate[]> {
+  async series(range?: DateRange): Promise<DailyBar[]> {
     const row = await this.resolve();
     let query = this._supabase
       .from('indicators_series')
-      .select('*, trading_days!inner(date)')
+      .select('value, trading_days!inner(date)')
       .eq('indicator_id', row.id)
       .order('trading_day_id', { ascending: true });
 
@@ -98,7 +98,10 @@ export class IndicatorHandle {
 
     const { data, error } = await query;
     if (error) throw error;
-    return data as IndicatorSeriesWithDate[];
+    return (data as unknown as { value: number; trading_days: { date: string } }[]).map((r) => ({
+      date: r.trading_days.date,
+      value: r.value,
+    }));
   }
 
   async value(date?: string): Promise<number | null> {
