@@ -128,9 +128,37 @@ const month = sdk.calendar('Month');
 const half = sdk.threshold(0.5);
 ```
 
+### Signals
+
+Compare two indicators to create a boolean signal. Supports hysteresis via tolerance to reduce whipsawing.
+
+```ts
+sdk.gt(ind1, ind2, tolerance?)    // ind1 > ind2
+sdk.lt(ind1, ind2, tolerance?)    // ind1 < ind2
+sdk.eq(ind1, ind2, tolerance?)    // ind1 within tolerance range of ind2
+```
+
+Tolerance defaults to `0` (no hysteresis). When set, a buffer zone prevents the signal from flipping until the indicator moves fully through the buffer.
+
+- **Relative tolerance** (Price, SMA, EMA, RSI, Threshold, Calendar): buffer = `ind2 * (1 +/- tolerance/100)`
+- **Absolute tolerance** (Return, Volatility, Drawdown, VIX, VIX3M, Treasury): buffer = `ind2 +/- tolerance`
+
+```ts
+const spy = sdk.ticker('SPY');
+const price = sdk.price(spy);
+const sma200 = sdk.sma(spy, 200);
+
+const bullish = sdk.gt(price, sma200, 5);    // 5% tolerance
+
+const series = await bullish.series();         // DailyBar[] with value 0 or 1
+const current = await bullish.value();         // 0 or 1
+```
+
+Signal handles support the same `.series(range?)`, `.value(date?)`, and `.resolve()` methods as indicator handles. Data is automatically synced -- both underlying indicators are refreshed before computing the signal.
+
 ### Handle Methods
 
-Every `IndicatorHandle` exposes:
+Every `IndicatorHandle` and `SignalHandle` exposes:
 
 #### `.series(range?)`
 
@@ -182,6 +210,8 @@ The SDK uses Supabase as its backing store. Schema files are in `supabase/schema
 - `tickers` -- symbols with leverage multiplier
 - `indicators` -- indicator definitions (type, params, ticker reference)
 - `indicators_series` -- daily indicator values linked to trading days
+- `signals` -- signal definitions (two indicators, comparison, tolerance)
+- `signals_series` -- daily boolean signal values linked to trading days
 
 Run `supabase db reset` to set up the local database from the schema and seed files.
 
