@@ -25,6 +25,10 @@ export interface DateRange {
   to?: string;
 }
 
+export interface IndicatorConfig {
+  fredApiKey?: string;
+}
+
 export class IndicatorHandle {
   readonly type: IndicatorType;
   readonly ticker: TickerHandle | null;
@@ -34,11 +38,13 @@ export class IndicatorHandle {
   readonly threshold: number | null;
 
   private _supabase: TypedSupabaseClient;
+  private _config: IndicatorConfig;
   private _resolved: IndicatorRow | null = null;
   private _resolving: Promise<IndicatorRow> | null = null;
 
-  constructor(supabase: TypedSupabaseClient, identity: IndicatorIdentity) {
+  constructor(supabase: TypedSupabaseClient, identity: IndicatorIdentity, config?: IndicatorConfig) {
     this._supabase = supabase;
+    this._config = config ?? {};
     this.type = identity.type;
     this.ticker = identity.ticker;
     this.lookback = identity.lookback;

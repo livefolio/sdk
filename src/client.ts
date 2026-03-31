@@ -2,6 +2,7 @@ import type { Database } from './database.types.js';
 import type { TypedSupabaseClient } from './types.js';
 import { TickerHandle } from './handles/ticker.js';
 import { IndicatorHandle } from './handles/indicator.js';
+import type { IndicatorConfig } from './handles/indicator.js';
 
 type IndicatorType = Database['public']['Enums']['indicator_type'];
 type Unit = Database['public']['Enums']['unit'];
@@ -40,6 +41,7 @@ export interface LivefolioClient {
 
 export interface LivefolioClientOptions {
   supabase: TypedSupabaseClient;
+  fredApiKey?: string;
 }
 
 function tickerBound(
@@ -48,55 +50,74 @@ function tickerBound(
   ticker: TickerHandle,
   lookback: number,
   opts?: IndicatorOpts,
+  config?: IndicatorConfig,
 ): IndicatorHandle {
-  return new IndicatorHandle(sb, {
-    type,
-    ticker,
-    lookback,
-    delay: opts?.delay ?? 0,
-    unit: null,
-    threshold: null,
-  });
+  return new IndicatorHandle(
+    sb,
+    {
+      type,
+      ticker,
+      lookback,
+      delay: opts?.delay ?? 0,
+      unit: null,
+      threshold: null,
+    },
+    config,
+  );
 }
 
-function standalone(sb: TypedSupabaseClient, type: IndicatorType, opts?: IndicatorOpts): IndicatorHandle {
-  return new IndicatorHandle(sb, {
-    type,
-    ticker: null,
-    lookback: 0,
-    delay: opts?.delay ?? 0,
-    unit: null,
-    threshold: null,
-  });
+function standalone(
+  sb: TypedSupabaseClient,
+  type: IndicatorType,
+  opts?: IndicatorOpts,
+  config?: IndicatorConfig,
+): IndicatorHandle {
+  return new IndicatorHandle(
+    sb,
+    {
+      type,
+      ticker: null,
+      lookback: 0,
+      delay: opts?.delay ?? 0,
+      unit: null,
+      threshold: null,
+    },
+    config,
+  );
 }
 
 export function createClient(options: LivefolioClientOptions): LivefolioClient {
   const sb = options.supabase;
+  const config: IndicatorConfig = { fredApiKey: options.fredApiKey };
 
   return {
     ticker: (symbol, leverage) => new TickerHandle(sb, symbol, leverage),
 
-    sma: (ticker, lookback, opts?) => tickerBound(sb, 'SMA', ticker, lookback, opts),
-    ema: (ticker, lookback, opts?) => tickerBound(sb, 'EMA', ticker, lookback, opts),
-    price: (ticker, opts?) => tickerBound(sb, 'Price', ticker, 0, opts),
-    returns: (ticker, lookback, opts?) => tickerBound(sb, 'Return', ticker, lookback, opts),
-    volatility: (ticker, lookback, opts?) => tickerBound(sb, 'Volatility', ticker, lookback, opts),
-    drawdown: (ticker, lookback, opts?) => tickerBound(sb, 'Drawdown', ticker, lookback, opts),
-    rsi: (ticker, lookback, opts?) => tickerBound(sb, 'RSI', ticker, lookback, opts),
+    sma: (ticker, lookback, opts?) => tickerBound(sb, 'SMA', ticker, lookback, opts, config),
+    ema: (ticker, lookback, opts?) => tickerBound(sb, 'EMA', ticker, lookback, opts, config),
+    price: (ticker, opts?) => tickerBound(sb, 'Price', ticker, 0, opts, config),
+    returns: (ticker, lookback, opts?) => tickerBound(sb, 'Return', ticker, lookback, opts, config),
+    volatility: (ticker, lookback, opts?) => tickerBound(sb, 'Volatility', ticker, lookback, opts, config),
+    drawdown: (ticker, lookback, opts?) => tickerBound(sb, 'Drawdown', ticker, lookback, opts, config),
+    rsi: (ticker, lookback, opts?) => tickerBound(sb, 'RSI', ticker, lookback, opts, config),
 
-    vix: (opts?) => standalone(sb, 'VIX', opts),
-    vix3m: (opts?) => standalone(sb, 'VIX3M', opts),
-    treasury: (tenor, opts?) => standalone(sb, tenor, opts),
-    calendar: (period, opts?) => standalone(sb, period, opts),
+    vix: (opts?) => standalone(sb, 'VIX', opts, config),
+    vix3m: (opts?) => standalone(sb, 'VIX3M', opts, config),
+    treasury: (tenor, opts?) => standalone(sb, tenor, opts, config),
+    calendar: (period, opts?) => standalone(sb, period, opts, config),
 
     threshold: (value, unit?) =>
-      new IndicatorHandle(sb, {
-        type: 'Threshold',
-        ticker: null,
-        lookback: 0,
-        delay: 0,
-        unit: unit ?? null,
-        threshold: value,
-      }),
+      new IndicatorHandle(
+        sb,
+        {
+          type: 'Threshold',
+          ticker: null,
+          lookback: 0,
+          delay: 0,
+          unit: unit ?? null,
+          threshold: value,
+        },
+        config,
+      ),
   };
 }
