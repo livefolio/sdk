@@ -219,6 +219,37 @@ Strategy series are **dense** -- one row per trading day. On rebalance dates the
 
 Each strategy gets a unique `link_id` (nanoid) on creation. Reference an existing strategy by its link ID to reload it without recreating.
 
+### Simulation
+
+Run a portfolio simulation over a date range. Returns a `SimulationHandle` with the equity curve and trade history.
+
+```ts
+const sim = await strategy.simulate({ from: '2020-01-01', to: '2025-12-31', initialCapital: 100_000 });
+
+sim.series         // DailyBar[] — portfolio value per trading day
+sim.trades         // Trade[]   — every buy/sell event
+sim.initialCapital // number    — starting capital
+```
+
+The simulator rebalances at the strategy's `freq` cadence, fetches price data for all tickers in all allocations automatically, and tracks positions and cash through each trading day.
+
+```ts
+interface Trade {
+  date: string;
+  symbol: string;
+  quantity: number;       // number of shares traded
+  price: number;
+  action: 'buy' | 'sell';
+}
+```
+
+Agents compute whatever derived metrics they need (CAGR, Sharpe, drawdown, etc.) from the raw data:
+
+```ts
+const values = sim.series.map(b => b.value);
+const dailyReturns = values.slice(1).map((v, i) => (v - values[i]) / values[i]);
+```
+
 ### Handle Methods
 
 Every `IndicatorHandle`, `SignalHandle`, and `StrategyHandle` exposes:
