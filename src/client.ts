@@ -4,6 +4,7 @@ import { TickerHandle } from './handles/ticker.js';
 import { IndicatorHandle } from './handles/indicator.js';
 import type { IndicatorConfig } from './handles/indicator.js';
 import { SignalHandle } from './handles/signal.js';
+import { AllocationHandle } from './handles/allocation.js';
 
 type IndicatorType = Database['public']['Enums']['indicator_type'];
 type Unit = Database['public']['Enums']['unit'];
@@ -43,6 +44,9 @@ export interface LivefolioClient {
   gt(ind1: IndicatorHandle, ind2: IndicatorHandle, tolerance?: number): SignalHandle;
   lt(ind1: IndicatorHandle, ind2: IndicatorHandle, tolerance?: number): SignalHandle;
   eq(ind1: IndicatorHandle, ind2: IndicatorHandle, tolerance?: number): SignalHandle;
+
+  // Allocations
+  allocation(...holdings: [TickerHandle, number][]): AllocationHandle;
 }
 
 export interface LivefolioClientOptions {
@@ -132,5 +136,7 @@ export function createClient(options: LivefolioClientOptions): LivefolioClient {
       new SignalHandle(sb, { indicator1: ind1, indicator2: ind2, comparison: '<', tolerance: tolerance ?? 0 }, config),
     eq: (ind1, ind2, tolerance?) =>
       new SignalHandle(sb, { indicator1: ind1, indicator2: ind2, comparison: '=', tolerance: tolerance ?? 0 }, config),
+
+    allocation: (...holdings) => new AllocationHandle(sb, holdings),
   };
 }

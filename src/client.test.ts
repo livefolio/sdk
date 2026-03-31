@@ -3,6 +3,7 @@ import { createClient } from './client.js';
 import { TickerHandle } from './handles/ticker.js';
 import { IndicatorHandle } from './handles/indicator.js';
 import { SignalHandle } from './handles/signal.js';
+import { AllocationHandle } from './handles/allocation.js';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import type { TypedSupabaseClient } from './types.js';
 
@@ -159,5 +160,26 @@ describe('signal factories', () => {
     expect(h).toBeInstanceOf(SignalHandle);
     expect(h.comparison).toBe('=');
     expect(h.tolerance).toBe(1);
+  });
+});
+
+describe('allocation factory', () => {
+  const sdk = createClient({ supabase: testSupabase() });
+  const spy = sdk.ticker('SPY');
+  const gld = sdk.ticker('GLD');
+
+  it('sdk.allocation()', () => {
+    const h = sdk.allocation([spy, 0.75], [gld, 0.25]);
+    expect(h).toBeInstanceOf(AllocationHandle);
+    expect(h.holdings).toHaveLength(2);
+    expect(h.holdings[0][0]).toBe(spy);
+    expect(h.holdings[0][1]).toBe(0.75);
+    expect(h.holdings[1][0]).toBe(gld);
+    expect(h.holdings[1][1]).toBe(0.25);
+  });
+
+  it('sdk.allocation() single ticker', () => {
+    const h = sdk.allocation([spy, 1.0]);
+    expect(h.holdings).toHaveLength(1);
   });
 });
