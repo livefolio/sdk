@@ -1,10 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { StrategyHandle } from './strategy.js';
+import type { StrategyBar } from './strategy.js';
 import { SignalHandle } from './signal.js';
 import { AllocationHandle } from './allocation.js';
 import { IndicatorHandle } from './indicator.js';
 import { TickerHandle } from './ticker.js';
 import type { TypedSupabaseClient } from '../types.js';
+import type { DailyBar } from './indicator.js';
 
 const sb = {} as TypedSupabaseClient;
 
@@ -406,5 +408,157 @@ describe('StrategyHandle.resolve - reference mode', () => {
 
     const handle = new StrategyHandle(mockSb, 'invalid');
     await expect(handle.resolve()).rejects.toThrow();
+  });
+});
+
+describe('StrategyHandle.series', () => {
+  it('syncs signals, evaluates strategy, and returns StrategyBar[]', async () => {
+    const allocRow1 = { id: 50, holdings: { SPY: 1.0 }, created_at: '' };
+    const allocRow2 = { id: 51, holdings: { SHY: 1.0 }, created_at: '' };
+    const signalRow = {
+      id: 100,
+      indicator_id_1: 10,
+      indicator_id_2: 11,
+      comparison: '>' as const,
+      tolerance: 0,
+      created_at: '',
+    };
+    const strategyRow = {
+      id: 200,
+      link_id: 'test',
+      name: 'Test',
+      trading_freq: 'Daily' as const,
+      trading_offset: 0,
+      definition: {},
+      created_at: '',
+    };
+
+    const signalBars: DailyBar[] = [
+      { date: '2025-01-06', value: 1 },
+      { date: '2025-01-07', value: 0 },
+    ];
+
+    const tradingDayRows = [
+      { id: 1001, date: '2025-01-06', close: '2025-01-06T21:00:00Z' },
+      { id: 1002, date: '2025-01-07', close: '2025-01-07T21:00:00Z' },
+    ];
+
+    // Build pre-resolved handles
+    const mockSb = {} as TypedSupabaseClient;
+    const ind1 = IndicatorHandle.fromRow(
+      mockSb,
+      {
+        id: 10,
+        type: 'VIX' as const,
+        ticker_id: null,
+        lookback: 0,
+        delay: 0,
+        unit: null,
+        threshold: null,
+        created_at: '',
+      },
+      null,
+    );
+    const ind2 = IndicatorHandle.fromRow(
+      mockSb,
+      {
+        id: 11,
+        type: 'Threshold' as const,
+        ticker_id: null,
+        lookback: 0,
+        delay: 0,
+        unit: null,
+        threshold: 30,
+        created_at: '',
+      },
+      null,
+    );
+    const signal = SignalHandle.fromRow(mockSb, signalRow, ind1, ind2);
+    vi.spyOn(signal, 'series').mockResolvedValue(signalBars);
+
+    const alloc1 = AllocationHandle.fromRow(mockSb, allocRow1);
+    const alloc2 = AllocationHandle.fromRow(mockSb, allocRow2);
+
+    const handle = new StrategyHandle(mockSb, {
+      name: 'Test',
+      rules: [{ when: [signal], hold: alloc1 }, { hold: alloc2 }],
+    });
+
+    // Pre-resolve to skip create mode DB insert
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (handle as any)._resolved = strategyRow;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (handle as any)._allocationMap.set(50, alloc1);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (handle as any)._allocationMap.set(51, alloc2);
+
+    // Now mock supabase for the sync flow
+    const upsertMock = vi.fn().mockResolvedValue({ error: null });
+
+    const mockFrom = vi.fn().mockImplementation((table: string) => {
+      if (table === 'trading_days') {
+        return {
+          select: vi.fn().mockReturnValue({
+            lt: vi.fn().mockReturnValue({
+              order: vi.fn().mockImplementation((_col: string, opts?: { ascending: boolean }) => {
+                if (opts?.ascending === false) {
+                  // _getLatestClosedTradingDay: descending, limit(1).single()
+                  return {
+                    limit: vi.fn().mockReturnValue({
+                      single: vi.fn().mockResolvedValue({
+                        data: { date: '2025-01-07' },
+                        error: null,
+                      }),
+                    }),
+                  };
+                }
+                // _sync ascending: returns full list
+                return {
+                  then: (_cb: (v: { data: typeof tradingDayRows; error: null }) => unknown) =>
+                    Promise.resolve({ data: tradingDayRows, error: null }).then(_cb),
+                };
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === 'strategies_series') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              order: vi.fn().mockReturnValue({
+                limit: vi.fn().mockReturnValue({
+                  single: vi.fn().mockResolvedValue({
+                    data: null,
+                    error: { code: 'PGRST116' },
+                  }),
+                }),
+              }),
+            }),
+          }),
+          upsert: upsertMock,
+        };
+      }
+      return {};
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (handle as any)._supabase = { from: mockFrom };
+
+    // Spy on _querySeriesFromDb to return test data
+    const queryResult: StrategyBar[] = [
+      { date: '2025-01-06', allocation: alloc1 },
+      { date: '2025-01-07', allocation: alloc2 },
+    ];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.spyOn(handle as any, '_querySeriesFromDb').mockResolvedValue(queryResult);
+
+    const bars = await handle.series();
+
+    expect(bars).toHaveLength(2);
+    expect(bars[0].date).toBe('2025-01-06');
+    expect(bars[0].allocation).toBe(alloc1);
+    expect(bars[1].date).toBe('2025-01-07');
+    expect(bars[1].allocation).toBe(alloc2);
+    expect(upsertMock).toHaveBeenCalled();
   });
 });

@@ -6,6 +6,7 @@ import { AllocationHandle } from './allocation.js';
 import { TickerHandle } from './ticker.js';
 import { IndicatorHandle } from './indicator.js';
 import type { DateRange, IndicatorConfig } from './indicator.js';
+import { evaluateStrategy, computeRebalanceDates } from '../computations/strategy.js';
 
 type StrategyRow = Tables<'strategies'>;
 type TradingFreq = Database['public']['Enums']['trading_freq'];
@@ -277,11 +278,194 @@ export class StrategyHandle {
     return stratRow;
   }
 
-  async series(_range?: DateRange): Promise<StrategyBar[]> {
-    throw new Error('Not implemented');
+  private async _getLatestClosedTradingDay(): Promise<string> {
+    const { data, error } = await this._supabase
+      .from('trading_days')
+      .select('date')
+      .lt('close', new Date().toISOString())
+      .order('date', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error) throw error;
+    return data.date;
   }
 
-  async value(_date?: string): Promise<AllocationHandle | null> {
-    throw new Error('Not implemented');
+  private async _getLatestStrategySeriesDate(): Promise<string | null> {
+    const row = await this.resolve();
+    const { data, error } = await this._supabase
+      .from('strategies_series')
+      .select('trading_days!inner(date)')
+      .eq('strategies_id', row.id)
+      .order('trading_day_id', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error?.code === 'PGRST116') return null;
+    if (error) throw error;
+    return (data as unknown as { trading_days: { date: string } }).trading_days.date;
+  }
+
+  private async _ensureFresh(): Promise<void> {
+    await this.resolve();
+    const latestClosed = await this._getLatestClosedTradingDay();
+
+    if (this._cachedAsOf === latestClosed) return;
+
+    const latestSeries = await this._getLatestStrategySeriesDate();
+
+    if (latestSeries === latestClosed) {
+      this._cache = null;
+      this._cachedAsOf = latestClosed;
+      return;
+    }
+
+    if (!this._syncing) {
+      this._syncing = this._sync(latestClosed).finally(() => {
+        this._syncing = null;
+      });
+    }
+    await this._syncing;
+
+    this._cache = null;
+    this._cachedAsOf = latestClosed;
+  }
+
+  private async _sync(latestClosed: string): Promise<void> {
+    const row = await this.resolve();
+
+    // Sync all signals and collect their series
+    const signalSeries = new Map<number, Map<string, boolean>>();
+    const allSignals = new Set<SignalHandle>();
+    for (const rule of this._rules) {
+      if (rule.when) rule.when.forEach((s) => allSignals.add(s));
+    }
+
+    await Promise.all(
+      Array.from(allSignals).map(async (signal) => {
+        const bars = await signal.series();
+        const dateMap = new Map<string, boolean>();
+        for (const bar of bars) dateMap.set(bar.date, bar.value === 1);
+        signalSeries.set(signal.id, dateMap);
+      }),
+    );
+
+    // Get all closed trading days
+    const { data: tdRows, error: tdError } = await this._supabase
+      .from('trading_days')
+      .select('id, date')
+      .lt('close', new Date().toISOString())
+      .order('date', { ascending: true });
+
+    if (tdError) throw tdError;
+
+    const tradingDays = tdRows.map((td: { id: number; date: string }) => td.date);
+    const dateToId = new Map<string, number>();
+    for (const td of tdRows) dateToId.set(td.date, td.id);
+
+    // Compute rebalance dates
+    const rebalanceDates = computeRebalanceDates(tradingDays, this._freq, this._offset);
+
+    // Build allocation index mapping
+    const allocations: AllocationHandle[] = [];
+    const allocIndexMap = new Map<number, number>();
+    const rulesInput = this._rules.map((rule) => {
+      let allocIdx = allocIndexMap.get(rule.hold.id);
+      if (allocIdx === undefined) {
+        allocIdx = allocations.length;
+        allocations.push(rule.hold);
+        allocIndexMap.set(rule.hold.id, allocIdx);
+      }
+      return {
+        signalIds: (rule.when ?? []).map((s) => s.id),
+        allocationIndex: allocIdx,
+      };
+    });
+
+    // Evaluate
+    const evalResult = evaluateStrategy(signalSeries, rulesInput, rebalanceDates, tradingDays);
+
+    // Upsert to strategies_series
+    const rows = Array.from(evalResult.entries())
+      .filter(([date]) => dateToId.has(date) && date <= latestClosed)
+      .map(([date, allocIdx]) => ({
+        strategies_id: row.id,
+        trading_day_id: dateToId.get(date)!,
+        allocation_id: allocations[allocIdx].id,
+      }));
+
+    if (rows.length > 0) {
+      const { error } = await this._supabase
+        .from('strategies_series')
+        .upsert(rows, { onConflict: 'strategies_id,trading_day_id' });
+      if (error) throw error;
+    }
+  }
+
+  private async _querySeriesFromDb(range?: DateRange): Promise<StrategyBar[]> {
+    const row = await this.resolve();
+    let query = this._supabase
+      .from('strategies_series')
+      .select('allocation_id, trading_days!inner(date)')
+      .eq('strategies_id', row.id)
+      .order('trading_day_id', { ascending: true });
+
+    if (range?.from) query = query.gte('trading_days.date', range.from);
+    if (range?.to) query = query.lte('trading_days.date', range.to);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    return (data as unknown as { allocation_id: number; trading_days: { date: string } }[]).map((r) => ({
+      date: r.trading_days.date,
+      allocation: this._allocationMap.get(r.allocation_id)!,
+    }));
+  }
+
+  async series(range?: DateRange): Promise<StrategyBar[]> {
+    await this._ensureFresh();
+    if (this._cache && !range) return this._cache;
+    const bars = await this._querySeriesFromDb(range);
+    if (!range) this._cache = bars;
+    return bars;
+  }
+
+  async value(date?: string): Promise<AllocationHandle | null> {
+    await this._ensureFresh();
+    const row = await this.resolve();
+
+    if (date) {
+      const { data: td, error: tdError } = await this._supabase
+        .from('trading_days')
+        .select('id')
+        .eq('date', date)
+        .single();
+
+      if (tdError?.code === 'PGRST116') return null;
+      if (tdError) throw tdError;
+
+      const { data, error } = await this._supabase
+        .from('strategies_series')
+        .select('allocation_id')
+        .eq('strategies_id', row.id)
+        .eq('trading_day_id', td.id)
+        .single();
+
+      if (error?.code === 'PGRST116') return null;
+      if (error) throw error;
+      return this._allocationMap.get(data.allocation_id) ?? null;
+    }
+
+    const { data, error } = await this._supabase
+      .from('strategies_series')
+      .select('allocation_id')
+      .eq('strategies_id', row.id)
+      .order('trading_day_id', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error?.code === 'PGRST116') return null;
+    if (error) throw error;
+    return this._allocationMap.get(data.allocation_id) ?? null;
   }
 }
