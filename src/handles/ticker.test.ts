@@ -66,4 +66,16 @@ describe('TickerHandle.resolve', () => {
     const handle = new TickerHandle(sb, 'SPY');
     await expect(handle.resolve()).rejects.toEqual({ message: 'RLS denied' });
   });
+
+  it('deduplicates concurrent resolve calls', async () => {
+    const row = { id: 42, symbol: 'SPY', leverage: 1, created_at: '2026-01-01T00:00:00Z' };
+    const sb = mockSupabaseWithUpsert(row);
+    const handle = new TickerHandle(sb, 'SPY', 1);
+
+    const [r1, r2] = await Promise.all([handle.resolve(), handle.resolve()]);
+
+    expect(r1).toEqual(row);
+    expect(r2).toEqual(row);
+    expect(sb.from).toHaveBeenCalledTimes(1);
+  });
 });

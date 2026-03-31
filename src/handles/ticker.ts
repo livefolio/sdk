@@ -9,6 +9,7 @@ export class TickerHandle {
 
   private _supabase: TypedSupabaseClient;
   private _resolved: TickerRow | null = null;
+  private _resolving: Promise<TickerRow> | null = null;
 
   constructor(supabase: TypedSupabaseClient, symbol: string, leverage: number = 1) {
     this._supabase = supabase;
@@ -24,7 +25,13 @@ export class TickerHandle {
 
   async resolve(): Promise<TickerRow> {
     if (this._resolved) return this._resolved;
+    if (!this._resolving) this._resolving = this._doResolve();
+    return this._resolving;
+  }
 
+  private async _doResolve(): Promise<TickerRow> {
+    // Note: We use update-on-conflict (default) rather than ignoreDuplicates: true
+    // because PostgREST does not return the existing row with ignoreDuplicates.
     const { data, error } = await this._supabase
       .from('tickers')
       .upsert({ symbol: this.symbol, leverage: this.leverage }, { onConflict: 'symbol,leverage' })
