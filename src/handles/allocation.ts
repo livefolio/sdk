@@ -12,6 +12,10 @@ export class AllocationHandle {
   private _resolving: Promise<AllocationRow> | null = null;
 
   constructor(supabase: TypedSupabaseClient, holdings: [TickerHandle, number][]) {
+    const total = holdings.reduce((sum, [, weight]) => sum + weight, 0);
+    if (Math.abs(total - 1) > 1e-9) {
+      throw new Error(`Allocation weights must sum to 1, got ${total}`);
+    }
     this._supabase = supabase;
     this.holdings = holdings;
   }

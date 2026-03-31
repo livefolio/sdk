@@ -24,6 +24,34 @@ describe('AllocationHandle construction', () => {
     expect(handle.holdings[1][1]).toBe(0.25);
   });
 
+  it('throws if weights do not sum to 1', () => {
+    const sb = mockSupabase();
+    const spy = new TickerHandle(sb, 'SPY');
+    const gld = new TickerHandle(sb, 'GLD');
+    expect(
+      () =>
+        new AllocationHandle(sb, [
+          [spy, 0.5],
+          [gld, 0.3],
+        ]),
+    ).toThrow('weights must sum to 1');
+  });
+
+  it('accepts weights that sum to 1 within floating point tolerance', () => {
+    const sb = mockSupabase();
+    const spy = new TickerHandle(sb, 'SPY');
+    const gld = new TickerHandle(sb, 'GLD');
+    const shy = new TickerHandle(sb, 'SHY');
+    expect(
+      () =>
+        new AllocationHandle(sb, [
+          [spy, 0.33],
+          [gld, 0.33],
+          [shy, 0.34],
+        ]),
+    ).not.toThrow();
+  });
+
   it('throws on .id before resolution', () => {
     const sb = mockSupabase();
     const spy = new TickerHandle(sb, 'SPY');
