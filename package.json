@@ -50,6 +50,7 @@
     "vitest": "^3"
   },
   "dependencies": {
+    "nanoid": "^5.1.7",
     "yahoo-finance2": "^3.14.0"
   }
 }
