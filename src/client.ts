@@ -53,6 +53,7 @@ export interface LivefolioClient {
   // Strategies
   strategy(linkId: string): StrategyHandle;
   strategy(options: StrategyOptions): StrategyHandle;
+  strategy(optionsOrLinkId: string | StrategyOptions): StrategyHandle;
 }
 
 export interface LivefolioClientOptions {
