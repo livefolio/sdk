@@ -172,4 +172,36 @@ describe('IndicatorHandle.resolve', () => {
     await handle.resolve();
     expect(from).toHaveBeenCalledTimes(1);
   });
+
+  it('deduplicates concurrent resolve calls', async () => {
+    const indicatorRow = {
+      id: 20,
+      type: 'VIX',
+      ticker_id: null,
+      lookback: 0,
+      delay: 0,
+      unit: null,
+      threshold: null,
+      created_at: '',
+    };
+    const single = vi.fn().mockResolvedValue({ data: indicatorRow, error: null });
+    const select = vi.fn().mockReturnValue({ single });
+    const upsert = vi.fn().mockReturnValue({ select });
+    const from = vi.fn().mockReturnValue({ upsert });
+    const sb = { from } as unknown as TypedSupabaseClient;
+
+    const handle = new IndicatorHandle(sb, {
+      type: 'VIX',
+      ticker: null,
+      lookback: 0,
+      delay: 0,
+      unit: null,
+      threshold: null,
+    });
+
+    const [r1, r2] = await Promise.all([handle.resolve(), handle.resolve()]);
+    expect(r1).toEqual(indicatorRow);
+    expect(r2).toEqual(indicatorRow);
+    expect(from).toHaveBeenCalledTimes(1);
+  });
 });

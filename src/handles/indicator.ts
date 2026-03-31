@@ -7,6 +7,10 @@ type IndicatorSeriesRow = Tables<'indicators_series'>;
 type IndicatorType = Database['public']['Enums']['indicator_type'];
 type Unit = Database['public']['Enums']['unit'];
 
+export type IndicatorSeriesWithDate = IndicatorSeriesRow & {
+  trading_days: { date: string };
+};
+
 export interface IndicatorIdentity {
   type: IndicatorType;
   ticker: TickerHandle | null;
@@ -81,7 +85,7 @@ export class IndicatorHandle {
     return data;
   }
 
-  async series(range?: DateRange): Promise<IndicatorSeriesRow[]> {
+  async series(range?: DateRange): Promise<IndicatorSeriesWithDate[]> {
     const row = await this.resolve();
     let query = this._supabase
       .from('indicators_series')
@@ -94,22 +98,45 @@ export class IndicatorHandle {
 
     const { data, error } = await query;
     if (error) throw error;
-    return data as IndicatorSeriesRow[];
+    return data as IndicatorSeriesWithDate[];
   }
 
   async value(date?: string): Promise<number | null> {
     const row = await this.resolve();
-    let query = this._supabase
+
+    if (date) {
+      // Look up trading_day_id directly to avoid PostgREST foreign-table filter semantics
+      const { data: td, error: tdError } = await this._supabase
+        .from('trading_days')
+        .select('id')
+        .eq('date', date)
+        .single();
+
+      if (tdError?.code === 'PGRST116') return null; // no trading day for this date
+      if (tdError) throw tdError;
+
+      const { data, error } = await this._supabase
+        .from('indicators_series')
+        .select('value')
+        .eq('indicator_id', row.id)
+        .eq('trading_day_id', td.id)
+        .single();
+
+      if (error?.code === 'PGRST116') return null;
+      if (error) throw error;
+      return data.value;
+    }
+
+    // No date: get the most recent value
+    const { data, error } = await this._supabase
       .from('indicators_series')
-      .select('value, trading_days!inner(date)')
+      .select('value')
       .eq('indicator_id', row.id)
       .order('trading_day_id', { ascending: false })
-      .limit(1);
+      .limit(1)
+      .single();
 
-    if (date) query = query.eq('trading_days.date', date);
-
-    const { data, error } = await query.single();
-    if (error?.code === 'PGRST116') return null; // no rows
+    if (error?.code === 'PGRST116') return null;
     if (error) throw error;
     return data.value;
   }
