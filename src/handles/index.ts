@@ -4,3 +4,5 @@ export type { IndicatorIdentity, DateRange, DailyBar, IndicatorConfig } from './
 export { SignalHandle } from './signal.js';
 export type { SignalIdentity } from './signal.js';
 export { AllocationHandle } from './allocation.js';
+export { StrategyHandle } from './strategy.js';
+export type { StrategyRule, StrategyBar, StrategyOptions } from './strategy.js';

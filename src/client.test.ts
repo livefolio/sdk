@@ -4,6 +4,7 @@ import { TickerHandle } from './handles/ticker.js';
 import { IndicatorHandle } from './handles/indicator.js';
 import { SignalHandle } from './handles/signal.js';
 import { AllocationHandle } from './handles/allocation.js';
+import { StrategyHandle } from './handles/strategy.js';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import type { TypedSupabaseClient } from './types.js';
 
@@ -181,5 +182,34 @@ describe('allocation factory', () => {
   it('sdk.allocation() single ticker', () => {
     const h = sdk.allocation([spy, 1.0]);
     expect(h.holdings).toHaveLength(1);
+  });
+});
+
+describe('strategy factory', () => {
+  it('creates a StrategyHandle in create mode', () => {
+    const client = createClient({ supabase: testSupabase() });
+    const spy = client.ticker('SPY');
+    const price = client.price(spy);
+    const sma = client.sma(spy, 200);
+    const bullish = client.gt(price, sma, 5);
+    const aggressive = client.allocation([spy, 1.0]);
+    const defensive = client.allocation([spy, 1.0]);
+
+    const strategy = client.strategy({
+      name: 'Test',
+      rules: [{ when: [bullish], hold: aggressive }, { hold: defensive }],
+    });
+
+    expect(strategy).toBeInstanceOf(StrategyHandle);
+    expect(strategy.name).toBe('Test');
+    expect(strategy.rules).toHaveLength(2);
+  });
+
+  it('creates a StrategyHandle in reference mode', () => {
+    const client = createClient({ supabase: testSupabase() });
+    const strategy = client.strategy('abc123');
+
+    expect(strategy).toBeInstanceOf(StrategyHandle);
+    expect(strategy.name).toBeNull();
   });
 });

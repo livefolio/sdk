@@ -7,3 +7,5 @@ export type { IndicatorIdentity, DateRange, DailyBar } from './handles/indicator
 export { SignalHandle } from './handles/signal.js';
 export type { SignalIdentity } from './handles/signal.js';
 export { AllocationHandle } from './handles/allocation.js';
+export { StrategyHandle } from './handles/strategy.js';
+export type { StrategyRule, StrategyBar, StrategyOptions } from './handles/strategy.js';
