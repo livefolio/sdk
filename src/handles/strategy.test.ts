@@ -254,26 +254,18 @@ describe('StrategyHandle.resolve - create mode', () => {
     const from = vi.fn().mockImplementation((table: string) => {
       if (table === 'tickers') {
         return {
-          upsert: vi
-            .fn()
-            .mockReturnValue({
-              select: vi.fn().mockReturnValue({ single: vi.fn().mockResolvedValue({ data: tickerRow, error: null }) }),
-            }),
+          upsert: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({ single: vi.fn().mockResolvedValue({ data: tickerRow, error: null }) }),
+          }),
         };
       }
       if (table === 'allocations') {
         return {
-          select: vi
-            .fn()
-            .mockReturnValue({
-              eq: vi
-                .fn()
-                .mockReturnValue({
-                  limit: vi
-                    .fn()
-                    .mockReturnValue({ single: vi.fn().mockResolvedValue({ data: allocRow, error: null }) }),
-                }),
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              limit: vi.fn().mockReturnValue({ single: vi.fn().mockResolvedValue({ data: allocRow, error: null }) }),
             }),
+          }),
         };
       }
       if (table === 'strategies') {
@@ -289,5 +281,130 @@ describe('StrategyHandle.resolve - create mode', () => {
     const [r1, r2] = await Promise.all([handle.resolve(), handle.resolve()]);
     expect(r1).toEqual(r2);
     expect(insertMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('StrategyHandle.resolve - reference mode', () => {
+  it('fetches strategy by link_id and reconstructs rules', async () => {
+    const strategyRow = {
+      id: 200,
+      link_id: 'abc123',
+      name: 'Tactical',
+      trading_freq: 'Monthly',
+      trading_offset: 2,
+      definition: {
+        rules: [
+          { signalIds: [100], allocationId: 50 },
+          { signalIds: [], allocationId: 51 },
+        ],
+      },
+      created_at: '',
+    };
+    const signalRow = {
+      id: 100,
+      indicator_id_1: 10,
+      indicator_id_2: 11,
+      comparison: '>',
+      tolerance: 5,
+      created_at: '',
+    };
+    const indicatorRow1 = {
+      id: 10,
+      type: 'Price',
+      ticker_id: 1,
+      lookback: 0,
+      delay: 0,
+      unit: null,
+      threshold: null,
+      created_at: '',
+    };
+    const indicatorRow2 = {
+      id: 11,
+      type: 'SMA',
+      ticker_id: 1,
+      lookback: 200,
+      delay: 0,
+      unit: null,
+      threshold: null,
+      created_at: '',
+    };
+    const tickerRow = { id: 1, symbol: 'SPY', leverage: 1, created_at: '' };
+    const allocRow1 = { id: 50, holdings: { SPY: 1.0 }, created_at: '' };
+    const allocRow2 = { id: 51, holdings: { SHY: 1.0 }, created_at: '' };
+
+    const from = vi.fn().mockImplementation((table: string) => {
+      if (table === 'strategies') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({ data: strategyRow, error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === 'signals') {
+        return {
+          select: vi.fn().mockReturnValue({
+            in: vi.fn().mockResolvedValue({ data: [signalRow], error: null }),
+          }),
+        };
+      }
+      if (table === 'indicators') {
+        return {
+          select: vi.fn().mockReturnValue({
+            in: vi.fn().mockResolvedValue({ data: [indicatorRow1, indicatorRow2], error: null }),
+          }),
+        };
+      }
+      if (table === 'tickers') {
+        return {
+          select: vi.fn().mockReturnValue({
+            in: vi.fn().mockResolvedValue({ data: [tickerRow], error: null }),
+          }),
+        };
+      }
+      if (table === 'allocations') {
+        return {
+          select: vi.fn().mockReturnValue({
+            in: vi.fn().mockResolvedValue({ data: [allocRow1, allocRow2], error: null }),
+          }),
+        };
+      }
+      return {};
+    });
+    const mockSb = { from } as unknown as TypedSupabaseClient;
+
+    const handle = new StrategyHandle(mockSb, 'abc123');
+    const result = await handle.resolve();
+
+    expect(result.id).toBe(200);
+    expect(handle.id).toBe(200);
+    expect(handle.link).toBe('abc123');
+    expect(handle.name).toBe('Tactical');
+    expect(handle.freq).toBe('Monthly');
+    expect(handle.offset).toBe(2);
+    expect(handle.rules).toHaveLength(2);
+    expect(handle.rules[0].when).toHaveLength(1);
+    expect(handle.rules[0].when![0].comparison).toBe('>');
+    expect(handle.rules[0].hold.id).toBe(50);
+    expect(handle.rules[1].when).toBeUndefined();
+    expect(handle.rules[1].hold.id).toBe(51);
+  });
+
+  it('throws on invalid link_id', async () => {
+    const from = vi.fn().mockImplementation(() => ({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          single: vi.fn().mockResolvedValue({
+            data: null,
+            error: { code: 'PGRST116', message: 'not found' },
+          }),
+        }),
+      }),
+    }));
+    const mockSb = { from } as unknown as TypedSupabaseClient;
+
+    const handle = new StrategyHandle(mockSb, 'invalid');
+    await expect(handle.resolve()).rejects.toThrow();
   });
 });
