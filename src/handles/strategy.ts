@@ -7,6 +7,9 @@ import { TickerHandle } from './ticker.js';
 import { IndicatorHandle } from './indicator.js';
 import type { DateRange, IndicatorConfig } from './indicator.js';
 import { evaluateStrategy, computeRebalanceDates } from '../computations/strategy.js';
+import { runSimulation } from '../backtest/simulate.js';
+import { SimulationHandle } from '../backtest/types.js';
+import type { SimulateOptions } from '../backtest/types.js';
 
 type StrategyRow = Tables<'strategies'>;
 type TradingFreq = Database['public']['Enums']['trading_freq'];
@@ -475,5 +478,54 @@ export class StrategyHandle {
     if (error?.code === 'PGRST116') return null;
     if (error) throw error;
     return this._allocationMap.get(data.allocation_id) ?? null;
+  }
+
+  async simulate(options: SimulateOptions): Promise<SimulationHandle> {
+    const bars = await this.series({ from: options.from, to: options.to });
+    if (bars.length === 0) {
+      const capital = options.initialCapital ?? 100_000;
+      return new SimulationHandle([], [], capital);
+    }
+
+    const prices = await this._fetchPricesForTickers(bars, options.from, options.to);
+    const tradingDays = bars.map((b) => b.date);
+    const rebalanceDates = computeRebalanceDates(tradingDays, this._freq, this._offset);
+    const initialCapital = options.initialCapital ?? 100_000;
+
+    const result = runSimulation(bars, prices, rebalanceDates, initialCapital);
+    return new SimulationHandle(result.series, result.trades, initialCapital);
+  }
+
+  private async _fetchPricesForTickers(
+    bars: StrategyBar[],
+    from: string,
+    to: string,
+  ): Promise<Record<string, Record<string, number>>> {
+    const tickerMap = new Map<string, TickerHandle>();
+    for (const bar of bars) {
+      for (const [ticker] of bar.allocation.holdings) {
+        if (!tickerMap.has(ticker.symbol)) {
+          tickerMap.set(ticker.symbol, ticker);
+        }
+      }
+    }
+
+    const entries = await Promise.all(
+      Array.from(tickerMap.entries()).map(async ([symbol, ticker]) => {
+        const priceIndicator = new IndicatorHandle(
+          this._supabase,
+          { type: 'Price', ticker, lookback: 0, delay: 0, unit: null, threshold: null },
+          this._config,
+        );
+        const priceBars = await priceIndicator.series({ from, to });
+        const dateMap: Record<string, number> = {};
+        for (const bar of priceBars) {
+          dateMap[bar.date] = bar.value;
+        }
+        return [symbol, dateMap] as const;
+      }),
+    );
+
+    return Object.fromEntries(entries);
   }
 }
