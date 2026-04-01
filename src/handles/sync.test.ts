@@ -125,20 +125,16 @@ function buildMockSupabase(state: MockCallState) {
             error: null,
           });
         });
-        // _upsertSeries path: .gte().lte() returns a thenable with trading day mappings
-        selectChain.then = vi
-          .fn()
-          .mockImplementation(
-            (resolve: (v: { data: unknown[]; error: null }) => void, reject?: (e: unknown) => void) => {
-              return Promise.resolve({
-                data: [
-                  { id: 100, date: '2026-03-27' },
-                  { id: 101, date: '2026-03-28' },
-                ],
-                error: null,
-              }).then(resolve, reject);
-            },
-          );
+        // _upsertSeries path: .gte().lte().range() returns trading day mappings
+        selectChain.range = vi.fn().mockImplementation(() => {
+          return Promise.resolve({
+            data: [
+              { id: 100, date: '2026-03-27' },
+              { id: 101, date: '2026-03-28' },
+            ],
+            error: null,
+          });
+        });
         selectChain.single = vi.fn().mockResolvedValue({
           data: { date: LATEST_CLOSED_DATE },
           error: null,
@@ -384,5 +380,259 @@ describe('IndicatorHandle sync', () => {
 
     // Should be the exact same reference (cached)
     expect(bars1).toBe(bars2);
+  });
+
+  it('paginates _querySeriesFromDb when results exceed 1000 rows', async () => {
+    // Build 1500 bars to simulate multi-page response
+    const page1 = Array.from({ length: 1000 }, (_, i) => ({
+      value: i,
+      trading_days: {
+        date: `2020-${String(Math.floor(i / 28) + 1).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
+      },
+    }));
+    const page2 = Array.from({ length: 500 }, (_, i) => ({
+      value: 1000 + i,
+      trading_days: {
+        date: `2024-${String(Math.floor(i / 28) + 1).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
+      },
+    }));
+
+    let rangeCallCount = 0;
+
+    const from = vi.fn().mockImplementation((table: string) => {
+      if (table === 'tickers') {
+        return {
+          upsert: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({
+                data: { id: 1, symbol: 'SPY', leverage: 1, created_at: '' },
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === 'indicators') {
+        return {
+          upsert: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({
+                data: {
+                  id: 10,
+                  type: 'Price',
+                  ticker_id: 1,
+                  lookback: 0,
+                  delay: 0,
+                  unit: null,
+                  threshold: null,
+                  created_at: '',
+                },
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === 'trading_days') {
+        const tdChain: Record<string, ReturnType<typeof vi.fn>> = {};
+        tdChain.select = vi.fn().mockImplementation(() => {
+          const selectChain: Record<string, ReturnType<typeof vi.fn>> = {};
+          const selectSelf = () => selectChain;
+          selectChain.lt = vi.fn(selectSelf);
+          selectChain.order = vi.fn(selectSelf);
+          selectChain.limit = vi.fn(selectSelf);
+          selectChain.single = vi.fn().mockResolvedValue({ data: { date: LATEST_CLOSED_DATE }, error: null });
+          return selectChain;
+        });
+        return tdChain;
+      }
+      if (table === 'indicators_series') {
+        const isChain: Record<string, ReturnType<typeof vi.fn>> = {};
+        isChain.select = vi.fn().mockImplementation((selectArg: string) => {
+          const chain: Record<string, ReturnType<typeof vi.fn>> = {};
+          const self = () => chain;
+          chain.eq = vi.fn(self);
+          chain.order = vi.fn(self);
+          chain.limit = vi.fn(self);
+
+          if (selectArg === 'trading_days!inner(date)') {
+            chain.single = vi
+              .fn()
+              .mockResolvedValue({ data: { trading_days: { date: LATEST_CLOSED_DATE } }, error: null });
+          } else if (selectArg === 'value, trading_days!inner(date)') {
+            chain.range = vi.fn().mockImplementation(() => {
+              const rangeChain: Record<string, ReturnType<typeof vi.fn>> = {};
+              const rangeSelf = () => rangeChain;
+              rangeChain.gte = vi.fn(rangeSelf);
+              rangeChain.lte = vi.fn(rangeSelf);
+              rangeChain.then = vi
+                .fn()
+                .mockImplementation(
+                  (resolve: (v: { data: unknown[]; error: null }) => void, reject?: (e: unknown) => void) => {
+                    const data = rangeCallCount === 0 ? page1 : page2;
+                    rangeCallCount++;
+                    return Promise.resolve({ data, error: null }).then(resolve, reject);
+                  },
+                );
+              return rangeChain;
+            });
+          }
+          return chain;
+        });
+        return isChain;
+      }
+      return {};
+    });
+
+    const sb = { from } as unknown as TypedSupabaseClient;
+    const ticker = new TickerHandle(sb, 'SPY');
+    const handle = new IndicatorHandle(sb, {
+      type: 'Price',
+      ticker,
+      lookback: 0,
+      delay: 0,
+      unit: null,
+      threshold: null,
+    });
+
+    const bars = await handle.series();
+    expect(bars).toHaveLength(1500);
+    expect(rangeCallCount).toBe(2);
+  });
+
+  it('paginates trading days lookup in _upsertSeries for large syncs', async () => {
+    // Generate 1500 bars from Yahoo
+    const fetchBars = Array.from({ length: 1500 }, (_, i) => ({
+      date: `2020-${String(Math.floor(i / 28) + 1).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
+      value: 100 + i,
+    }));
+
+    // Track trading days range calls and upserted rows
+    let tdRangeCallCount = 0;
+    const upsertedRows: unknown[] = [];
+
+    // Build page1 (1000 trading day rows) and page2 (500)
+    const tdPage1 = fetchBars.slice(0, 1000).map((b, i) => ({ id: i + 1, date: b.date }));
+    const tdPage2 = fetchBars.slice(1000).map((b, i) => ({ id: 1001 + i, date: b.date }));
+
+    const from = vi.fn().mockImplementation((table: string) => {
+      if (table === 'tickers') {
+        return {
+          upsert: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({
+                data: { id: 1, symbol: 'SPY', leverage: 1, created_at: '' },
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === 'indicators') {
+        return {
+          upsert: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({
+                data: {
+                  id: 10,
+                  type: 'Price',
+                  ticker_id: 1,
+                  lookback: 0,
+                  delay: 0,
+                  unit: null,
+                  threshold: null,
+                  created_at: '',
+                },
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === 'trading_days') {
+        const tdChain: Record<string, ReturnType<typeof vi.fn>> = {};
+        tdChain.select = vi.fn().mockImplementation(() => {
+          const selectChain: Record<string, ReturnType<typeof vi.fn>> = {};
+          const selectSelf = () => selectChain;
+          selectChain.lt = vi.fn(selectSelf);
+          selectChain.eq = vi.fn(selectSelf);
+          selectChain.gte = vi.fn(selectSelf);
+          selectChain.lte = vi.fn(selectSelf);
+          selectChain.order = vi.fn(selectSelf);
+          selectChain.limit = vi.fn(selectSelf);
+          selectChain.single = vi.fn().mockResolvedValue({ data: { date: LATEST_CLOSED_DATE }, error: null });
+          // _upsertSeries: .gte().lte().range()
+          selectChain.range = vi.fn().mockImplementation(() => {
+            const data = tdRangeCallCount === 0 ? tdPage1 : tdPage2;
+            tdRangeCallCount++;
+            return Promise.resolve({ data, error: null });
+          });
+          return selectChain;
+        });
+        return tdChain;
+      }
+      if (table === 'indicators_series') {
+        const isChain: Record<string, ReturnType<typeof vi.fn>> = {};
+        isChain.upsert = vi.fn().mockImplementation((rows: unknown[]) => {
+          upsertedRows.push(...(Array.isArray(rows) ? rows : [rows]));
+          return Promise.resolve({ data: null, error: null });
+        });
+        isChain.select = vi.fn().mockImplementation((selectArg: string) => {
+          const chain: Record<string, ReturnType<typeof vi.fn>> = {};
+          const self = () => chain;
+          chain.eq = vi.fn(self);
+          chain.order = vi.fn(self);
+          chain.limit = vi.fn(self);
+          if (selectArg === 'trading_days!inner(date)') {
+            // _getLatestSeriesDate: no data yet
+            chain.single = vi.fn().mockResolvedValue({ data: null, error: { code: 'PGRST116', message: 'No rows' } });
+          } else if (selectArg === 'value, trading_days!inner(date)') {
+            // _querySeriesFromDb after sync
+            chain.range = vi.fn().mockImplementation(() => {
+              const rangeChain: Record<string, ReturnType<typeof vi.fn>> = {};
+              const rangeSelf = () => rangeChain;
+              rangeChain.gte = vi.fn(rangeSelf);
+              rangeChain.lte = vi.fn(rangeSelf);
+              rangeChain.then = vi
+                .fn()
+                .mockImplementation(
+                  (resolve: (v: { data: unknown[]; error: null }) => void, reject?: (e: unknown) => void) => {
+                    return Promise.resolve({ data: [], error: null }).then(resolve, reject);
+                  },
+                );
+              return rangeChain;
+            });
+          }
+          return chain;
+        });
+        return isChain;
+      }
+      return {};
+    });
+
+    const sb = { from } as unknown as TypedSupabaseClient;
+    const ticker = new TickerHandle(sb, 'SPY');
+    const handle = new IndicatorHandle(
+      sb,
+      {
+        type: 'Price',
+        ticker,
+        lookback: 0,
+        delay: 0,
+        unit: null,
+        threshold: null,
+      },
+      { fredApiKey: 'dummy' },
+    );
+
+    // Resolve first so _upsertSeries can access the row id
+    await handle.resolve();
+    // Call _upsertSeries directly to test pagination without provider mocks
+    await (handle as unknown as { _upsertSeries: (bars: typeof fetchBars) => Promise<void> })._upsertSeries(fetchBars);
+
+    // Trading days lookup should have been called twice (paginated)
+    expect(tdRangeCallCount).toBe(2);
+    // All 1500 bars should have been upserted in a single atomic call
+    expect(upsertedRows).toHaveLength(1500);
   });
 });

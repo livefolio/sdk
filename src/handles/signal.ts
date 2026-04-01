@@ -198,17 +198,27 @@ export class SignalHandle {
     const minDate = bars[0].date;
     const maxDate = bars[bars.length - 1].date;
 
-    const { data: tradingDays, error: tdError } = await this._supabase
-      .from('trading_days')
-      .select('id, date')
-      .gte('date', minDate)
-      .lte('date', maxDate);
-
-    if (tdError) throw tdError;
-
+    // Paginate trading days lookup (PostgREST defaults to 1000 rows)
+    const PAGE = 1000;
     const dateToId = new Map<string, number>();
-    for (const td of tradingDays) {
-      dateToId.set(td.date, td.id);
+    let offset = 0;
+
+    while (true) {
+      const { data: tradingDays, error: tdError } = await this._supabase
+        .from('trading_days')
+        .select('id, date')
+        .gte('date', minDate)
+        .lte('date', maxDate)
+        .range(offset, offset + PAGE - 1);
+
+      if (tdError) throw tdError;
+
+      for (const td of tradingDays) {
+        dateToId.set(td.date, td.id);
+      }
+
+      if (tradingDays.length < PAGE) break;
+      offset += PAGE;
     }
 
     const rows = bars

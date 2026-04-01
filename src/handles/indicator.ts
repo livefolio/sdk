@@ -224,13 +224,23 @@ export class IndicatorHandle {
       }
 
       case 'calendar': {
-        // Fetch all trading days to compute calendar values
-        const { data: allDays, error: daysError } = await this._supabase
-          .from('trading_days')
-          .select('date')
-          .order('date', { ascending: true });
+        // Fetch all trading days to compute calendar values (paginated)
+        const allDays: { date: string }[] = [];
+        let calOffset = 0;
 
-        if (daysError) throw daysError;
+        while (true) {
+          const { data: dayPage, error: daysError } = await this._supabase
+            .from('trading_days')
+            .select('date')
+            .order('date', { ascending: true })
+            .range(calOffset, calOffset + 1000 - 1);
+
+          if (daysError) throw daysError;
+
+          allDays.push(...dayPage);
+          if (dayPage.length < 1000) break;
+          calOffset += 1000;
+        }
 
         const dayBars: DailyBar[] = allDays.map((d) => ({ date: d.date, value: 0 }));
         bars = computeCalendar(dayBars, this.type as 'Month' | 'Day of Week' | 'Day of Month' | 'Day of Year');
@@ -259,17 +269,27 @@ export class IndicatorHandle {
     const minDate = bars[0].date;
     const maxDate = bars[bars.length - 1].date;
 
-    const { data: tradingDays, error: tdError } = await this._supabase
-      .from('trading_days')
-      .select('id, date')
-      .gte('date', minDate)
-      .lte('date', maxDate);
-
-    if (tdError) throw tdError;
-
+    // Paginate trading days lookup (PostgREST defaults to 1000 rows)
+    const PAGE = 1000;
     const dateToId = new Map<string, number>();
-    for (const td of tradingDays) {
-      dateToId.set(td.date, td.id);
+    let offset = 0;
+
+    while (true) {
+      const { data: tradingDays, error: tdError } = await this._supabase
+        .from('trading_days')
+        .select('id, date')
+        .gte('date', minDate)
+        .lte('date', maxDate)
+        .range(offset, offset + PAGE - 1);
+
+      if (tdError) throw tdError;
+
+      for (const td of tradingDays) {
+        dateToId.set(td.date, td.id);
+      }
+
+      if (tradingDays.length < PAGE) break;
+      offset += PAGE;
     }
 
     const rows = bars

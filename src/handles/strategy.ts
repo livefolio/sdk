@@ -361,18 +361,29 @@ export class StrategyHandle {
       }),
     );
 
-    // Get all closed trading days
-    const { data: tdRows, error: tdError } = await this._supabase
-      .from('trading_days')
-      .select('id, date')
-      .lt('close', new Date().toISOString())
-      .order('date', { ascending: true });
+    // Get all closed trading days (paginated — PostgREST defaults to 1000 rows)
+    const PAGE = 1000;
+    const allTdRows: { id: number; date: string }[] = [];
+    let tdOffset = 0;
 
-    if (tdError) throw tdError;
+    while (true) {
+      const { data: tdPage, error: tdError } = await this._supabase
+        .from('trading_days')
+        .select('id, date')
+        .lt('close', new Date().toISOString())
+        .order('date', { ascending: true })
+        .range(tdOffset, tdOffset + PAGE - 1);
 
-    const tradingDays = tdRows.map((td: { id: number; date: string }) => td.date);
+      if (tdError) throw tdError;
+
+      allTdRows.push(...tdPage);
+      if (tdPage.length < PAGE) break;
+      tdOffset += PAGE;
+    }
+
+    const tradingDays = allTdRows.map((td) => td.date);
     const dateToId = new Map<string, number>();
-    for (const td of tdRows) dateToId.set(td.date, td.id);
+    for (const td of allTdRows) dateToId.set(td.date, td.id);
 
     // Compute rebalance dates
     const rebalanceDates = computeRebalanceDates(tradingDays, this._freq, this._offset);

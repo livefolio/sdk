@@ -520,10 +520,9 @@ describe('StrategyHandle.series', () => {
                     }),
                   };
                 }
-                // _sync ascending: returns full list
+                // _sync ascending: paginated with .range()
                 return {
-                  then: (_cb: (v: { data: typeof tradingDayRows; error: null }) => unknown) =>
-                    Promise.resolve({ data: tradingDayRows, error: null }).then(_cb),
+                  range: vi.fn().mockResolvedValue({ data: tradingDayRows, error: null }),
                 };
               }),
             }),
