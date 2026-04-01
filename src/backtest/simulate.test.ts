@@ -3,6 +3,7 @@ import { runSimulation } from './simulate.js';
 import type { StrategyBar } from '../handles/strategy.js';
 import { AllocationHandle } from '../handles/allocation.js';
 import { TickerHandle } from '../handles/ticker.js';
+import { PortfolioHandle } from '../handles/portfolio.js';
 
 // Minimal stubs — we only read .holdings, .symbol, .leverage (synchronous properties)
 function stubAllocation(holdings: [{ symbol: string; leverage: number }, number][]): AllocationHandle {
@@ -19,6 +20,17 @@ function makeBars(dates: string[], allocation: AllocationHandle): StrategyBar[] 
   return dates.map((date) => ({ date, allocation }));
 }
 
+function stubPortfolio(holdings: [{ symbol: string; leverage: number }, number][]): PortfolioHandle {
+  const tickerHoldings = holdings.map(
+    ([t, qty]) => [{ symbol: t.symbol, leverage: t.leverage } as TickerHandle, qty] as [TickerHandle, number],
+  );
+  return new PortfolioHandle(tickerHoldings);
+}
+
+function cashPortfolio(amount: number): PortfolioHandle {
+  return stubPortfolio([[{ symbol: 'CASHX', leverage: 1 }, amount]]);
+}
+
 describe('runSimulation', () => {
   it('invests on first rebalance day and tracks equity', () => {
     const alloc = stubAllocation([[{ symbol: 'SPY', leverage: 1 }, 1.0]]);
@@ -33,7 +45,7 @@ describe('runSimulation', () => {
     };
     const rebalanceDates = new Set(['2025-01-06']);
 
-    const result = runSimulation(bars, prices, rebalanceDates, 100_000);
+    const result = runSimulation(bars, prices, rebalanceDates, cashPortfolio(100_000));
 
     // Day 1: buy 200 shares @ 500 = $100,000
     expect(result.series).toHaveLength(3);
@@ -50,7 +62,7 @@ describe('runSimulation', () => {
     const prices = { SPY: { '2025-01-06': 500 } };
     const rebalanceDates = new Set(['2025-01-06']);
 
-    const result = runSimulation(bars, prices, rebalanceDates, 100_000);
+    const result = runSimulation(bars, prices, rebalanceDates, cashPortfolio(100_000));
 
     expect(result.trades).toHaveLength(1);
     expect(result.trades[0]).toEqual({
@@ -88,7 +100,7 @@ describe('runSimulation', () => {
     };
     const rebalanceDates = new Set(['2025-01-06', '2025-01-08']);
 
-    const result = runSimulation(bars, prices, rebalanceDates, 100_000);
+    const result = runSimulation(bars, prices, rebalanceDates, cashPortfolio(100_000));
 
     expect(result.series[0].value).toBeCloseTo(100_000, 2);
     expect(result.series[1].value).toBeCloseTo(102_400, 2);
@@ -129,7 +141,7 @@ describe('runSimulation', () => {
     };
     const rebalanceDates = new Set(['2025-01-06', '2025-01-08']);
 
-    const result = runSimulation(bars, prices, rebalanceDates, 100_000);
+    const result = runSimulation(bars, prices, rebalanceDates, cashPortfolio(100_000));
 
     expect(result.series[0].value).toBeCloseTo(100_000, 2);
     expect(result.series[1].value).toBeCloseTo(102_000, 2);
@@ -149,7 +161,7 @@ describe('runSimulation', () => {
     };
     const rebalanceDates = new Set(['2025-01-07']);
 
-    const result = runSimulation(bars, prices, rebalanceDates, 100_000);
+    const result = runSimulation(bars, prices, rebalanceDates, cashPortfolio(100_000));
 
     expect(result.series[0].value).toBeCloseTo(100_000, 2);
     expect(result.trades.filter((t) => t.date === '2025-01-06')).toHaveLength(0);
@@ -168,7 +180,7 @@ describe('runSimulation', () => {
     };
     const rebalanceDates = new Set(['2025-01-06']);
 
-    const result = runSimulation(bars, prices, rebalanceDates, 100_000);
+    const result = runSimulation(bars, prices, rebalanceDates, cashPortfolio(100_000));
 
     expect(result.trades).toHaveLength(1);
     expect(result.trades[0].symbol).toBe('SPY');
@@ -177,7 +189,7 @@ describe('runSimulation', () => {
   });
 
   it('returns empty results for empty bars', () => {
-    const result = runSimulation([], {}, new Set(), 100_000);
+    const result = runSimulation([], {}, new Set(), cashPortfolio(100_000));
     expect(result.series).toHaveLength(0);
     expect(result.trades).toHaveLength(0);
   });

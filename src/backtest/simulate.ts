@@ -1,6 +1,7 @@
 import type { DailyBar } from '../handles/indicator.js';
 import type { StrategyBar } from '../handles/strategy.js';
 import type { Trade } from './types.js';
+import { PortfolioHandle } from '../handles/portfolio.js';
 
 const EPSILON = 1e-8;
 
@@ -8,10 +9,17 @@ export function runSimulation(
   bars: StrategyBar[],
   prices: Record<string, Record<string, number>>,
   rebalanceDates: Set<string>,
-  initialCapital: number,
+  portfolio: PortfolioHandle,
 ): { series: DailyBar[]; trades: Trade[] } {
   const positions: Record<string, number> = {};
-  let cash = initialCapital;
+  let cash = 0;
+  for (const [ticker, quantity] of portfolio.holdings) {
+    if (ticker.symbol === 'CASHX') {
+      cash = quantity;
+    } else {
+      positions[ticker.symbol] = quantity;
+    }
+  }
   const series: DailyBar[] = [];
   const trades: Trade[] = [];
 
