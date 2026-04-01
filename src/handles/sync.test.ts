@@ -117,7 +117,6 @@ function buildMockSupabase(state: MockCallState) {
         selectChain.order = vi.fn(selectSelf);
         selectChain.limit = vi.fn(selectSelf);
         selectChain.in = vi.fn().mockImplementation(() => {
-          // This is the _upsertSeries path: .in('date', dates) returns a list
           return Promise.resolve({
             data: [
               { id: 100, date: '2026-03-27' },
@@ -126,6 +125,20 @@ function buildMockSupabase(state: MockCallState) {
             error: null,
           });
         });
+        // _upsertSeries path: .gte().lte() returns a thenable with trading day mappings
+        selectChain.then = vi
+          .fn()
+          .mockImplementation(
+            (resolve: (v: { data: unknown[]; error: null }) => void, reject?: (e: unknown) => void) => {
+              return Promise.resolve({
+                data: [
+                  { id: 100, date: '2026-03-27' },
+                  { id: 101, date: '2026-03-28' },
+                ],
+                error: null,
+              }).then(resolve, reject);
+            },
+          );
         selectChain.single = vi.fn().mockResolvedValue({
           data: { date: LATEST_CLOSED_DATE },
           error: null,
@@ -176,18 +189,24 @@ function buildMockSupabase(state: MockCallState) {
             });
           });
         } else if (selectArg === 'value, trading_days!inner(date)') {
-          // _querySeriesFromDb path — returns list, not single
-          // We need to make this object thenable
-          chain.then = vi
-            .fn()
-            .mockImplementation(
-              (resolve: (v: { data: unknown[]; error: null }) => void, reject?: (e: unknown) => void) => {
-                return Promise.resolve({
-                  data: state.seriesData,
-                  error: null,
-                }).then(resolve, reject);
-              },
-            );
+          // _querySeriesFromDb path — paginated with .range()
+          chain.range = vi.fn().mockImplementation(() => {
+            const rangeChain: Record<string, ReturnType<typeof vi.fn>> = {};
+            const rangeSelf = () => rangeChain;
+            rangeChain.gte = vi.fn(rangeSelf);
+            rangeChain.lte = vi.fn(rangeSelf);
+            rangeChain.then = vi
+              .fn()
+              .mockImplementation(
+                (resolve: (v: { data: unknown[]; error: null }) => void, reject?: (e: unknown) => void) => {
+                  return Promise.resolve({
+                    data: state.seriesData,
+                    error: null,
+                  }).then(resolve, reject);
+                },
+              );
+            return rangeChain;
+          });
         } else if (selectArg === 'value') {
           // value() path
           chain.single = vi.fn().mockResolvedValue({

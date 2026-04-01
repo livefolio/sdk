@@ -256,13 +256,14 @@ export class IndicatorHandle {
 
   private async _upsertSeries(bars: DailyBar[]): Promise<void> {
     const row = await this.resolve();
-    const dates = bars.map((b) => b.date);
+    const minDate = bars[0].date;
+    const maxDate = bars[bars.length - 1].date;
 
-    // Map dates to trading_day_id
     const { data: tradingDays, error: tdError } = await this._supabase
       .from('trading_days')
       .select('id, date')
-      .in('date', dates);
+      .gte('date', minDate)
+      .lte('date', maxDate);
 
     if (tdError) throw tdError;
 
@@ -290,21 +291,35 @@ export class IndicatorHandle {
 
   private async _querySeriesFromDb(range?: DateRange): Promise<DailyBar[]> {
     const row = await this.resolve();
-    let query = this._supabase
-      .from('indicators_series')
-      .select('value, trading_days!inner(date)')
-      .eq('indicator_id', row.id)
-      .order('trading_day_id', { ascending: true });
+    const PAGE = 1000;
+    const all: DailyBar[] = [];
+    let offset = 0;
 
-    if (range?.from) query = query.gte('trading_days.date', range.from);
-    if (range?.to) query = query.lte('trading_days.date', range.to);
+    while (true) {
+      let query = this._supabase
+        .from('indicators_series')
+        .select('value, trading_days!inner(date)')
+        .eq('indicator_id', row.id)
+        .order('trading_day_id', { ascending: true })
+        .range(offset, offset + PAGE - 1);
 
-    const { data, error } = await query;
-    if (error) throw error;
-    return (data as unknown as { value: number; trading_days: { date: string } }[]).map((r) => ({
-      date: r.trading_days.date,
-      value: r.value,
-    }));
+      if (range?.from) query = query.gte('trading_days.date', range.from);
+      if (range?.to) query = query.lte('trading_days.date', range.to);
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const bars = (data as unknown as { value: number; trading_days: { date: string } }[]).map((r) => ({
+        date: r.trading_days.date,
+        value: r.value,
+      }));
+
+      all.push(...bars);
+      if (bars.length < PAGE) break;
+      offset += PAGE;
+    }
+
+    return all;
   }
 
   // ── Public data access ─────────────────────────────────────────────

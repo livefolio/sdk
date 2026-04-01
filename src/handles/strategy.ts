@@ -415,22 +415,35 @@ export class StrategyHandle {
 
   private async _querySeriesFromDb(range?: DateRange): Promise<StrategyBar[]> {
     const row = await this.resolve();
-    let query = this._supabase
-      .from('strategies_series')
-      .select('allocation_id, trading_days!inner(date)')
-      .eq('strategies_id', row.id)
-      .order('trading_day_id', { ascending: true });
+    const PAGE = 1000;
+    const all: StrategyBar[] = [];
+    let offset = 0;
 
-    if (range?.from) query = query.gte('trading_days.date', range.from);
-    if (range?.to) query = query.lte('trading_days.date', range.to);
+    while (true) {
+      let query = this._supabase
+        .from('strategies_series')
+        .select('allocation_id, trading_days!inner(date)')
+        .eq('strategies_id', row.id)
+        .order('trading_day_id', { ascending: true })
+        .range(offset, offset + PAGE - 1);
 
-    const { data, error } = await query;
-    if (error) throw error;
+      if (range?.from) query = query.gte('trading_days.date', range.from);
+      if (range?.to) query = query.lte('trading_days.date', range.to);
 
-    return (data as unknown as { allocation_id: number; trading_days: { date: string } }[]).map((r) => ({
-      date: r.trading_days.date,
-      allocation: this._allocationMap.get(r.allocation_id)!,
-    }));
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const bars = (data as unknown as { allocation_id: number; trading_days: { date: string } }[]).map((r) => ({
+        date: r.trading_days.date,
+        allocation: this._allocationMap.get(r.allocation_id)!,
+      }));
+
+      all.push(...bars);
+      if (bars.length < PAGE) break;
+      offset += PAGE;
+    }
+
+    return all;
   }
 
   async series(range?: DateRange): Promise<StrategyBar[]> {
