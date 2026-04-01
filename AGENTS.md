@@ -1,0 +1,58 @@
+<!-- Generated: 2026-04-01 | Updated: 2026-04-01 -->
+
+# @livefolio/sdk
+
+## Purpose
+TypeScript SDK for building tactical allocation strategies. Provides a fluent API to define tickers, technical indicators, comparison signals, allocation rules, and complete strategies — backed by a Supabase database for persistence and time-series storage. Includes a backtesting simulation engine.
+
+## Key Files
+
+| File | Description |
+|------|-------------|
+| `package.json` | Project manifest — `@livefolio/sdk`, ES module, Node >=20 |
+| `tsconfig.json` | TypeScript strict mode, ES2022 target, nodenext modules |
+| `vitest.config.ts` | Vitest test runner configuration |
+| `eslint.config.js` | ESLint flat config with typescript-eslint and Prettier |
+| `.prettierrc` | Prettier formatting rules |
+
+## Subdirectories
+
+| Directory | Purpose |
+|-----------|---------|
+| `src/` | All TypeScript source code (see `src/AGENTS.md`) |
+| `docs/` | Design specs and implementation plans (see `docs/AGENTS.md`) |
+| `supabase/` | Database migrations, schemas, and seeds (see `supabase/AGENTS.md`) |
+
+## For AI Agents
+
+### Working In This Directory
+- This is an ES module project (`"type": "module"`) — all imports use `.js` extensions
+- `@supabase/supabase-js` is a peer dependency, not bundled
+- The SDK exports a `createClient(options)` factory that returns a `LivefolioClient` interface
+- All database types are auto-generated in `src/database.types.ts` — do not edit manually
+
+### Testing Requirements
+- Run `npm test` to execute all Vitest tests
+- Tests use Vitest's `vi.fn()` for mocking Supabase calls
+- No real database connection needed for unit tests
+
+### Common Patterns
+- **Handle pattern**: Core abstractions (`TickerHandle`, `IndicatorHandle`, etc.) are lazy — they defer database resolution until `.resolve()` is called
+- **Fluent builder API**: `createClient` returns methods like `.ticker()`, `.sma()`, `.gt()`, `.strategy()` that compose handles together
+- **Upsert-on-resolve**: Handles upsert their identity rows on first resolve, returning existing rows if they match
+
+## Dependencies
+
+### External
+- `yahoo-finance2` — Price data from Yahoo Finance
+- `nanoid` — Short unique IDs for strategy link URLs
+- `@supabase/supabase-js` (peer) — Database client
+
+### Dev
+- `vitest` — Test runner
+- `typescript` — Compiler
+- `eslint` + `typescript-eslint` — Linting
+- `prettier` — Formatting
+- `husky` + `lint-staged` — Pre-commit hooks
+
+<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->

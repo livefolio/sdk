@@ -224,11 +224,23 @@ Each strategy gets a unique `link_id` (nanoid) on creation. Reference an existin
 Run a portfolio simulation over a date range. Returns a `SimulationHandle` with the equity curve and trade history.
 
 ```ts
-const sim = await strategy.simulate({ from: '2020-01-01', to: '2025-12-31', initialCapital: 100_000 });
+const spy = sdk.ticker('SPY');
+const cashx = sdk.ticker('CASHX');
 
-sim.series         // DailyBar[] — portfolio value per trading day
-sim.trades         // Trade[]   — every buy/sell event
-sim.initialCapital // number    — starting capital
+const startingPortfolio = sdk.portfolio([cashx, 100_000]);
+
+const sim = await strategy.simulate({ from: '2020-01-01', to: '2025-12-31', portfolio: startingPortfolio });
+
+sim.series            // DailyBar[] — portfolio value per trading day
+sim.trades            // Trade[]   — every buy/sell event
+sim.startingPortfolio // PortfolioHandle — starting positions
+```
+
+You can also start from existing positions:
+
+```ts
+const existingPortfolio = sdk.portfolio([spy, 100], [cashx, 5000]);
+const sim = await strategy.simulate({ from: '2024-01-01', to: '2025-12-31', portfolio: existingPortfolio });
 ```
 
 The simulator rebalances at the strategy's `freq` cadence, fetches price data for all tickers in all allocations automatically, and tracks positions and cash through each trading day.
