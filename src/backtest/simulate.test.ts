@@ -193,4 +193,45 @@ describe('runSimulation', () => {
     expect(result.series).toHaveLength(0);
     expect(result.trades).toHaveLength(0);
   });
+
+  it('starts simulation from existing positions', () => {
+    const alloc = stubAllocation([
+      [{ symbol: 'SPY', leverage: 1 }, 0.6],
+      [{ symbol: 'TLT', leverage: 1 }, 0.4],
+    ]);
+    const bars = makeBars(['2025-01-06', '2025-01-07'], alloc);
+
+    const prices = {
+      SPY: { '2025-01-06': 500, '2025-01-07': 510 },
+      TLT: { '2025-01-06': 100, '2025-01-07': 102 },
+    };
+    const rebalanceDates = new Set(['2025-01-06']);
+
+    // Start with 100 shares SPY + $20,000 cash (no TLT)
+    // Total value: 100*500 + 20000 = 70000
+    const portfolio = stubPortfolio([
+      [{ symbol: 'SPY', leverage: 1 }, 100],
+      [{ symbol: 'CASHX', leverage: 1 }, 20_000],
+    ]);
+
+    const result = runSimulation(bars, prices, rebalanceDates, portfolio);
+
+    // Day 1 rebalance: target SPY = 42000 (84 shares), target TLT = 28000 (280 shares)
+    // Sell 16 SPY, buy 280 TLT
+    const spyTrade = result.trades.find((t) => t.symbol === 'SPY');
+    const tltTrade = result.trades.find((t) => t.symbol === 'TLT');
+
+    expect(spyTrade).toBeDefined();
+    expect(spyTrade!.action).toBe('sell');
+    expect(spyTrade!.quantity).toBeCloseTo(16, 4);
+
+    expect(tltTrade).toBeDefined();
+    expect(tltTrade!.action).toBe('buy');
+    expect(tltTrade!.quantity).toBeCloseTo(280, 4);
+
+    // Portfolio value stays at 70000 on day 1
+    expect(result.series[0].value).toBeCloseTo(70_000, 0);
+    // Day 2: 84 * 510 + 280 * 102 = 42840 + 28560 = 71400
+    expect(result.series[1].value).toBeCloseTo(71_400, 0);
+  });
 });
