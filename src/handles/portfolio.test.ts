@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { PortfolioHandle } from './portfolio.js';
 import { TickerHandle } from './ticker.js';
 import type { TypedSupabaseClient } from '../types.js';
+import { AllocationHandle } from './allocation.js';
 
 function mockSupabase() {
   return {} as TypedSupabaseClient;
@@ -151,5 +152,180 @@ describe('PortfolioHandle.weights', () => {
     expect(weights).toHaveLength(1);
     expect(weights[0][0]).toBe(spy);
     expect(weights[0][1]).toBeCloseTo(1.0, 4);
+  });
+});
+
+describe('PortfolioHandle.trades', () => {
+  it('computes buy and sell trades to reach target allocation', () => {
+    const sb = mockSupabase();
+    const spy = new TickerHandle(sb, 'SPY');
+    const bnd = new TickerHandle(sb, 'BND');
+    const cashx = new TickerHandle(sb, 'CASHX');
+    const portfolio = new PortfolioHandle([
+      [spy, 100],
+      [bnd, 50],
+      [cashx, 10000],
+    ]);
+
+    // Target: 60/40
+    const target = new AllocationHandle(sb, [
+      [spy, 0.6],
+      [bnd, 0.4],
+    ]);
+
+    const prices: [TickerHandle, number][] = [
+      [spy, 500],
+      [bnd, 100],
+    ];
+    // Total value: 100*500 + 50*100 + 10000 = 65000
+    // Target SPY: 65000 * 0.6 = 39000, current: 50000, delta: -11000, sell 22 shares
+    // Target BND: 65000 * 0.4 = 26000, current: 5000, delta: +21000, buy 210 shares
+    const trades = portfolio.trades(target, prices, '2026-03-31');
+
+    const sellTrades = trades.filter((t) => t.action === 'sell');
+    const buyTrades = trades.filter((t) => t.action === 'buy');
+
+    expect(sellTrades).toHaveLength(1);
+    expect(sellTrades[0].symbol).toBe('SPY');
+    expect(sellTrades[0].quantity).toBeCloseTo(22, 4);
+    expect(sellTrades[0].price).toBe(500);
+    expect(sellTrades[0].date).toBe('2026-03-31');
+
+    expect(buyTrades).toHaveLength(1);
+    expect(buyTrades[0].symbol).toBe('BND');
+    expect(buyTrades[0].quantity).toBeCloseTo(210, 4);
+    expect(buyTrades[0].price).toBe(100);
+    expect(buyTrades[0].date).toBe('2026-03-31');
+  });
+
+  it('orders sells before buys', () => {
+    const sb = mockSupabase();
+    const spy = new TickerHandle(sb, 'SPY');
+    const bnd = new TickerHandle(sb, 'BND');
+    const cashx = new TickerHandle(sb, 'CASHX');
+    const portfolio = new PortfolioHandle([
+      [spy, 100],
+      [bnd, 50],
+      [cashx, 10000],
+    ]);
+    const target = new AllocationHandle(sb, [
+      [spy, 0.6],
+      [bnd, 0.4],
+    ]);
+    const prices: [TickerHandle, number][] = [
+      [spy, 500],
+      [bnd, 100],
+    ];
+
+    const trades = portfolio.trades(target, prices, '2026-03-31');
+
+    const firstBuyIndex = trades.findIndex((t) => t.action === 'buy');
+    const lastSellIndex =
+      trades
+        .map((t, i) => (t.action === 'sell' ? i : -1))
+        .filter((i) => i >= 0)
+        .pop() ?? -1;
+
+    if (firstBuyIndex >= 0 && lastSellIndex >= 0) {
+      expect(lastSellIndex).toBeLessThan(firstBuyIndex);
+    }
+  });
+
+  it('sells entire position for tickers not in target', () => {
+    const sb = mockSupabase();
+    const spy = new TickerHandle(sb, 'SPY');
+    const bnd = new TickerHandle(sb, 'BND');
+    const gld = new TickerHandle(sb, 'GLD');
+    const portfolio = new PortfolioHandle([
+      [spy, 100],
+      [gld, 50],
+    ]);
+    const target = new AllocationHandle(sb, [[bnd, 1.0]]);
+    const prices: [TickerHandle, number][] = [
+      [spy, 500],
+      [gld, 200],
+      [bnd, 100],
+    ];
+
+    const trades = portfolio.trades(target, prices, '2026-03-31');
+
+    const spySell = trades.find((t) => t.symbol === 'SPY' && t.action === 'sell');
+    const gldSell = trades.find((t) => t.symbol === 'GLD' && t.action === 'sell');
+    const bndBuy = trades.find((t) => t.symbol === 'BND' && t.action === 'buy');
+
+    expect(spySell).toBeDefined();
+    expect(spySell!.quantity).toBe(100);
+    expect(gldSell).toBeDefined();
+    expect(gldSell!.quantity).toBe(50);
+    expect(bndBuy).toBeDefined();
+    expect(bndBuy!.quantity).toBeCloseTo(600, 4);
+  });
+
+  it('returns empty array when portfolio is already at target', () => {
+    const sb = mockSupabase();
+    const spy = new TickerHandle(sb, 'SPY');
+    const bnd = new TickerHandle(sb, 'BND');
+    const portfolio = new PortfolioHandle([
+      [spy, 600],
+      [bnd, 400],
+    ]);
+    const target = new AllocationHandle(sb, [
+      [spy, 0.6],
+      [bnd, 0.4],
+    ]);
+    const prices: [TickerHandle, number][] = [
+      [spy, 100],
+      [bnd, 100],
+    ];
+
+    const trades = portfolio.trades(target, prices, '2026-03-31');
+    expect(trades).toEqual([]);
+  });
+
+  it('handles CASHX target weight by keeping cash portion', () => {
+    const sb = mockSupabase();
+    const spy = new TickerHandle(sb, 'SPY');
+    const cashx = new TickerHandle(sb, 'CASHX');
+    const portfolio = new PortfolioHandle([
+      [spy, 100],
+      [cashx, 50000],
+    ]);
+    const target = new AllocationHandle(sb, [
+      [spy, 0.6],
+      [cashx, 0.4],
+    ]);
+    const prices: [TickerHandle, number][] = [[spy, 500]];
+
+    const trades = portfolio.trades(target, prices, '2026-03-31');
+    expect(trades).toHaveLength(1);
+    expect(trades[0].symbol).toBe('SPY');
+    expect(trades[0].action).toBe('buy');
+    expect(trades[0].quantity).toBeCloseTo(20, 4);
+  });
+
+  it('never emits a CASHX trade', () => {
+    const sb = mockSupabase();
+    const spy = new TickerHandle(sb, 'SPY');
+    const cashx = new TickerHandle(sb, 'CASHX');
+    const portfolio = new PortfolioHandle([
+      [spy, 100],
+      [cashx, 50000],
+    ]);
+    const target = new AllocationHandle(sb, [[spy, 1.0]]);
+    const prices: [TickerHandle, number][] = [[spy, 500]];
+
+    const trades = portfolio.trades(target, prices, '2026-03-31');
+    const cashTrades = trades.filter((t) => t.symbol === 'CASHX');
+    expect(cashTrades).toHaveLength(0);
+  });
+
+  it('throws if a non-CASHX ticker is missing from prices', () => {
+    const sb = mockSupabase();
+    const spy = new TickerHandle(sb, 'SPY');
+    const bnd = new TickerHandle(sb, 'BND');
+    const portfolio = new PortfolioHandle([[spy, 100]]);
+    const target = new AllocationHandle(sb, [[bnd, 1.0]]);
+
+    expect(() => portfolio.trades(target, [], '2026-03-31')).toThrow('Missing price');
   });
 });

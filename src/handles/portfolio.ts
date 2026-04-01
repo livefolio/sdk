@@ -1,4 +1,6 @@
 import { TickerHandle } from './ticker.js';
+import type { Trade } from '../backtest/types.js';
+import { AllocationHandle } from './allocation.js';
 
 export class PortfolioHandle {
   readonly holdings: [TickerHandle, number][];
@@ -60,5 +62,62 @@ export class PortfolioHandle {
       result.push([ticker, dollarValue / total]);
     }
     return result;
+  }
+
+  trades(target: AllocationHandle, prices: [TickerHandle, number][], date: string): Trade[] {
+    const priceMap = this._priceMap(prices);
+    const totalValue = this.value(prices);
+
+    // Build current dollar amounts by symbol
+    const currentDollars = new Map<string, number>();
+    for (const [ticker, quantity] of this.holdings) {
+      if (ticker.symbol === 'CASHX') continue;
+      const price = this._priceFor(ticker, priceMap);
+      currentDollars.set(ticker.symbol, quantity * price);
+    }
+
+    // Build target dollar amounts by symbol
+    const targetDollars = new Map<string, number>();
+    for (const [ticker, weight] of target.holdings) {
+      if (ticker.symbol === 'CASHX') continue;
+      targetDollars.set(ticker.symbol, totalValue * weight);
+    }
+
+    // Build a symbol → TickerHandle lookup for price resolution
+    const tickerBySymbol = new Map<string, TickerHandle>();
+    for (const [ticker] of this.holdings) {
+      if (ticker.symbol !== 'CASHX') tickerBySymbol.set(ticker.symbol, ticker);
+    }
+    for (const [ticker] of target.holdings) {
+      if (ticker.symbol !== 'CASHX') tickerBySymbol.set(ticker.symbol, ticker);
+    }
+
+    // Collect all non-CASHX symbols from both sides
+    const allSymbols = new Set([...currentDollars.keys(), ...targetDollars.keys()]);
+
+    const sells: Trade[] = [];
+    const buys: Trade[] = [];
+
+    for (const symbol of allSymbols) {
+      const current = currentDollars.get(symbol) ?? 0;
+      const target$ = targetDollars.get(symbol) ?? 0;
+      const delta = target$ - current;
+
+      const ticker = tickerBySymbol.get(symbol)!;
+      const price = this._priceFor(ticker, priceMap);
+
+      const quantity = Math.abs(delta) / price;
+      if (quantity < 1e-10) continue;
+
+      const trade: Trade = { date, symbol, quantity, price, action: delta > 0 ? 'buy' : 'sell' };
+
+      if (trade.action === 'sell') {
+        sells.push(trade);
+      } else {
+        buys.push(trade);
+      }
+    }
+
+    return [...sells, ...buys];
   }
 }
