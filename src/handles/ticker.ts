@@ -13,7 +13,7 @@ export class TickerHandle {
 
   constructor(supabase: TypedSupabaseClient, symbol: string, leverage: number = 1) {
     this._supabase = supabase;
-    this.symbol = symbol;
+    this.symbol = symbol.toUpperCase();
     this.leverage = leverage;
   }
 

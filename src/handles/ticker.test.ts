@@ -18,6 +18,12 @@ describe('TickerHandle', () => {
     expect(handle.leverage).toBe(1);
   });
 
+  it('uppercases symbol', () => {
+    expect(new TickerHandle(mockSupabase(), 'spy').symbol).toBe('SPY');
+    expect(new TickerHandle(mockSupabase(), 'Qqq').symbol).toBe('QQQ');
+    expect(new TickerHandle(mockSupabase(), 'aapl', 2).symbol).toBe('AAPL');
+  });
+
   it('throws on .id before resolution', () => {
     const handle = new TickerHandle(mockSupabase(), 'SPY');
     expect(() => handle.id).toThrow('not yet resolved');
