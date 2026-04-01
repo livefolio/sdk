@@ -8,6 +8,7 @@ export { SignalHandle } from './handles/signal.js';
 export type { SignalIdentity } from './handles/signal.js';
 export { AllocationHandle } from './handles/allocation.js';
 export { StrategyHandle } from './handles/strategy.js';
+export { PortfolioHandle } from './handles/portfolio.js';
 export type { StrategyRule, StrategyBar, StrategyOptions } from './handles/strategy.js';
 export { SimulationHandle } from './backtest/types.js';
 export type { SimulateOptions, Trade } from './backtest/types.js';

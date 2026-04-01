@@ -6,6 +6,7 @@ import type { IndicatorConfig } from './handles/indicator.js';
 import { SignalHandle } from './handles/signal.js';
 import { AllocationHandle } from './handles/allocation.js';
 import { StrategyHandle } from './handles/strategy.js';
+import { PortfolioHandle } from './handles/portfolio.js';
 import type { StrategyOptions } from './handles/strategy.js';
 
 type IndicatorType = Database['public']['Enums']['indicator_type'];
@@ -49,6 +50,9 @@ export interface LivefolioClient {
 
   // Allocations
   allocation(...holdings: [TickerHandle, number][]): AllocationHandle;
+
+  // Portfolios
+  portfolio(...holdings: [TickerHandle, number][]): PortfolioHandle;
 
   // Strategies
   strategy(linkId: string): StrategyHandle;
@@ -145,6 +149,8 @@ export function createClient(options: LivefolioClientOptions): LivefolioClient {
       new SignalHandle(sb, { indicator1: ind1, indicator2: ind2, comparison: '=', tolerance: tolerance ?? 0 }, config),
 
     allocation: (...holdings) => new AllocationHandle(sb, holdings),
+
+    portfolio: (...holdings) => new PortfolioHandle(holdings),
 
     strategy: (optionsOrLinkId: StrategyOptions | string) => new StrategyHandle(sb, optionsOrLinkId, config),
   };

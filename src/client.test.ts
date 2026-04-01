@@ -5,6 +5,7 @@ import { IndicatorHandle } from './handles/indicator.js';
 import { SignalHandle } from './handles/signal.js';
 import { AllocationHandle } from './handles/allocation.js';
 import { StrategyHandle } from './handles/strategy.js';
+import { PortfolioHandle } from './handles/portfolio.js';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import type { TypedSupabaseClient } from './types.js';
 
@@ -211,5 +212,19 @@ describe('strategy factory', () => {
 
     expect(strategy).toBeInstanceOf(StrategyHandle);
     expect(strategy.name).toBeNull();
+  });
+});
+
+describe('portfolio factory', () => {
+  it('creates a PortfolioHandle via client.portfolio()', () => {
+    const client = createClient({ supabase: testSupabase() });
+    const spy = client.ticker('SPY');
+    const cashx = client.ticker('CASHX');
+    const portfolio = client.portfolio([spy, 500], [cashx, 10000]);
+
+    expect(portfolio).toBeInstanceOf(PortfolioHandle);
+    expect(portfolio.holdings).toHaveLength(2);
+    expect(portfolio.holdings[0][1]).toBe(500);
+    expect(portfolio.holdings[1][1]).toBe(10000);
   });
 });
