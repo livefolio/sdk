@@ -507,17 +507,18 @@ export class StrategyHandle {
   async simulate(options: SimulateOptions): Promise<SimulationHandle> {
     const bars = await this.series({ from: options.from, to: options.to });
     if (bars.length === 0) {
-      const capital = options.initialCapital ?? 100_000;
-      return new SimulationHandle([], [], capital);
+      return new SimulationHandle([], [], options.portfolio);
     }
 
     const prices = await this._fetchPricesForTickers(bars, options.from, options.to);
     const tradingDays = bars.map((b) => b.date);
     const rebalanceDates = computeRebalanceDates(tradingDays, this._freq, this._offset);
-    const initialCapital = options.initialCapital ?? 100_000;
 
-    const result = runSimulation(bars, prices, rebalanceDates, initialCapital);
-    return new SimulationHandle(result.series, result.trades, initialCapital);
+    // Force day 1 rebalance so existing positions align to strategy
+    rebalanceDates.add(bars[0].date);
+
+    const result = runSimulation(bars, prices, rebalanceDates, options.portfolio);
+    return new SimulationHandle(result.series, result.trades, options.portfolio);
   }
 
   private async _fetchPricesForTickers(
