@@ -1,9 +1,10 @@
 import type { DailyBar } from '../handles/indicator.js';
+import { PortfolioHandle } from '../handles/portfolio.js';
 
 export interface SimulateOptions {
   from: string;
   to: string;
-  initialCapital?: number;
+  portfolio: PortfolioHandle;
 }
 
 export interface Trade {
@@ -17,11 +18,11 @@ export interface Trade {
 export class SimulationHandle {
   readonly series: DailyBar[];
   readonly trades: Trade[];
-  readonly initialCapital: number;
+  readonly startingPortfolio: PortfolioHandle;
 
-  constructor(series: DailyBar[], trades: Trade[], initialCapital: number) {
+  constructor(series: DailyBar[], trades: Trade[], startingPortfolio: PortfolioHandle) {
     this.series = series;
     this.trades = trades;
-    this.initialCapital = initialCapital;
+    this.startingPortfolio = startingPortfolio;
   }
 }
