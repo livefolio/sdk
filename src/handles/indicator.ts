@@ -121,7 +121,7 @@ export class IndicatorHandle {
     const { data, error } = await this._supabase
       .from('trading_days')
       .select('date')
-      .lt('close', new Date().toISOString())
+      .lt('post', new Date().toISOString())
       .order('date', { ascending: false })
       .limit(1)
       .single();
@@ -256,9 +256,10 @@ export class IndicatorHandle {
         return;
     }
 
-    // Apply leverage to daily returns if ticker has leverage != 1
+    // Apply leverage to daily returns only for fetched (non-computed) indicators.
+    // Computed indicators (RSI, SMA, etc.) already read from the leveraged price series.
     const leverage = this.ticker?.leverage ?? 1;
-    if (leverage !== 1 && bars.length > 0) {
+    if (leverage !== 1 && info.provider !== 'computed' && bars.length > 0) {
       const leveraged: DailyBar[] = [bars[0]];
       for (let i = 1; i < bars.length; i++) {
         const dailyReturn = (bars[i].value - bars[i - 1].value) / bars[i - 1].value;
@@ -357,11 +358,44 @@ export class IndicatorHandle {
   // ── Public data access ─────────────────────────────────────────────
 
   async series(range?: DateRange): Promise<DailyBar[]> {
+    if (this.type === 'Threshold') {
+      return this._syntheticThresholdSeries(range);
+    }
     await this._ensureFresh();
     if (this._cachedSeries && !range) return this._cachedSeries;
     const bars = await this._querySeriesFromDb(range);
     if (!range) this._cachedSeries = bars;
     return bars;
+  }
+
+  private async _syntheticThresholdSeries(range?: DateRange): Promise<DailyBar[]> {
+    const v = this.threshold!;
+    const PAGE = 1000;
+    const all: DailyBar[] = [];
+    let offset = 0;
+
+    while (true) {
+      let query = this._supabase
+        .from('trading_days')
+        .select('date')
+        .lt('post', new Date().toISOString())
+        .order('date', { ascending: true })
+        .range(offset, offset + PAGE - 1);
+
+      if (range?.from) query = query.gte('date', range.from);
+      if (range?.to) query = query.lte('date', range.to);
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      for (const td of data) {
+        all.push({ date: td.date, value: v });
+      }
+      if (data.length < PAGE) break;
+      offset += PAGE;
+    }
+
+    return all;
   }
 
   async value(date?: string): Promise<number | null> {

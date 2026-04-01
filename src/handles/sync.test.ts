@@ -99,7 +99,7 @@ function buildMockSupabase(state: MockCallState) {
 
     if (table === 'trading_days') {
       // This table is queried in multiple ways. Return a chainable object.
-      // _getLatestClosedTradingDay: .select('date').lt('close', ...).order(...).limit(1).single()
+      // _getLatestClosedTradingDay: .select('date').lt('post', ...).order(...).limit(1).single()
       // _upsertSeries: .select('id, date').in('date', dates)
       // value(): .select('id').eq('date', ...).single()
 
@@ -224,6 +224,134 @@ function buildMockSupabase(state: MockCallState) {
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
+
+describe('_getLatestClosedTradingDay uses post column', () => {
+  it('queries trading_days.post (regular close), not close (after-hours end)', async () => {
+    // Simulate: post=20:00Z (4PM EDT), close=00:00Z+1 (8PM EDT)
+    // Current time: 21:00Z (5PM EDT) — after regular close, before after-hours end
+    // The query .lt('post', '2026-04-01T21:00:00Z') should match April 1
+    // because post (20:00Z) < 21:00Z
+    const ltSpy = vi.fn();
+
+    const from = vi.fn().mockImplementation((table: string) => {
+      if (table === 'tickers') {
+        return {
+          upsert: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({
+                data: { id: 1, symbol: 'SPY', leverage: 1, created_at: '' },
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === 'indicators') {
+        return {
+          upsert: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({
+                data: {
+                  id: 10,
+                  type: 'Price',
+                  ticker_id: 1,
+                  lookback: 0,
+                  delay: 0,
+                  unit: null,
+                  threshold: null,
+                  created_at: '',
+                },
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === 'trading_days') {
+        const tdChain: Record<string, ReturnType<typeof vi.fn>> = {};
+        tdChain.select = vi.fn().mockImplementation(() => {
+          const selectChain: Record<string, ReturnType<typeof vi.fn>> = {};
+          const selectSelf = () => selectChain;
+          selectChain.lt = ltSpy.mockImplementation(selectSelf);
+          selectChain.eq = vi.fn(selectSelf);
+          selectChain.gte = vi.fn(selectSelf);
+          selectChain.lte = vi.fn(selectSelf);
+          selectChain.order = vi.fn(selectSelf);
+          selectChain.limit = vi.fn(selectSelf);
+          selectChain.range = vi.fn().mockResolvedValue({
+            data: [
+              { id: 100, date: '2026-03-28' },
+              { id: 101, date: '2026-04-01' },
+            ],
+            error: null,
+          });
+          selectChain.single = vi.fn().mockResolvedValue({
+            data: { date: '2026-04-01' },
+            error: null,
+          });
+          return selectChain;
+        });
+        return tdChain;
+      }
+      if (table === 'indicators_series') {
+        const isChain: Record<string, ReturnType<typeof vi.fn>> = {};
+        isChain.upsert = vi.fn().mockImplementation(() => Promise.resolve({ data: null, error: null }));
+        isChain.select = vi.fn().mockImplementation((selectArg: string) => {
+          const chain: Record<string, ReturnType<typeof vi.fn>> = {};
+          const self = () => chain;
+          chain.eq = vi.fn(self);
+          chain.order = vi.fn(self);
+          chain.limit = vi.fn(self);
+          if (selectArg === 'trading_days!inner(date)') {
+            chain.single = vi.fn().mockResolvedValue({ data: null, error: { code: 'PGRST116', message: 'No rows' } });
+          } else if (selectArg === 'value, trading_days!inner(date)') {
+            chain.range = vi.fn().mockImplementation(() => {
+              const rangeChain: Record<string, ReturnType<typeof vi.fn>> = {};
+              const rangeSelf = () => rangeChain;
+              rangeChain.gte = vi.fn(rangeSelf);
+              rangeChain.lte = vi.fn(rangeSelf);
+              rangeChain.then = vi
+                .fn()
+                .mockImplementation(
+                  (resolve: (v: { data: unknown[]; error: null }) => void, reject?: (e: unknown) => void) => {
+                    return Promise.resolve({
+                      data: [{ value: 500, trading_days: { date: '2026-04-01' } }],
+                      error: null,
+                    }).then(resolve, reject);
+                  },
+                );
+              return rangeChain;
+            });
+          }
+          return chain;
+        });
+        return isChain;
+      }
+      return {};
+    });
+
+    const sb = { from } as unknown as TypedSupabaseClient;
+    const ticker = new TickerHandle(sb, 'SPY');
+    const handle = new IndicatorHandle(sb, {
+      type: 'Price',
+      ticker,
+      lookback: 0,
+      delay: 0,
+      unit: null,
+      threshold: null,
+    });
+
+    const bars = await handle.series();
+
+    // Must query 'post', never 'close'
+    expect(ltSpy).toHaveBeenCalledWith('post', expect.any(String));
+    const ltCalls = ltSpy.mock.calls.map((args: unknown[]) => args[0]);
+    expect(ltCalls).not.toContain('close');
+
+    // Latest closed day should be April 1 (since post < now)
+    expect(bars[0].date).toBe('2026-04-01');
+  });
+});
 
 describe('IndicatorHandle sync', () => {
   let fetchYahooMock: ReturnType<typeof vi.fn>;

@@ -110,7 +110,7 @@ export class SignalHandle {
     const { data, error } = await this._supabase
       .from('trading_days')
       .select('date')
-      .lt('close', new Date().toISOString())
+      .lt('post', new Date().toISOString())
       .order('date', { ascending: false })
       .limit(1)
       .single();

@@ -293,7 +293,7 @@ export class StrategyHandle {
     const { data, error } = await this._supabase
       .from('trading_days')
       .select('date')
-      .lt('close', new Date().toISOString())
+      .lt('post', new Date().toISOString())
       .order('date', { ascending: false })
       .limit(1)
       .single();
@@ -370,7 +370,7 @@ export class StrategyHandle {
       const { data: tdPage, error: tdError } = await this._supabase
         .from('trading_days')
         .select('id, date')
-        .lt('close', new Date().toISOString())
+        .lt('post', new Date().toISOString())
         .order('date', { ascending: true })
         .range(tdOffset, tdOffset + PAGE - 1);
 
