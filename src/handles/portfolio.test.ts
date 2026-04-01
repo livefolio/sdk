@@ -319,7 +319,7 @@ describe('PortfolioHandle.trades', () => {
     expect(cashTrades).toHaveLength(0);
   });
 
-  it('throws if a non-CASHX ticker is missing from prices', () => {
+  it('throws if a portfolio ticker is missing from prices', () => {
     const sb = mockSupabase();
     const spy = new TickerHandle(sb, 'SPY');
     const bnd = new TickerHandle(sb, 'BND');
@@ -327,5 +327,15 @@ describe('PortfolioHandle.trades', () => {
     const target = new AllocationHandle(sb, [[bnd, 1.0]]);
 
     expect(() => portfolio.trades(target, [], '2026-03-31')).toThrow('Missing price');
+  });
+
+  it('throws if a target-only ticker is missing from prices', () => {
+    const sb = mockSupabase();
+    const spy = new TickerHandle(sb, 'SPY');
+    const bnd = new TickerHandle(sb, 'BND');
+    const portfolio = new PortfolioHandle([[spy, 100]]);
+    const target = new AllocationHandle(sb, [[bnd, 1.0]]);
+
+    expect(() => portfolio.trades(target, [[spy, 500]], '2026-03-31')).toThrow('Missing price');
   });
 });

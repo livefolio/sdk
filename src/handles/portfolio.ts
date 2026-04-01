@@ -89,7 +89,12 @@ export class PortfolioHandle {
       if (ticker.symbol !== 'CASHX') tickerBySymbol.set(ticker.symbol, ticker);
     }
     for (const [ticker] of target.holdings) {
-      if (ticker.symbol !== 'CASHX') tickerBySymbol.set(ticker.symbol, ticker);
+      if (ticker.symbol === 'CASHX') continue;
+      const existing = tickerBySymbol.get(ticker.symbol);
+      if (existing && existing.leverage !== ticker.leverage) {
+        throw new Error(`Conflicting leverage for ${ticker.symbol}`);
+      }
+      tickerBySymbol.set(ticker.symbol, ticker);
     }
 
     // Collect all non-CASHX symbols from both sides
