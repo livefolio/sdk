@@ -47,4 +47,18 @@ export class PortfolioHandle {
     }
     return total;
   }
+
+  weights(prices: [TickerHandle, number][]): [TickerHandle, number][] {
+    const total = this.value(prices);
+    if (total === 0) return [];
+
+    const priceMap = this._priceMap(prices);
+    const result: [TickerHandle, number][] = [];
+    for (const [ticker, quantity] of this.holdings) {
+      const dollarValue = quantity * this._priceFor(ticker, priceMap);
+      if (dollarValue === 0) continue;
+      result.push([ticker, dollarValue / total]);
+    }
+    return result;
+  }
 }

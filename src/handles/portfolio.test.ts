@@ -96,3 +96,60 @@ describe('PortfolioHandle.value', () => {
     expect(portfolio.value([])).toBe(0);
   });
 });
+
+describe('PortfolioHandle.weights', () => {
+  it('computes allocation weights from positions and prices', () => {
+    const sb = mockSupabase();
+    const spy = new TickerHandle(sb, 'SPY');
+    const bnd = new TickerHandle(sb, 'BND');
+    const cashx = new TickerHandle(sb, 'CASHX');
+    const portfolio = new PortfolioHandle([
+      [spy, 500],
+      [bnd, 200],
+      [cashx, 5000],
+    ]);
+
+    const prices: [TickerHandle, number][] = [
+      [spy, 520.5],
+      [bnd, 72.3],
+    ];
+    const weights = portfolio.weights(prices);
+
+    // Total = 279710
+    // SPY: 260250 / 279710 ≈ 0.9304
+    // BND: 14460 / 279710 ≈ 0.0517
+    // CASHX: 5000 / 279710 ≈ 0.0179
+    expect(weights).toHaveLength(3);
+    expect(weights[0][0]).toBe(spy);
+    expect(weights[0][1]).toBeCloseTo(0.9304, 3);
+    expect(weights[1][0]).toBe(bnd);
+    expect(weights[1][1]).toBeCloseTo(0.0517, 3);
+    expect(weights[2][0]).toBe(cashx);
+    expect(weights[2][1]).toBeCloseTo(0.0179, 3);
+  });
+
+  it('returns empty array for empty portfolio', () => {
+    const portfolio = new PortfolioHandle([]);
+    expect(portfolio.weights([])).toEqual([]);
+  });
+
+  it('skips zero-quantity holdings', () => {
+    const sb = mockSupabase();
+    const spy = new TickerHandle(sb, 'SPY');
+    const bnd = new TickerHandle(sb, 'BND');
+    const portfolio = new PortfolioHandle([
+      [spy, 100],
+      [bnd, 0],
+    ]);
+
+    const prices: [TickerHandle, number][] = [
+      [spy, 500],
+      [bnd, 100],
+    ];
+    const weights = portfolio.weights(prices);
+
+    expect(weights).toHaveLength(1);
+    expect(weights[0][0]).toBe(spy);
+    expect(weights[0][1]).toBeCloseTo(1.0, 4);
+  });
+});
