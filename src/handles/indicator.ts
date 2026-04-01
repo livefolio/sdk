@@ -256,6 +256,18 @@ export class IndicatorHandle {
         return;
     }
 
+    // Apply leverage to daily returns if ticker has leverage != 1
+    const leverage = this.ticker?.leverage ?? 1;
+    if (leverage !== 1 && bars.length > 0) {
+      const leveraged: DailyBar[] = [bars[0]];
+      for (let i = 1; i < bars.length; i++) {
+        const dailyReturn = (bars[i].value - bars[i - 1].value) / bars[i - 1].value;
+        const prev = leveraged[i - 1].value;
+        leveraged.push({ date: bars[i].date, value: prev * (1 + leverage * dailyReturn) });
+      }
+      bars = leveraged;
+    }
+
     // Filter bars up to latestClosed
     bars = bars.filter((b) => b.date <= latestClosed);
 

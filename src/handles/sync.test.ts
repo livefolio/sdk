@@ -266,6 +266,72 @@ describe('IndicatorHandle sync', () => {
     expect(bars[0].date).toBe('2026-03-27');
   });
 
+  it('applies leverage multiplier to daily returns when ticker has leverage != 1', async () => {
+    // Yahoo returns raw prices: 100, 102 (2% return)
+    // With leverage=2, the second bar should reflect 4% return: 100 * 1.04 = 104
+    fetchYahooMock.mockResolvedValueOnce([
+      { date: '2026-03-27', value: 100 },
+      { date: '2026-03-28', value: 102 },
+    ]);
+
+    const state: MockCallState = {
+      latestSeriesDate: null,
+      seriesData: [],
+      upsertedRows: [],
+    };
+    const sb = buildMockSupabase(state);
+    const ticker = new TickerHandle(sb, 'SPY', 2);
+
+    const handle = new IndicatorHandle(sb, {
+      type: 'Price',
+      ticker,
+      lookback: 0,
+      delay: 0,
+      unit: null,
+      threshold: null,
+    });
+
+    await handle.series();
+
+    expect(state.upsertedRows).toHaveLength(2);
+
+    const values = state.upsertedRows.map((r: unknown) => (r as { value: number }).value);
+    // First bar unchanged
+    expect(values[0]).toBeCloseTo(100, 5);
+    // Second bar: 100 * (1 + 2 * 0.02) = 104
+    expect(values[1]).toBeCloseTo(104, 5);
+  });
+
+  it('does not apply leverage when leverage is 1', async () => {
+    fetchYahooMock.mockResolvedValueOnce([
+      { date: '2026-03-27', value: 100 },
+      { date: '2026-03-28', value: 102 },
+    ]);
+
+    const state: MockCallState = {
+      latestSeriesDate: null,
+      seriesData: [],
+      upsertedRows: [],
+    };
+    const sb = buildMockSupabase(state);
+    const ticker = new TickerHandle(sb, 'SPY', 1);
+
+    const handle = new IndicatorHandle(sb, {
+      type: 'Price',
+      ticker,
+      lookback: 0,
+      delay: 0,
+      unit: null,
+      threshold: null,
+    });
+
+    await handle.series();
+
+    const values = state.upsertedRows.map((r: unknown) => (r as { value: number }).value);
+    expect(values[0]).toBeCloseTo(100, 5);
+    expect(values[1]).toBeCloseTo(102, 5);
+  });
+
   it('fetches from FRED for treasury indicators', async () => {
     // Override getProviderInfo for this test
     const mappings = await import('../providers/mappings.js');
