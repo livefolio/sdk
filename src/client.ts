@@ -1,16 +1,13 @@
-import type { Database } from './database.types.js';
-import type { TypedSupabaseClient } from './types.js';
+import type { StorageProvider } from './providers/storage.js';
+import type { MarketProvider } from './providers/market.js';
+import type { IndicatorType, Unit } from './providers/types.js';
 import { TickerHandle } from './handles/ticker.js';
 import { IndicatorHandle } from './handles/indicator.js';
-import type { IndicatorConfig } from './handles/indicator.js';
 import { SignalHandle } from './handles/signal.js';
 import { AllocationHandle } from './handles/allocation.js';
 import { StrategyHandle } from './handles/strategy.js';
 import { PortfolioHandle } from './handles/portfolio.js';
 import type { StrategyOptions } from './handles/strategy.js';
-
-type IndicatorType = Database['public']['Enums']['indicator_type'];
-type Unit = Database['public']['Enums']['unit'];
 
 type TreasuryTenor = Extract<
   IndicatorType,
@@ -61,97 +58,99 @@ export interface LivefolioClient {
 }
 
 export interface LivefolioClientOptions {
-  supabase: TypedSupabaseClient;
-  fredApiKey?: string;
+  storage: StorageProvider;
+  market: MarketProvider;
 }
 
 function tickerBound(
-  sb: TypedSupabaseClient,
+  storage: StorageProvider,
+  market: MarketProvider,
   type: IndicatorType,
   ticker: TickerHandle,
   lookback: number,
   opts?: IndicatorOpts,
-  config?: IndicatorConfig,
 ): IndicatorHandle {
-  return new IndicatorHandle(
-    sb,
-    {
-      type,
-      ticker,
-      lookback,
-      delay: opts?.delay ?? 0,
-      unit: null,
-      threshold: null,
-    },
-    config,
-  );
+  return new IndicatorHandle(storage, market, {
+    type,
+    ticker,
+    lookback,
+    delay: opts?.delay ?? 0,
+    unit: null,
+    threshold: null,
+  });
 }
 
 function standalone(
-  sb: TypedSupabaseClient,
+  storage: StorageProvider,
+  market: MarketProvider,
   type: IndicatorType,
   opts?: IndicatorOpts,
-  config?: IndicatorConfig,
 ): IndicatorHandle {
-  return new IndicatorHandle(
-    sb,
-    {
-      type,
-      ticker: null,
-      lookback: 0,
-      delay: opts?.delay ?? 0,
-      unit: null,
-      threshold: null,
-    },
-    config,
-  );
+  return new IndicatorHandle(storage, market, {
+    type,
+    ticker: null,
+    lookback: 0,
+    delay: opts?.delay ?? 0,
+    unit: null,
+    threshold: null,
+  });
 }
 
 export function createClient(options: LivefolioClientOptions): LivefolioClient {
-  const sb = options.supabase;
-  const config: IndicatorConfig = { fredApiKey: options.fredApiKey };
+  const { storage, market } = options;
 
   return {
-    ticker: (symbol, leverage) => new TickerHandle(sb, symbol, leverage),
+    ticker: (symbol, leverage) => new TickerHandle(storage, symbol, leverage),
 
-    sma: (ticker, lookback, opts?) => tickerBound(sb, 'SMA', ticker, lookback, opts, config),
-    ema: (ticker, lookback, opts?) => tickerBound(sb, 'EMA', ticker, lookback, opts, config),
-    price: (ticker, opts?) => tickerBound(sb, 'Price', ticker, 0, opts, config),
-    returns: (ticker, lookback, opts?) => tickerBound(sb, 'Return', ticker, lookback, opts, config),
-    volatility: (ticker, lookback, opts?) => tickerBound(sb, 'Volatility', ticker, lookback, opts, config),
-    drawdown: (ticker, lookback, opts?) => tickerBound(sb, 'Drawdown', ticker, lookback, opts, config),
-    rsi: (ticker, lookback, opts?) => tickerBound(sb, 'RSI', ticker, lookback, opts, config),
+    sma: (ticker, lookback, opts?) => tickerBound(storage, market, 'SMA', ticker, lookback, opts),
+    ema: (ticker, lookback, opts?) => tickerBound(storage, market, 'EMA', ticker, lookback, opts),
+    price: (ticker, opts?) => tickerBound(storage, market, 'Price', ticker, 0, opts),
+    returns: (ticker, lookback, opts?) => tickerBound(storage, market, 'Return', ticker, lookback, opts),
+    volatility: (ticker, lookback, opts?) => tickerBound(storage, market, 'Volatility', ticker, lookback, opts),
+    drawdown: (ticker, lookback, opts?) => tickerBound(storage, market, 'Drawdown', ticker, lookback, opts),
+    rsi: (ticker, lookback, opts?) => tickerBound(storage, market, 'RSI', ticker, lookback, opts),
 
-    vix: (opts?) => standalone(sb, 'VIX', opts, config),
-    vix3m: (opts?) => standalone(sb, 'VIX3M', opts, config),
-    treasury: (tenor, opts?) => standalone(sb, tenor, opts, config),
-    calendar: (period, opts?) => standalone(sb, period, opts, config),
+    vix: (opts?) => standalone(storage, market, 'VIX', opts),
+    vix3m: (opts?) => standalone(storage, market, 'VIX3M', opts),
+    treasury: (tenor, opts?) => standalone(storage, market, tenor, opts),
+    calendar: (period, opts?) => standalone(storage, market, period, opts),
 
     threshold: (value, unit?) =>
-      new IndicatorHandle(
-        sb,
-        {
-          type: 'Threshold',
-          ticker: null,
-          lookback: 0,
-          delay: 0,
-          unit: unit ?? null,
-          threshold: value,
-        },
-        config,
-      ),
+      new IndicatorHandle(storage, market, {
+        type: 'Threshold',
+        ticker: null,
+        lookback: 0,
+        delay: 0,
+        unit: unit ?? null,
+        threshold: value,
+      }),
 
     gt: (ind1, ind2, tolerance?) =>
-      new SignalHandle(sb, { indicator1: ind1, indicator2: ind2, comparison: '>', tolerance: tolerance ?? 0 }, config),
+      new SignalHandle(storage, market, {
+        indicator1: ind1,
+        indicator2: ind2,
+        comparison: '>',
+        tolerance: tolerance ?? 0,
+      }),
     lt: (ind1, ind2, tolerance?) =>
-      new SignalHandle(sb, { indicator1: ind1, indicator2: ind2, comparison: '<', tolerance: tolerance ?? 0 }, config),
+      new SignalHandle(storage, market, {
+        indicator1: ind1,
+        indicator2: ind2,
+        comparison: '<',
+        tolerance: tolerance ?? 0,
+      }),
     eq: (ind1, ind2, tolerance?) =>
-      new SignalHandle(sb, { indicator1: ind1, indicator2: ind2, comparison: '=', tolerance: tolerance ?? 0 }, config),
+      new SignalHandle(storage, market, {
+        indicator1: ind1,
+        indicator2: ind2,
+        comparison: '=',
+        tolerance: tolerance ?? 0,
+      }),
 
-    allocation: (...holdings) => new AllocationHandle(sb, holdings),
+    allocation: (...holdings) => new AllocationHandle(storage, holdings),
 
     portfolio: (...holdings) => new PortfolioHandle(holdings),
 
-    strategy: (optionsOrLinkId: StrategyOptions | string) => new StrategyHandle(sb, optionsOrLinkId, config),
+    strategy: (optionsOrLinkId: StrategyOptions | string) => new StrategyHandle(storage, market, optionsOrLinkId),
   };
 }

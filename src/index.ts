@@ -1,6 +1,8 @@
 export { createClient } from './client.js';
 export type { LivefolioClient, LivefolioClientOptions } from './client.js';
-export type { TypedSupabaseClient, Database } from './types.js';
+export type { StorageProvider } from './providers/storage.js';
+export type { MarketProvider } from './providers/market.js';
+export type { IndicatorType, TradingFreq, Comparison, Unit } from './providers/types.js';
 export { TickerHandle } from './handles/ticker.js';
 export { IndicatorHandle } from './handles/indicator.js';
 export type { IndicatorIdentity, DateRange, DailyBar } from './handles/indicator.js';
