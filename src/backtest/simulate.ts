@@ -1,5 +1,6 @@
 import type { DailyBar } from '../handles/indicator.js';
 import type { StrategyBar } from '../handles/strategy.js';
+import type { TickerHandle } from '../handles/ticker.js';
 import type { Trade } from './types.js';
 import { PortfolioHandle } from '../handles/portfolio.js';
 
@@ -10,7 +11,7 @@ export function runSimulation(
   prices: Record<string, Record<string, number>>,
   rebalanceDates: Set<string>,
   portfolio: PortfolioHandle,
-): { series: DailyBar[]; trades: Trade[] } {
+): { series: DailyBar[]; trades: Trade[]; finalPortfolio: PortfolioHandle } {
   const positions: Record<string, number> = {};
   let cash = 0;
   for (const [ticker, quantity] of portfolio.holdings) {
@@ -81,5 +82,39 @@ export function runSimulation(
     series.push({ date, value });
   }
 
-  return { series, trades };
+  // Build finalPortfolio from ending positions + cash
+  const finalHoldings: [TickerHandle, number][] = [];
+
+  // Map symbols back to TickerHandles from the last bar's allocation
+  const tickerBySymbol = new Map<string, TickerHandle>();
+  for (const bar of bars) {
+    for (const [ticker] of bar.allocation.holdings) {
+      if (!tickerBySymbol.has(ticker.symbol)) {
+        tickerBySymbol.set(ticker.symbol, ticker);
+      }
+    }
+  }
+  // Also include tickers from the starting portfolio (may hold tickers not in any allocation)
+  for (const [ticker] of portfolio.holdings) {
+    if (!tickerBySymbol.has(ticker.symbol)) {
+      tickerBySymbol.set(ticker.symbol, ticker);
+    }
+  }
+
+  for (const [symbol, shares] of Object.entries(positions)) {
+    const ticker = tickerBySymbol.get(symbol);
+    if (ticker && Math.abs(shares) > EPSILON) {
+      finalHoldings.push([ticker, shares]);
+    }
+  }
+
+  // Add CASHX
+  const cashTicker = tickerBySymbol.get('CASHX') ?? portfolio.holdings.find(([t]) => t.symbol === 'CASHX')?.[0];
+  if (cashTicker && Math.abs(cash) > EPSILON) {
+    finalHoldings.push([cashTicker, cash]);
+  }
+
+  const finalPortfolio = new PortfolioHandle(finalHoldings);
+
+  return { series, trades, finalPortfolio };
 }

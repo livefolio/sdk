@@ -194,6 +194,39 @@ describe('runSimulation', () => {
     expect(result.trades).toHaveLength(0);
   });
 
+  it('returns finalPortfolio with starting cash for empty bars', () => {
+    const result = runSimulation([], {}, new Set(), cashPortfolio(100_000));
+    expect(result.finalPortfolio).toBeDefined();
+    const holdingsMap = new Map(result.finalPortfolio.holdings.map(([t, qty]) => [t.symbol, qty]));
+    expect(holdingsMap.get('CASHX')).toBeCloseTo(100_000, 2);
+  });
+
+  it('returns finalPortfolio with end-of-simulation positions and cash', () => {
+    const alloc = stubAllocation([
+      [{ symbol: 'SPY', leverage: 1 }, 0.6],
+      [{ symbol: 'TLT', leverage: 1 }, 0.4],
+    ]);
+    const bars = makeBars(['2025-01-06', '2025-01-07'], alloc);
+    const prices = {
+      SPY: { '2025-01-06': 500, '2025-01-07': 510 },
+      TLT: { '2025-01-06': 100, '2025-01-07': 102 },
+    };
+    const rebalanceDates = new Set(['2025-01-06']);
+
+    const result = runSimulation(bars, prices, rebalanceDates, cashPortfolio(100_000));
+
+    expect(result.finalPortfolio).toBeDefined();
+
+    // After rebalance: SPY 60% = 60000/500 = 120 shares, TLT 40% = 40000/100 = 400 shares
+    const holdingsMap = new Map(result.finalPortfolio.holdings.map(([t, qty]) => [t.symbol, qty]));
+    expect(holdingsMap.get('SPY')).toBeCloseTo(120, 4);
+    expect(holdingsMap.get('TLT')).toBeCloseTo(400, 4);
+
+    // Cash should be ~0 after full allocation
+    const cash = holdingsMap.get('CASHX') ?? 0;
+    expect(cash).toBeCloseTo(0, 2);
+  });
+
   it('starts simulation from existing positions', () => {
     const alloc = stubAllocation([
       [{ symbol: 'SPY', leverage: 1 }, 0.6],
