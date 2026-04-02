@@ -139,7 +139,7 @@ export class SignalHandle {
     const range = fromDate ? { from: fromDate } : undefined;
     const [series1, series2] = await Promise.all([this.indicator1.series(range), this.indicator2.series(range)]);
 
-    const previousValue = fromDate ? await this._getLastSignalValue(id) : undefined;
+    const previousValue = fromDate ? ((await this._getLastSignalValue(id)) ?? undefined) : undefined;
 
     const absolute = ABSOLUTE_TOLERANCE_TYPES.has(this.indicator1.type);
     const signalBars = evaluateSignal(series1, series2, this.comparison, this.tolerance, absolute, previousValue);
