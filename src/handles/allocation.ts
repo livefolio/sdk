@@ -1,86 +1,51 @@
-import type { TypedSupabaseClient } from '../types.js';
-import type { Tables } from '../database.types.js';
+import type { StorageProvider } from '../providers/storage.js';
 import { TickerHandle } from './ticker.js';
-
-type AllocationRow = Tables<'allocations'>;
 
 export class AllocationHandle {
   readonly holdings: [TickerHandle, number][];
 
-  private _supabase: TypedSupabaseClient;
-  private _resolved: AllocationRow | null = null;
-  private _resolving: Promise<AllocationRow> | null = null;
+  private _storage: StorageProvider;
+  private _resolvedId: number | null = null;
+  private _resolving: Promise<{ id: number }> | null = null;
 
-  constructor(supabase: TypedSupabaseClient, holdings: [TickerHandle, number][]) {
+  constructor(storage: StorageProvider, holdings: [TickerHandle, number][]) {
     const total = holdings.reduce((sum, [, weight]) => sum + weight, 0);
     if (Math.abs(total - 1) > 1e-9) {
       throw new Error(`Allocation weights must sum to 1, got ${total}`);
     }
-    this._supabase = supabase;
+    this._storage = storage;
     this.holdings = holdings;
   }
 
   get id(): number {
-    if (!this._resolved)
+    if (this._resolvedId == null)
       throw new Error('AllocationHandle not yet resolved. Call resolve(), or access via an async method.');
-    return this._resolved.id;
+    return this._resolvedId;
   }
 
-  async resolve(): Promise<AllocationRow> {
-    if (this._resolved) return this._resolved;
+  async resolve(): Promise<{ id: number }> {
+    if (this._resolvedId != null) return { id: this._resolvedId };
     if (!this._resolving) this._resolving = this._doResolve();
     return this._resolving;
   }
 
-  static fromRow(supabase: TypedSupabaseClient, row: AllocationRow): AllocationHandle {
-    const holdingsJson = row.holdings as Record<string, number>;
-    const holdings: [TickerHandle, number][] = [];
-    for (const [key, weight] of Object.entries(holdingsJson)) {
-      const match = key.match(/^(.+)\?L=(.+)$/);
-      const symbol = match ? match[1] : key;
-      const leverage = match ? Number(match[2]) : 1;
-      holdings.push([new TickerHandle(supabase, symbol, leverage), weight]);
-    }
-    const handle = new AllocationHandle(supabase, holdings);
-    handle._resolved = row;
+  static fromResolved(storage: StorageProvider, id: number, holdings: [TickerHandle, number][]): AllocationHandle {
+    const handle = new AllocationHandle(storage, holdings);
+    handle._resolvedId = id;
     return handle;
   }
 
-  private async _doResolve(): Promise<AllocationRow> {
-    // Resolve all tickers in parallel
+  private async _doResolve(): Promise<{ id: number }> {
     await Promise.all(this.holdings.map(([ticker]) => ticker.resolve()));
 
-    // Build the holdings JSONB
     const holdingsJson: Record<string, number> = {};
     for (const [ticker, weight] of this.holdings) {
       const key = ticker.leverage !== 1 ? `${ticker.symbol}?L=${ticker.leverage}` : ticker.symbol;
       holdingsJson[key] = weight;
     }
 
-    // Check for existing allocation with same holdings
-    const { data: existing, error: findError } = await this._supabase
-      .from('allocations')
-      .select()
-      .eq('holdings', JSON.stringify(holdingsJson))
-      .limit(1)
-      .single();
-
-    if (existing && !findError) {
-      this._resolved = existing;
-      return existing;
-    }
-
-    if (findError && findError.code !== 'PGRST116') throw findError;
-
-    // Not found — insert
-    const { data, error } = await this._supabase
-      .from('allocations')
-      .insert({ holdings: holdingsJson })
-      .select()
-      .single();
-
-    if (error) throw error;
-    this._resolved = data;
-    return data;
+    const result = await this._storage.allocations.findOrCreate(holdingsJson);
+    this._resolvedId = result.id;
+    return result;
   }
 }
