@@ -9,7 +9,7 @@ import type { DateRange, IndicatorConfig } from './indicator.js';
 import { evaluateStrategy, computeRebalanceDates } from '../computations/strategy.js';
 import { runSimulation } from '../backtest/simulate.js';
 import { SimulationHandle } from '../backtest/types.js';
-import type { SimulateOptions } from '../backtest/types.js';
+import type { SimulateOptions, FinalState } from '../backtest/types.js';
 
 type StrategyRow = Tables<'strategies'>;
 type TradingFreq = Database['public']['Enums']['trading_freq'];
@@ -518,7 +518,33 @@ export class StrategyHandle {
     rebalanceDates.add(bars[0].date);
 
     const result = runSimulation(bars, prices, rebalanceDates, options.portfolio);
-    return new SimulationHandle(result.series, result.trades, options.portfolio);
+
+    // Build finalState for live push support
+    const lastBar = bars[bars.length - 1]!;
+    const lastDate = lastBar.date;
+    const lastAllocation = lastBar.allocation;
+
+    // leveragedPrices: keyed as "symbol:leverage", values are the leveraged prices from _fetchPricesForTickers
+    const leveragedPrices: Record<string, number> = {};
+    for (const [ticker, _weight] of lastAllocation.holdings) {
+      if (ticker.symbol === 'CASHX') continue;
+      const key = `${ticker.symbol}:${ticker.leverage}`;
+      const price = prices[ticker.symbol]?.[lastDate];
+      if (price != null) leveragedPrices[key] = price;
+    }
+
+    // closePrices: raw (unleveraged) close prices for computing real returns
+    const closePrices: Record<string, number> = {};
+    await this._fetchRawClosePrices(bars, lastDate, closePrices);
+
+    const finalState: FinalState = {
+      portfolio: result.finalPortfolio,
+      allocation: lastAllocation,
+      closePrices,
+      leveragedPrices,
+    };
+
+    return new SimulationHandle(result.series, result.trades, options.portfolio, finalState);
   }
 
   private async _fetchPricesForTickers(
@@ -552,5 +578,33 @@ export class StrategyHandle {
     );
 
     return Object.fromEntries(entries);
+  }
+
+  private async _fetchRawClosePrices(
+    bars: StrategyBar[],
+    lastDate: string,
+    closePrices: Record<string, number>,
+  ): Promise<void> {
+    const symbols = new Set<string>();
+    for (const bar of bars) {
+      for (const [ticker] of bar.allocation.holdings) {
+        if (ticker.symbol !== 'CASHX') symbols.add(ticker.symbol);
+      }
+    }
+
+    await Promise.all(
+      Array.from(symbols).map(async (symbol) => {
+        const rawTicker = new TickerHandle(this._supabase, symbol, 1);
+        const priceIndicator = new IndicatorHandle(
+          this._supabase,
+          { type: 'Price', ticker: rawTicker, lookback: 0, delay: 0, unit: null, threshold: null },
+          this._config,
+        );
+        const priceBars = await priceIndicator.series({ from: lastDate, to: lastDate });
+        if (priceBars.length > 0) {
+          closePrices[symbol] = priceBars[0]!.value;
+        }
+      }),
+    );
   }
 }
