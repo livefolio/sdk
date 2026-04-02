@@ -54,7 +54,7 @@ export class SimulationHandle {
       this._lastClosePrices = finalState.closePrices;
       this._lastLeveragedPrices = new Map(Object.entries(finalState.leveragedPrices));
       this._currentLeveragedPrices = new Map(Object.entries(finalState.leveragedPrices));
-      this._lastDate = series[series.length - 1].date;
+      this._lastDate = series.at(-1)?.date ?? '';
     } else {
       this._portfolio = null;
       this._currentAllocation = null;
