@@ -1,51 +1,40 @@
-import type { TypedSupabaseClient } from '../types.js';
-import type { Tables } from '../database.types.js';
-
-type TickerRow = Tables<'tickers'>;
+import type { StorageProvider } from '../providers/storage.js';
 
 export class TickerHandle {
   readonly symbol: string;
   readonly leverage: number;
 
-  private _supabase: TypedSupabaseClient;
-  private _resolved: TickerRow | null = null;
-  private _resolving: Promise<TickerRow> | null = null;
+  private _storage: StorageProvider;
+  private _resolvedId: number | null = null;
+  private _resolving: Promise<{ id: number }> | null = null;
 
-  constructor(supabase: TypedSupabaseClient, symbol: string, leverage: number = 1) {
-    this._supabase = supabase;
+  constructor(storage: StorageProvider, symbol: string, leverage: number = 1) {
+    this._storage = storage;
     this.symbol = symbol.toUpperCase();
     this.leverage = leverage;
   }
 
   get id(): number {
-    if (!this._resolved)
+    if (this._resolvedId == null)
       throw new Error('TickerHandle not yet resolved. Call resolve(), or access via an async method.');
-    return this._resolved.id;
+    return this._resolvedId;
   }
 
-  async resolve(): Promise<TickerRow> {
-    if (this._resolved) return this._resolved;
+  async resolve(): Promise<{ id: number }> {
+    if (this._resolvedId != null) return { id: this._resolvedId };
     if (!this._resolving) this._resolving = this._doResolve();
     return this._resolving;
   }
 
-  static fromRow(supabase: TypedSupabaseClient, row: TickerRow): TickerHandle {
-    const handle = new TickerHandle(supabase, row.symbol, row.leverage);
-    handle._resolved = row;
+  static fromResolved(storage: StorageProvider, id: number, symbol: string, leverage: number): TickerHandle {
+    const handle = new TickerHandle(storage, symbol, leverage);
+    handle._resolvedId = id;
     return handle;
   }
 
-  private async _doResolve(): Promise<TickerRow> {
-    // Note: We use update-on-conflict (default) rather than ignoreDuplicates: true
-    // because PostgREST does not return the existing row with ignoreDuplicates.
-    const { data, error } = await this._supabase
-      .from('tickers')
-      .upsert({ symbol: this.symbol, leverage: this.leverage }, { onConflict: 'symbol,leverage' })
-      .select()
-      .single();
-
-    if (error) throw error;
-    this._resolved = data;
-    return data;
+  private async _doResolve(): Promise<{ id: number }> {
+    const result = await this._storage.tickers.upsert(this.symbol, this.leverage);
+    this._resolvedId = result.id;
+    return result;
   }
 }

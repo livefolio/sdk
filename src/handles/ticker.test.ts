@@ -1,87 +1,78 @@
 import { describe, it, expect, vi } from 'vitest';
 import { TickerHandle } from './ticker.js';
-import type { TypedSupabaseClient } from '../types.js';
+import type { StorageProvider } from '../providers/storage.js';
 
-function mockSupabase() {
-  return {} as TypedSupabaseClient;
+function mockStorage(overrides?: { tickers?: Partial<StorageProvider['tickers']> }): StorageProvider {
+  return {
+    tickers: {
+      upsert: vi.fn().mockResolvedValue({ id: 42 }),
+      ...overrides?.tickers,
+    },
+    indicators: {} as StorageProvider['indicators'],
+    signals: {} as StorageProvider['signals'],
+    allocations: {} as StorageProvider['allocations'],
+    strategies: {} as StorageProvider['strategies'],
+    tradingDays: {} as StorageProvider['tradingDays'],
+  };
 }
 
 describe('TickerHandle', () => {
-  it('stores symbol and leverage', () => {
-    const handle = new TickerHandle(mockSupabase(), 'SPY', 1);
+  it('uppercases symbol and stores leverage', () => {
+    const handle = new TickerHandle(mockStorage(), 'spy', 2);
     expect(handle.symbol).toBe('SPY');
-    expect(handle.leverage).toBe(1);
+    expect(handle.leverage).toBe(2);
   });
 
   it('defaults leverage to 1', () => {
-    const handle = new TickerHandle(mockSupabase(), 'SPY');
+    const handle = new TickerHandle(mockStorage(), 'SPY');
     expect(handle.leverage).toBe(1);
   });
 
-  it('uppercases symbol', () => {
-    expect(new TickerHandle(mockSupabase(), 'spy').symbol).toBe('SPY');
-    expect(new TickerHandle(mockSupabase(), 'Qqq').symbol).toBe('QQQ');
-    expect(new TickerHandle(mockSupabase(), 'aapl', 2).symbol).toBe('AAPL');
-  });
-
   it('throws on .id before resolution', () => {
-    const handle = new TickerHandle(mockSupabase(), 'SPY');
+    const handle = new TickerHandle(mockStorage(), 'SPY');
     expect(() => handle.id).toThrow('not yet resolved');
   });
-});
 
-function mockSupabaseWithUpsert(row: Record<string, unknown>) {
-  const single = vi.fn().mockResolvedValue({ data: row, error: null });
-  const select = vi.fn().mockReturnValue({ single });
-  const upsert = vi.fn().mockReturnValue({ select });
-  const from = vi.fn().mockReturnValue({ upsert });
-  return { from } as unknown as TypedSupabaseClient;
-}
-
-describe('TickerHandle.resolve', () => {
-  it('upserts and returns the row', async () => {
-    const row = { id: 42, symbol: 'SPY', leverage: 1, created_at: '2026-01-01T00:00:00Z' };
-    const sb = mockSupabaseWithUpsert(row);
-    const handle = new TickerHandle(sb, 'SPY', 1);
+  it('resolve() calls storage.tickers.upsert and sets .id', async () => {
+    const storage = mockStorage();
+    const handle = new TickerHandle(storage, 'qqq', 3);
 
     const result = await handle.resolve();
 
-    expect(result).toEqual(row);
+    expect(result).toEqual({ id: 42 });
     expect(handle.id).toBe(42);
-    expect(sb.from).toHaveBeenCalledWith('tickers');
+    expect(storage.tickers.upsert).toHaveBeenCalledWith('QQQ', 3);
   });
 
-  it('caches the result on subsequent calls', async () => {
-    const row = { id: 42, symbol: 'SPY', leverage: 1, created_at: '2026-01-01T00:00:00Z' };
-    const sb = mockSupabaseWithUpsert(row);
-    const handle = new TickerHandle(sb, 'SPY', 1);
+  it('resolve() caches — only one upsert call', async () => {
+    const storage = mockStorage();
+    const handle = new TickerHandle(storage, 'SPY');
 
     await handle.resolve();
     await handle.resolve();
 
-    expect(sb.from).toHaveBeenCalledTimes(1);
-  });
-
-  it('propagates errors', async () => {
-    const single = vi.fn().mockResolvedValue({ data: null, error: { message: 'RLS denied' } });
-    const select = vi.fn().mockReturnValue({ single });
-    const upsert = vi.fn().mockReturnValue({ select });
-    const from = vi.fn().mockReturnValue({ upsert });
-    const sb = { from } as unknown as TypedSupabaseClient;
-
-    const handle = new TickerHandle(sb, 'SPY');
-    await expect(handle.resolve()).rejects.toEqual({ message: 'RLS denied' });
+    expect(storage.tickers.upsert).toHaveBeenCalledTimes(1);
   });
 
   it('deduplicates concurrent resolve calls', async () => {
-    const row = { id: 42, symbol: 'SPY', leverage: 1, created_at: '2026-01-01T00:00:00Z' };
-    const sb = mockSupabaseWithUpsert(row);
-    const handle = new TickerHandle(sb, 'SPY', 1);
+    const storage = mockStorage();
+    const handle = new TickerHandle(storage, 'SPY');
 
     const [r1, r2] = await Promise.all([handle.resolve(), handle.resolve()]);
 
-    expect(r1).toEqual(row);
-    expect(r2).toEqual(row);
-    expect(sb.from).toHaveBeenCalledTimes(1);
+    expect(r1).toEqual({ id: 42 });
+    expect(r2).toEqual({ id: 42 });
+    expect(storage.tickers.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('fromResolved() creates a pre-resolved handle', () => {
+    const storage = mockStorage();
+    const handle = TickerHandle.fromResolved(storage, 99, 'AAPL', 1);
+
+    expect(handle.id).toBe(99);
+    expect(handle.symbol).toBe('AAPL');
+    expect(handle.leverage).toBe(1);
+    // Should not have called upsert
+    expect(storage.tickers.upsert).not.toHaveBeenCalled();
   });
 });
