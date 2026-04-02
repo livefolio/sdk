@@ -4,35 +4,34 @@
 # providers
 
 ## Purpose
-External data source adapters that fetch raw time-series data. Each provider returns `DailyBar[]` arrays consumed by `IndicatorHandle` during sync.
+Provider interfaces and indicator-type routing. Defines `StorageProvider` (persistence) and `MarketProvider` (market data) abstractions, plus the `getProviderInfo()` mapper that routes indicator types to their data source.
 
 ## Key Files
 
 | File | Description |
 |------|-------------|
 | `index.ts` | Barrel export for providers and mappings |
-| `yahoo.ts` | `fetchYahoo()` — Fetches historical price data from Yahoo Finance via `yahoo-finance2` |
-| `fred.ts` | `fetchFred()` — Fetches economic data (treasury rates) from FRED API |
+| `storage.ts` | `StorageProvider` interface — persistence abstraction for all database operations |
+| `market.ts` | `MarketProvider` interface — market data fetching abstraction |
+| `types.ts` | Shared type definitions (`IndicatorType`, `TradingFreq`, `Comparison`, `Unit`, etc.) |
 | `mappings.ts` | `getProviderInfo()` — Maps indicator types to their data source and fetch parameters |
 
 ## Test Files
 
 | File | Tests |
 |------|-------|
-| `yahoo.test.ts` | Yahoo Finance fetch behavior and data transformation |
-| `fred.test.ts` | FRED API fetch behavior |
 | `mappings.test.ts` | Provider routing logic for all indicator types |
 
 ## For AI Agents
 
 ### Working In This Directory
+- `StorageProvider` and `MarketProvider` are the two core abstractions consumers must implement
 - `getProviderInfo()` is the routing layer — given an indicator type, it returns which provider to use
 - Provider categories: `yahoo` (prices, VIX), `fred` (treasury rates), `computed` (SMA, EMA, etc. derived from Price), `calendar` (date-based), `none` (thresholds)
-- FRED requires an API key passed via `LivefolioClientOptions.fredApiKey`
-- Yahoo Finance uses the `yahoo-finance2` npm package
+- `types.ts` defines all shared enums/types previously derived from the Supabase database schema
 
 ### Testing Requirements
-- Mock external HTTP calls in tests — never hit real APIs
+- Mock `StorageProvider` and `MarketProvider` with `vi.fn()` in tests
 - Test the mapping logic exhaustively for all indicator types
 
 ### Common Patterns
@@ -43,10 +42,9 @@ External data source adapters that fetch raw time-series data. Each provider ret
 
 ### Internal
 - `../handles/indicator.js` — `DailyBar` type
-- `../database.types.js` — `indicator_type` enum
+- `./types.js` — `IndicatorType` and other shared types
 
 ### External
-- `yahoo-finance2` — Yahoo Finance data API
-- FRED API (HTTP) — Federal Reserve Economic Data
+- None — provider interfaces have no external dependencies
 
 <!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->

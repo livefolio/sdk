@@ -24,7 +24,15 @@ export type IndicatorType =
   | 'Day of Year'
   | 'Threshold';
 
-export type TradingFreq = 'Daily' | 'Weekly' | 'Monthly' | 'Quarterly' | 'Yearly';
+export type TradingFreq =
+  | 'Daily'
+  | 'Weekly'
+  | 'Monthly'
+  | 'Bi-monthly'
+  | 'Quarterly'
+  | 'Every 4 Months'
+  | 'Semiannually'
+  | 'Yearly';
 
 export type Comparison = '>' | '<' | '=';
 

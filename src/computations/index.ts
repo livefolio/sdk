@@ -1,5 +1,5 @@
 import type { DailyBar } from '../handles/indicator.js';
-import type { Database } from '../database.types.js';
+import type { IndicatorType } from '../providers/types.js';
 import { computeSma } from './sma.js';
 import { computeEma } from './ema.js';
 import { computeRsi } from './rsi.js';
@@ -14,8 +14,6 @@ export { computeReturns } from './returns.js';
 export { computeVolatility } from './volatility.js';
 export { computeDrawdown } from './drawdown.js';
 export { computeCalendar } from './calendar.js';
-
-type IndicatorType = Database['public']['Enums']['indicator_type'];
 type ComputeFn = (bars: DailyBar[], lookback: number) => DailyBar[];
 
 const COMPUTATIONS: Partial<Record<IndicatorType, ComputeFn>> = {

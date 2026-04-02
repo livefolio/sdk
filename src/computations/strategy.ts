@@ -1,6 +1,4 @@
-import type { Database } from '../database.types.js';
-
-type TradingFreq = Database['public']['Enums']['trading_freq'];
+import type { TradingFreq } from '../providers/types.js';
 
 function getPeriodKey(dateStr: string, freq: TradingFreq): string {
   const d = new Date(dateStr + 'T00:00:00Z');

@@ -1,6 +1,4 @@
-import type { Database } from '../database.types.js';
-
-type IndicatorType = Database['public']['Enums']['indicator_type'];
+import type { IndicatorType } from './types.js';
 
 export type ProviderInfo =
   | { provider: 'yahoo'; symbol: string }

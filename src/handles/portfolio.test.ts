@@ -1,16 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { PortfolioHandle } from './portfolio.js';
 import { TickerHandle } from './ticker.js';
-import type { TypedSupabaseClient } from '../types.js';
+import type { StorageProvider } from '../providers/storage.js';
 import { AllocationHandle } from './allocation.js';
 
-function mockSupabase() {
-  return {} as TypedSupabaseClient;
+function mockStorage() {
+  return {} as StorageProvider;
 }
 
 describe('PortfolioHandle construction', () => {
   it('stores holdings as ticker-quantity pairs', () => {
-    const sb = mockSupabase();
+    const sb = mockStorage();
     const spy = new TickerHandle(sb, 'SPY');
     const cashx = new TickerHandle(sb, 'CASHX');
     const handle = new PortfolioHandle([
@@ -26,7 +26,7 @@ describe('PortfolioHandle construction', () => {
   });
 
   it('throws on duplicate tickers', () => {
-    const sb = mockSupabase();
+    const sb = mockStorage();
     const spy = new TickerHandle(sb, 'SPY');
     expect(
       () =>
@@ -38,13 +38,13 @@ describe('PortfolioHandle construction', () => {
   });
 
   it('throws on negative quantities', () => {
-    const sb = mockSupabase();
+    const sb = mockStorage();
     const spy = new TickerHandle(sb, 'SPY');
     expect(() => new PortfolioHandle([[spy, -100]])).toThrow('negative');
   });
 
   it('accepts zero-quantity holdings', () => {
-    const sb = mockSupabase();
+    const sb = mockStorage();
     const spy = new TickerHandle(sb, 'SPY');
     expect(() => new PortfolioHandle([[spy, 0]])).not.toThrow();
   });
@@ -56,7 +56,7 @@ describe('PortfolioHandle construction', () => {
 
 describe('PortfolioHandle.value', () => {
   it('computes total portfolio value from positions and prices', () => {
-    const sb = mockSupabase();
+    const sb = mockStorage();
     const spy = new TickerHandle(sb, 'SPY');
     const bnd = new TickerHandle(sb, 'BND');
     const cashx = new TickerHandle(sb, 'CASHX');
@@ -75,7 +75,7 @@ describe('PortfolioHandle.value', () => {
   });
 
   it('treats CASHX price as 1.0 even if provided in prices', () => {
-    const sb = mockSupabase();
+    const sb = mockStorage();
     const cashx = new TickerHandle(sb, 'CASHX');
     const portfolio = new PortfolioHandle([[cashx, 10000]]);
 
@@ -85,7 +85,7 @@ describe('PortfolioHandle.value', () => {
   });
 
   it('throws if a non-CASHX ticker is missing from prices', () => {
-    const sb = mockSupabase();
+    const sb = mockStorage();
     const spy = new TickerHandle(sb, 'SPY');
     const portfolio = new PortfolioHandle([[spy, 500]]);
 
@@ -100,7 +100,7 @@ describe('PortfolioHandle.value', () => {
 
 describe('PortfolioHandle.weights', () => {
   it('computes allocation weights from positions and prices', () => {
-    const sb = mockSupabase();
+    const sb = mockStorage();
     const spy = new TickerHandle(sb, 'SPY');
     const bnd = new TickerHandle(sb, 'BND');
     const cashx = new TickerHandle(sb, 'CASHX');
@@ -135,7 +135,7 @@ describe('PortfolioHandle.weights', () => {
   });
 
   it('skips zero-quantity holdings', () => {
-    const sb = mockSupabase();
+    const sb = mockStorage();
     const spy = new TickerHandle(sb, 'SPY');
     const bnd = new TickerHandle(sb, 'BND');
     const portfolio = new PortfolioHandle([
@@ -157,7 +157,7 @@ describe('PortfolioHandle.weights', () => {
 
 describe('PortfolioHandle.trades', () => {
   it('computes buy and sell trades to reach target allocation', () => {
-    const sb = mockSupabase();
+    const sb = mockStorage();
     const spy = new TickerHandle(sb, 'SPY');
     const bnd = new TickerHandle(sb, 'BND');
     const cashx = new TickerHandle(sb, 'CASHX');
@@ -199,7 +199,7 @@ describe('PortfolioHandle.trades', () => {
   });
 
   it('orders sells before buys', () => {
-    const sb = mockSupabase();
+    const sb = mockStorage();
     const spy = new TickerHandle(sb, 'SPY');
     const bnd = new TickerHandle(sb, 'BND');
     const cashx = new TickerHandle(sb, 'CASHX');
@@ -232,7 +232,7 @@ describe('PortfolioHandle.trades', () => {
   });
 
   it('sells entire position for tickers not in target', () => {
-    const sb = mockSupabase();
+    const sb = mockStorage();
     const spy = new TickerHandle(sb, 'SPY');
     const bnd = new TickerHandle(sb, 'BND');
     const gld = new TickerHandle(sb, 'GLD');
@@ -262,7 +262,7 @@ describe('PortfolioHandle.trades', () => {
   });
 
   it('returns empty array when portfolio is already at target', () => {
-    const sb = mockSupabase();
+    const sb = mockStorage();
     const spy = new TickerHandle(sb, 'SPY');
     const bnd = new TickerHandle(sb, 'BND');
     const portfolio = new PortfolioHandle([
@@ -283,7 +283,7 @@ describe('PortfolioHandle.trades', () => {
   });
 
   it('handles CASHX target weight by keeping cash portion', () => {
-    const sb = mockSupabase();
+    const sb = mockStorage();
     const spy = new TickerHandle(sb, 'SPY');
     const cashx = new TickerHandle(sb, 'CASHX');
     const portfolio = new PortfolioHandle([
@@ -304,7 +304,7 @@ describe('PortfolioHandle.trades', () => {
   });
 
   it('never emits a CASHX trade', () => {
-    const sb = mockSupabase();
+    const sb = mockStorage();
     const spy = new TickerHandle(sb, 'SPY');
     const cashx = new TickerHandle(sb, 'CASHX');
     const portfolio = new PortfolioHandle([
@@ -320,7 +320,7 @@ describe('PortfolioHandle.trades', () => {
   });
 
   it('throws if a portfolio ticker is missing from prices', () => {
-    const sb = mockSupabase();
+    const sb = mockStorage();
     const spy = new TickerHandle(sb, 'SPY');
     const bnd = new TickerHandle(sb, 'BND');
     const portfolio = new PortfolioHandle([[spy, 100]]);
@@ -330,7 +330,7 @@ describe('PortfolioHandle.trades', () => {
   });
 
   it('throws if a target-only ticker is missing from prices', () => {
-    const sb = mockSupabase();
+    const sb = mockStorage();
     const spy = new TickerHandle(sb, 'SPY');
     const bnd = new TickerHandle(sb, 'BND');
     const portfolio = new PortfolioHandle([[spy, 100]]);

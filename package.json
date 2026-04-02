@@ -33,12 +33,9 @@
       "prettier --write"
     ]
   },
-  "peerDependencies": {
-    "@supabase/supabase-js": "^2"
-  },
+  "peerDependencies": {},
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@supabase/supabase-js": "^2",
     "eslint": "^10.1.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.5",
@@ -50,7 +47,6 @@
     "vitest": "^3"
   },
   "dependencies": {
-    "nanoid": "^5.1.7",
-    "yahoo-finance2": "^3.14.0"
+    "nanoid": "^5.1.7"
   }
 }

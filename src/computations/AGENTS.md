@@ -50,7 +50,7 @@ Pure functions that compute technical indicators and strategy evaluation logic. 
 
 ### Internal
 - `../handles/indicator.js` — `DailyBar` type
-- `../database.types.js` — `indicator_type` enum
+- `../providers/types.js` — `IndicatorType`, `TradingFreq` types
 
 ### External
 - None — pure computation, no external dependencies

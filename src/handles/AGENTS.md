@@ -30,13 +30,13 @@ Lazy, database-backed handle classes that form the core abstraction layer. Each 
 | `strategy-simulate.test.ts` | End-to-end simulation through StrategyHandle |
 | `portfolio.test.ts` | Portfolio value, weights, and trade generation |
 | `sync.test.ts` | Indicator sync pipeline integration tests |
-| `fromRow.test.ts` | `fromRow()` static reconstruction for all handles |
+| `fromRow.test.ts` | `fromResolved()` static reconstruction for all handles |
 
 ## For AI Agents
 
 ### Working In This Directory
 - Every handle follows the same pattern: constructor stores identity → `.resolve()` upserts to DB → `.id` accessor throws if unresolved
-- `fromRow()` static methods reconstruct handles from database rows without re-resolving
+- `fromResolved()` static methods reconstruct handles from known IDs without re-resolving
 - `IndicatorHandle` is the most complex — it orchestrates data fetching from providers and computation
 - `StrategyHandle` has two construction modes: create-new (with rules) and load-by-link-id
 - `PortfolioHandle` is the only handle that does NOT persist to the database — it's a runtime value object
@@ -52,22 +52,22 @@ PortfolioHandle (concrete share quantities — used by simulation)
 ```
 
 ### Testing Requirements
-- Tests mock Supabase with `vi.fn()` returning `{ data, error }` shapes
+- Tests mock `StorageProvider` and `MarketProvider` with `vi.fn()`
 - Test the resolve → id → series flow for each handle
 - `strategy-simulate.test.ts` tests the full pipeline end-to-end
 
 ### Common Patterns
 - **Lazy singleton resolve**: `_resolved` caches the row, `_resolving` deduplicates concurrent calls
-- **Paginated series queries**: All `.series()` methods loop with 1000-row pages
+- **Provider-backed series**: All `.series()` methods delegate to `StorageProvider` for persistence and `MarketProvider` for fetching
 - **CASHX special case**: The cash ticker (`CASHX`) has a fixed price of 1 and is excluded from price lookups
 
 ## Dependencies
 
 ### Internal
-- `../types.js` — `TypedSupabaseClient`
-- `../database.types.js` — Table/enum types
+- `../providers/storage.js` — `StorageProvider` interface
+- `../providers/market.js` — `MarketProvider` interface
+- `../providers/types.js` — Shared types (`IndicatorType`, `TradingFreq`, etc.)
 - `../computations/` — Pure indicator computation functions
-- `../providers/` — Yahoo Finance and FRED data fetchers
 - `../backtest/` — Simulation engine (used by `StrategyHandle.simulate()`)
 
 ### External
