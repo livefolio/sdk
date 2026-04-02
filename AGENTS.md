@@ -10,7 +10,8 @@ TypeScript SDK for building tactical allocation strategies. Provides a fluent AP
 | File | Description |
 |------|-------------|
 | `package.json` | Project manifest — `@livefolio/sdk`, ES module, Node >=20 |
-| `tsconfig.json` | TypeScript strict mode, ES2022 target, nodenext modules |
+| `tsconfig.json` | TypeScript strict mode, ES2022 target, bundler module resolution |
+| `tsup.config.ts` | tsup bundler configuration |
 | `vitest.config.ts` | Vitest test runner configuration |
 | `eslint.config.js` | ESLint flat config with typescript-eslint and Prettier |
 | `.prettierrc` | Prettier formatting rules |
@@ -21,20 +22,15 @@ TypeScript SDK for building tactical allocation strategies. Provides a fluent AP
 |-----------|---------|
 | `src/` | All TypeScript source code (see `src/AGENTS.md`) |
 | `docs/` | Design specs and implementation plans (see `docs/AGENTS.md`) |
-| `supabase/` | Database migrations, schemas, and seeds (see `supabase/AGENTS.md`) |
 
 ## For AI Agents
 
 ### Working In This Directory
-- This is an ES module project (`"type": "module"`) — all imports use `.js` extensions
-- `@supabase/supabase-js` is a peer dependency, not bundled
+- This is an ES module project (`"type": "module"`) — extensionless imports, bundled with tsup
 - The SDK exports a `createClient(options)` factory that returns a `LivefolioClient` interface
-- All database types are auto-generated in `src/database.types.ts` — do not edit manually
-
 ### Testing Requirements
 - Run `npm test` to execute all Vitest tests
-- Tests use Vitest's `vi.fn()` for mocking Supabase calls
-- No real database connection needed for unit tests
+- Tests use Vitest's `vi.fn()` for mocking — no real database connection needed
 
 ### Common Patterns
 - **Handle pattern**: Core abstractions (`TickerHandle`, `IndicatorHandle`, etc.) are lazy — they defer database resolution until `.resolve()` is called
@@ -44,11 +40,10 @@ TypeScript SDK for building tactical allocation strategies. Provides a fluent AP
 ## Dependencies
 
 ### External
-- `yahoo-finance2` — Price data from Yahoo Finance
 - `nanoid` — Short unique IDs for strategy link URLs
-- `@supabase/supabase-js` (peer) — Database client
 
 ### Dev
+- `tsup` — Bundler
 - `vitest` — Test runner
 - `typescript` — Compiler
 - `eslint` + `typescript-eslint` — Linting
