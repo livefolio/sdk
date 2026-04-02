@@ -5,6 +5,8 @@ import { TickerHandle } from './ticker.js';
 import { PortfolioHandle } from './portfolio.js';
 import type { StrategyBar } from './strategy.js';
 import type { DailyBar } from './indicator.js';
+import type { StorageProvider } from '../providers/storage.js';
+import type { MarketProvider } from '../providers/market.js';
 
 function stubAllocation(holdings: [{ symbol: string; leverage: number }, number][]): AllocationHandle {
   const tickerHoldings = holdings.map(
@@ -14,6 +16,9 @@ function stubAllocation(holdings: [{ symbol: string; leverage: number }, number]
   Object.defineProperty(handle, 'holdings', { value: tickerHoldings, writable: false });
   return handle;
 }
+
+const storage = {} as StorageProvider;
+const market = {} as MarketProvider;
 
 describe('StrategyHandle.simulate', () => {
   it('returns SimulationHandle with series and trades', async () => {
@@ -31,8 +36,7 @@ describe('StrategyHandle.simulate', () => {
       { date: '2025-01-08', value: 505 },
     ];
 
-    const supabase = {} as ConstructorParameters<typeof StrategyHandle>[0];
-    const strategy = new StrategyHandle(supabase, {
+    const strategy = new StrategyHandle(storage, market, {
       name: 'Test',
       freq: 'Daily',
       rules: [{ hold: alloc }],
@@ -64,8 +68,7 @@ describe('StrategyHandle.simulate', () => {
   it('respects custom portfolio', async () => {
     const alloc = stubAllocation([[{ symbol: 'SPY', leverage: 1 }, 1.0]]);
     const bars: StrategyBar[] = [{ date: '2025-01-06', allocation: alloc }];
-    const supabase = {} as ConstructorParameters<typeof StrategyHandle>[0];
-    const strategy = new StrategyHandle(supabase, {
+    const strategy = new StrategyHandle(storage, market, {
       name: 'Test',
       freq: 'Daily',
       rules: [{ hold: alloc }],
@@ -103,8 +106,7 @@ describe('StrategyHandle.simulate', () => {
       { date: '2025-01-07', value: 510 },
     ];
 
-    const supabase = {} as ConstructorParameters<typeof StrategyHandle>[0];
-    const strategy = new StrategyHandle(supabase, {
+    const strategy = new StrategyHandle(storage, market, {
       name: 'Test',
       freq: 'Daily',
       rules: [{ hold: alloc }],
@@ -135,8 +137,7 @@ describe('StrategyHandle.simulate', () => {
 
   it('returns empty SimulationHandle when no bars', async () => {
     const alloc = stubAllocation([[{ symbol: 'SPY', leverage: 1 }, 1.0]]);
-    const supabase = {} as ConstructorParameters<typeof StrategyHandle>[0];
-    const strategy = new StrategyHandle(supabase, {
+    const strategy = new StrategyHandle(storage, market, {
       name: 'Test',
       freq: 'Daily',
       rules: [{ hold: alloc }],

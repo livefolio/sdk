@@ -1,18 +1,16 @@
 import { nanoid } from 'nanoid';
-import type { TypedSupabaseClient } from '../types.js';
-import type { Tables, Database } from '../database.types.js';
+import type { StorageProvider } from '../providers/storage.js';
+import type { MarketProvider } from '../providers/market.js';
+import type { TradingFreq, StrategySeriesEntry } from '../providers/types.js';
 import { SignalHandle } from './signal.js';
 import { AllocationHandle } from './allocation.js';
 import { TickerHandle } from './ticker.js';
 import { IndicatorHandle } from './indicator.js';
-import type { DateRange, IndicatorConfig } from './indicator.js';
+import type { DateRange } from './indicator.js';
 import { evaluateStrategy, computeRebalanceDates } from '../computations/strategy.js';
 import { runSimulation } from '../backtest/simulate.js';
 import { SimulationHandle } from '../backtest/types.js';
 import type { SimulateOptions, FinalState } from '../backtest/types.js';
-
-type StrategyRow = Tables<'strategies'>;
-type TradingFreq = Database['public']['Enums']['trading_freq'];
 
 export interface StrategyRule {
   when?: SignalHandle[];
@@ -38,19 +36,20 @@ export class StrategyHandle {
   private _offset: number;
   private _rules: StrategyRule[];
 
-  private _supabase: TypedSupabaseClient;
-  private _config: IndicatorConfig;
-  private _resolved: StrategyRow | null = null;
-  private _resolving: Promise<StrategyRow> | null = null;
+  private _storage: StorageProvider;
+  private _market: MarketProvider;
+  private _resolvedId: number | null = null;
+  private _resolvedLinkId: string | null = null;
+  private _resolving: Promise<{ id: number }> | null = null;
   private _allocationMap: Map<number, AllocationHandle> = new Map();
 
   private _cache: StrategyBar[] | null = null;
   private _cachedAsOf: string | null = null;
   private _syncing: Promise<void> | null = null;
 
-  constructor(supabase: TypedSupabaseClient, optionsOrLinkId: StrategyOptions | string, config?: IndicatorConfig) {
-    this._supabase = supabase;
-    this._config = config ?? {};
+  constructor(storage: StorageProvider, market: MarketProvider, optionsOrLinkId: StrategyOptions | string) {
+    this._storage = storage;
+    this._market = market;
 
     if (typeof optionsOrLinkId === 'string') {
       this._linkId = optionsOrLinkId;
@@ -84,13 +83,13 @@ export class StrategyHandle {
   }
 
   get id(): number {
-    if (!this._resolved) throw new Error('StrategyHandle not yet resolved. Call resolve() first.');
-    return this._resolved.id;
+    if (this._resolvedId == null) throw new Error('StrategyHandle not yet resolved. Call resolve() first.');
+    return this._resolvedId;
   }
 
   get link(): string {
-    if (!this._resolved) throw new Error('StrategyHandle not yet resolved. Call resolve() first.');
-    return this._resolved.link_id;
+    if (this._resolvedLinkId == null) throw new Error('StrategyHandle not yet resolved. Call resolve() first.');
+    return this._resolvedLinkId;
   }
 
   get name(): string | null {
@@ -109,8 +108,8 @@ export class StrategyHandle {
     return this._rules;
   }
 
-  async resolve(): Promise<StrategyRow> {
-    if (this._resolved) return this._resolved;
+  async resolve(): Promise<{ id: number }> {
+    if (this._resolvedId != null) return { id: this._resolvedId };
     if (!this._resolving) {
       this._resolving =
         this._linkId !== null && this._name === null ? this._doResolveReference() : this._doResolveCreate();
@@ -118,7 +117,7 @@ export class StrategyHandle {
     return this._resolving;
   }
 
-  private async _doResolveCreate(): Promise<StrategyRow> {
+  private async _doResolveCreate(): Promise<{ id: number }> {
     const allSignals = new Set<SignalHandle>();
     const allAllocations = new Set<AllocationHandle>();
     for (const rule of this._rules) {
@@ -131,190 +130,102 @@ export class StrategyHandle {
       ...Array.from(allAllocations).map((a) => a.resolve()),
     ]);
 
-    const definition = {
+    const linkId = nanoid();
+    const result = await this._storage.strategies.create({
+      linkId,
+      name: this._name!,
+      freq: this._freq,
+      offset: this._offset,
       rules: this._rules.map((rule) => ({
         signalIds: (rule.when ?? []).map((s) => s.id),
         allocationId: rule.hold.id,
       })),
-    };
+    });
 
-    const linkId = nanoid();
-
-    const { data, error } = await this._supabase
-      .from('strategies')
-      .insert({
-        link_id: linkId,
-        name: this._name!,
-        trading_freq: this._freq,
-        trading_offset: this._offset,
-        definition,
-      })
-      .select()
-      .single();
-
-    if (error) throw error;
-    this._resolved = data;
+    this._resolvedId = result.id;
+    this._resolvedLinkId = linkId;
 
     for (const rule of this._rules) {
       this._allocationMap.set(rule.hold.id, rule.hold);
     }
 
-    return data;
+    return result;
   }
 
-  private async _doResolveReference(): Promise<StrategyRow> {
-    const { data: stratRow, error } = await this._supabase
-      .from('strategies')
-      .select()
-      .eq('link_id', this._linkId!)
-      .single();
+  private async _doResolveReference(): Promise<{ id: number }> {
+    const ref = await this._storage.strategies.resolveReference(this._linkId!);
+    this._resolvedId = ref.id;
+    this._resolvedLinkId = this._linkId!;
+    this._name = ref.name;
+    this._freq = ref.freq;
+    this._offset = ref.offset;
 
-    if (error) throw error;
-
-    this._name = stratRow.name;
-    this._freq = stratRow.trading_freq;
-    this._offset = stratRow.trading_offset;
-
-    const def = stratRow.definition as {
-      rules: { signalIds: number[]; allocationId: number }[];
-    };
-
-    // Collect all IDs needed
-    const signalIds = new Set<number>();
-    const allocationIds = new Set<number>();
-    for (const rule of def.rules) {
-      rule.signalIds.forEach((id) => signalIds.add(id));
-      allocationIds.add(rule.allocationId);
-    }
-
-    // Batch fetch signals and allocations
-    const [signalRows, allocationRows] = await Promise.all([
-      signalIds.size > 0
-        ? this._supabase
-            .from('signals')
-            .select()
-            .in('id', Array.from(signalIds))
-            .then((r) => {
-              if (r.error) throw r.error;
-              return r.data;
-            })
-        : Promise.resolve([]),
-      this._supabase
-        .from('allocations')
-        .select()
-        .in('id', Array.from(allocationIds))
-        .then((r) => {
-          if (r.error) throw r.error;
-          return r.data;
-        }),
-    ]);
-
-    // Fetch indicators needed by signals
-    const indicatorIds = new Set<number>();
-    for (const sr of signalRows) {
-      indicatorIds.add(sr.indicator_id_1);
-      indicatorIds.add(sr.indicator_id_2);
-    }
-
-    const indicatorRows =
-      indicatorIds.size > 0
-        ? await this._supabase
-            .from('indicators')
-            .select()
-            .in('id', Array.from(indicatorIds))
-            .then((r) => {
-              if (r.error) throw r.error;
-              return r.data;
-            })
-        : [];
-
-    // Fetch tickers needed by indicators
-    const tickerIds = new Set<number>();
-    for (const ir of indicatorRows) {
-      if (ir.ticker_id) tickerIds.add(ir.ticker_id);
-    }
-
-    const tickerRows =
-      tickerIds.size > 0
-        ? await this._supabase
-            .from('tickers')
-            .select()
-            .in('id', Array.from(tickerIds))
-            .then((r) => {
-              if (r.error) throw r.error;
-              return r.data;
-            })
-        : [];
-
-    // Build handle maps bottom-up
+    // Build handles bottom-up from reference data
     const tickerMap = new Map<number, TickerHandle>();
-    for (const tr of tickerRows) {
-      tickerMap.set(tr.id, TickerHandle.fromRow(this._supabase, tr));
+    for (const t of ref.rules.tickers) {
+      tickerMap.set(t.id, TickerHandle.fromResolved(this._storage, t.id, t.symbol, t.leverage));
     }
 
     const indicatorMap = new Map<number, IndicatorHandle>();
-    for (const ir of indicatorRows) {
-      const ticker = ir.ticker_id ? (tickerMap.get(ir.ticker_id) ?? null) : null;
-      indicatorMap.set(ir.id, IndicatorHandle.fromRow(this._supabase, ir, ticker, this._config));
+    for (const ind of ref.rules.indicators) {
+      const ticker = ind.tickerId ? (tickerMap.get(ind.tickerId) ?? null) : null;
+      indicatorMap.set(
+        ind.id,
+        IndicatorHandle.fromResolved(this._storage, this._market, ind.id, {
+          type: ind.type,
+          ticker,
+          lookback: ind.lookback,
+          delay: ind.delay,
+          unit: ind.unit,
+          threshold: ind.threshold,
+        }),
+      );
     }
 
     const signalMap = new Map<number, SignalHandle>();
-    for (const sr of signalRows) {
+    for (const sig of ref.rules.signals) {
       signalMap.set(
-        sr.id,
-        SignalHandle.fromRow(
-          this._supabase,
-          sr,
-          indicatorMap.get(sr.indicator_id_1)!,
-          indicatorMap.get(sr.indicator_id_2)!,
-          this._config,
-        ),
+        sig.id,
+        SignalHandle.fromResolved(this._storage, this._market, sig.id, {
+          indicator1: indicatorMap.get(sig.indicatorId1)!,
+          indicator2: indicatorMap.get(sig.indicatorId2)!,
+          comparison: sig.comparison,
+          tolerance: sig.tolerance,
+        }),
       );
     }
 
     const allocationHandleMap = new Map<number, AllocationHandle>();
-    for (const ar of allocationRows) {
-      const handle = AllocationHandle.fromRow(this._supabase, ar);
-      allocationHandleMap.set(ar.id, handle);
-      this._allocationMap.set(ar.id, handle);
+    for (const alloc of ref.rules.allocations) {
+      const holdings: [TickerHandle, number][] = Object.entries(alloc.holdings).map(([key, weight]) => {
+        const match = key.match(/^(.+)\?L=(.+)$/);
+        const symbol = match ? match[1]! : key;
+        const leverage = match ? Number(match[2]) : 1;
+        return [TickerHandle.fromResolved(this._storage, 0, symbol, leverage), weight];
+      });
+      const handle = AllocationHandle.fromResolved(this._storage, alloc.id, holdings);
+      allocationHandleMap.set(alloc.id, handle);
+      this._allocationMap.set(alloc.id, handle);
     }
 
     // Reconstruct rules
-    this._rules = def.rules.map((rule) => ({
-      when: rule.signalIds.length > 0 ? rule.signalIds.map((id) => signalMap.get(id)!) : undefined,
+    this._rules = ref.rules.definition.map((rule) => ({
+      when: rule.signalIds && rule.signalIds.length > 0 ? rule.signalIds.map((id) => signalMap.get(id)!) : undefined,
       hold: allocationHandleMap.get(rule.allocationId)!,
     }));
 
-    this._resolved = stratRow;
-    return stratRow;
+    return { id: ref.id };
   }
 
   private async _getLatestClosedTradingDay(): Promise<string> {
-    const { data, error } = await this._supabase
-      .from('trading_days')
-      .select('date')
-      .lt('post', new Date().toISOString())
-      .order('date', { ascending: false })
-      .limit(1)
-      .single();
-
-    if (error) throw error;
-    return data.date;
+    const date = await this._storage.tradingDays.getLatestClosed();
+    if (!date) throw new Error('No closed trading days found');
+    return date;
   }
 
   private async _getLatestStrategySeriesDate(): Promise<string | null> {
-    const row = await this.resolve();
-    const { data, error } = await this._supabase
-      .from('strategies_series')
-      .select('trading_days!inner(date)')
-      .eq('strategies_id', row.id)
-      .order('trading_day_id', { ascending: false })
-      .limit(1)
-      .single();
-
-    if (error?.code === 'PGRST116') return null;
-    if (error) throw error;
-    return (data as unknown as { trading_days: { date: string } }).trading_days.date;
+    const { id } = await this.resolve();
+    return this._storage.strategies.getLatestSeriesDate(id);
   }
 
   private async _ensureFresh(): Promise<void> {
@@ -343,7 +254,7 @@ export class StrategyHandle {
   }
 
   private async _sync(latestClosed: string): Promise<void> {
-    const row = await this.resolve();
+    const { id } = await this.resolve();
 
     // Sync all signals and collect their series
     const signalSeries = new Map<number, Map<string, boolean>>();
@@ -361,31 +272,9 @@ export class StrategyHandle {
       }),
     );
 
-    // Get all closed trading days (paginated — PostgREST defaults to 1000 rows)
-    const PAGE = 1000;
-    const allTdRows: { id: number; date: string }[] = [];
-    let tdOffset = 0;
+    // Get all trading days
+    const tradingDays = await this._storage.tradingDays.getRange();
 
-    while (true) {
-      const { data: tdPage, error: tdError } = await this._supabase
-        .from('trading_days')
-        .select('id, date')
-        .lt('post', new Date().toISOString())
-        .order('date', { ascending: true })
-        .range(tdOffset, tdOffset + PAGE - 1);
-
-      if (tdError) throw tdError;
-
-      allTdRows.push(...tdPage);
-      if (tdPage.length < PAGE) break;
-      tdOffset += PAGE;
-    }
-
-    const tradingDays = allTdRows.map((td) => td.date);
-    const dateToId = new Map<string, number>();
-    for (const td of allTdRows) dateToId.set(td.date, td.id);
-
-    // Compute rebalance dates
     const rebalanceDates = computeRebalanceDates(tradingDays, this._freq, this._offset);
 
     // Build allocation index mapping
@@ -407,54 +296,26 @@ export class StrategyHandle {
     // Evaluate
     const evalResult = evaluateStrategy(signalSeries, rulesInput, rebalanceDates, tradingDays);
 
-    // Upsert to strategies_series
-    const rows = Array.from(evalResult.entries())
-      .filter(([date]) => dateToId.has(date) && date <= latestClosed)
+    // Write strategy series
+    const entries: StrategySeriesEntry[] = Array.from(evalResult.entries())
+      .filter(([date]) => date <= latestClosed)
       .map(([date, allocIdx]) => ({
-        strategies_id: row.id,
-        trading_day_id: dateToId.get(date)!,
-        allocation_id: allocations[allocIdx].id,
+        date,
+        allocationId: allocations[allocIdx]!.id,
       }));
 
-    if (rows.length > 0) {
-      const { error } = await this._supabase
-        .from('strategies_series')
-        .upsert(rows, { onConflict: 'strategies_id,trading_day_id' });
-      if (error) throw error;
+    if (entries.length > 0) {
+      await this._storage.strategies.writeSeries(id, entries);
     }
   }
 
   private async _querySeriesFromDb(range?: DateRange): Promise<StrategyBar[]> {
-    const row = await this.resolve();
-    const PAGE = 1000;
-    const all: StrategyBar[] = [];
-    let offset = 0;
-
-    while (true) {
-      let query = this._supabase
-        .from('strategies_series')
-        .select('allocation_id, trading_days!inner(date)')
-        .eq('strategies_id', row.id)
-        .order('trading_day_id', { ascending: true })
-        .range(offset, offset + PAGE - 1);
-
-      if (range?.from) query = query.gte('trading_days.date', range.from);
-      if (range?.to) query = query.lte('trading_days.date', range.to);
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const bars = (data as unknown as { allocation_id: number; trading_days: { date: string } }[]).map((r) => ({
-        date: r.trading_days.date,
-        allocation: this._allocationMap.get(r.allocation_id)!,
-      }));
-
-      all.push(...bars);
-      if (bars.length < PAGE) break;
-      offset += PAGE;
-    }
-
-    return all;
+    const { id } = await this.resolve();
+    const entries = await this._storage.strategies.getSeries(id, range);
+    return entries.map((e) => ({
+      date: e.date,
+      allocation: this._allocationMap.get(e.allocationId)!,
+    }));
   }
 
   async series(range?: DateRange): Promise<StrategyBar[]> {
@@ -467,41 +328,9 @@ export class StrategyHandle {
 
   async value(date?: string): Promise<AllocationHandle | null> {
     await this._ensureFresh();
-    const row = await this.resolve();
-
-    if (date) {
-      const { data: td, error: tdError } = await this._supabase
-        .from('trading_days')
-        .select('id')
-        .eq('date', date)
-        .single();
-
-      if (tdError?.code === 'PGRST116') return null;
-      if (tdError) throw tdError;
-
-      const { data, error } = await this._supabase
-        .from('strategies_series')
-        .select('allocation_id')
-        .eq('strategies_id', row.id)
-        .eq('trading_day_id', td.id)
-        .single();
-
-      if (error?.code === 'PGRST116') return null;
-      if (error) throw error;
-      return this._allocationMap.get(data.allocation_id) ?? null;
-    }
-
-    const { data, error } = await this._supabase
-      .from('strategies_series')
-      .select('allocation_id')
-      .eq('strategies_id', row.id)
-      .order('trading_day_id', { ascending: false })
-      .limit(1)
-      .single();
-
-    if (error?.code === 'PGRST116') return null;
-    if (error) throw error;
-    return this._allocationMap.get(data.allocation_id) ?? null;
+    const bars = date ? await this._querySeriesFromDb({ from: date, to: date }) : await this._querySeriesFromDb();
+    if (bars.length === 0) return null;
+    return date ? bars[0]!.allocation : bars[bars.length - 1]!.allocation;
   }
 
   async simulate(options: SimulateOptions): Promise<SimulationHandle> {
@@ -563,11 +392,14 @@ export class StrategyHandle {
 
     const entries = await Promise.all(
       Array.from(tickerMap.entries()).map(async ([symbol, ticker]) => {
-        const priceIndicator = new IndicatorHandle(
-          this._supabase,
-          { type: 'Price', ticker, lookback: 0, delay: 0, unit: null, threshold: null },
-          this._config,
-        );
+        const priceIndicator = new IndicatorHandle(this._storage, this._market, {
+          type: 'Price',
+          ticker,
+          lookback: 0,
+          delay: 0,
+          unit: null,
+          threshold: null,
+        });
         const priceBars = await priceIndicator.series({ from, to });
         const dateMap: Record<string, number> = {};
         for (const bar of priceBars) {
@@ -594,12 +426,15 @@ export class StrategyHandle {
 
     await Promise.all(
       Array.from(symbols).map(async (symbol) => {
-        const rawTicker = new TickerHandle(this._supabase, symbol, 1);
-        const priceIndicator = new IndicatorHandle(
-          this._supabase,
-          { type: 'Price', ticker: rawTicker, lookback: 0, delay: 0, unit: null, threshold: null },
-          this._config,
-        );
+        const rawTicker = new TickerHandle(this._storage, symbol, 1);
+        const priceIndicator = new IndicatorHandle(this._storage, this._market, {
+          type: 'Price',
+          ticker: rawTicker,
+          lookback: 0,
+          delay: 0,
+          unit: null,
+          threshold: null,
+        });
         const priceBars = await priceIndicator.series({ from: lastDate, to: lastDate });
         if (priceBars.length > 0) {
           closePrices[symbol] = priceBars[0]!.value;

@@ -5,13 +5,16 @@ import { SignalHandle } from './signal.js';
 import { AllocationHandle } from './allocation.js';
 import { IndicatorHandle } from './indicator.js';
 import { TickerHandle } from './ticker.js';
-import type { TypedSupabaseClient } from '../types.js';
+import type { StorageProvider } from '../providers/storage.js';
+import type { MarketProvider } from '../providers/market.js';
 import type { DailyBar } from './indicator.js';
+import type { StrategyReferenceData } from '../providers/types.js';
 
-const sb = {} as TypedSupabaseClient;
+const storage = {} as StorageProvider;
+const market = {} as MarketProvider;
 
 function makeSignal() {
-  const ind1 = new IndicatorHandle(sb, {
+  const ind1 = new IndicatorHandle(storage, market, {
     type: 'VIX',
     ticker: null,
     lookback: 0,
@@ -19,7 +22,7 @@ function makeSignal() {
     unit: null,
     threshold: null,
   });
-  const ind2 = new IndicatorHandle(sb, {
+  const ind2 = new IndicatorHandle(storage, market, {
     type: 'Threshold',
     ticker: null,
     lookback: 0,
@@ -27,17 +30,17 @@ function makeSignal() {
     unit: null,
     threshold: 30,
   });
-  return new SignalHandle(sb, { indicator1: ind1, indicator2: ind2, comparison: '>', tolerance: 0 });
+  return new SignalHandle(storage, market, { indicator1: ind1, indicator2: ind2, comparison: '>', tolerance: 0 });
 }
 
 function makeAllocation() {
-  return new AllocationHandle(sb, [[new TickerHandle(sb, 'SPY'), 1.0]]);
+  return new AllocationHandle(storage, [[new TickerHandle(storage, 'SPY'), 1.0]]);
 }
 
 describe('StrategyHandle construction - create mode', () => {
   it('stores options with defaults', () => {
     const alloc = makeAllocation();
-    const handle = new StrategyHandle(sb, { name: 'Test', rules: [{ hold: alloc }] });
+    const handle = new StrategyHandle(storage, market, { name: 'Test', rules: [{ hold: alloc }] });
     expect(handle.name).toBe('Test');
     expect(handle.freq).toBe('Daily');
     expect(handle.offset).toBe(0);
@@ -48,7 +51,7 @@ describe('StrategyHandle construction - create mode', () => {
     const signal = makeSignal();
     const alloc1 = makeAllocation();
     const alloc2 = makeAllocation();
-    const handle = new StrategyHandle(sb, {
+    const handle = new StrategyHandle(storage, market, {
       name: 'Tactical',
       freq: 'Monthly',
       offset: 2,
@@ -60,39 +63,41 @@ describe('StrategyHandle construction - create mode', () => {
   });
 
   it('throws if rules array is empty', () => {
-    expect(() => new StrategyHandle(sb, { name: 'Empty', rules: [] })).toThrow('at least one rule');
+    expect(() => new StrategyHandle(storage, market, { name: 'Empty', rules: [] })).toThrow('at least one rule');
   });
 
   it('throws if last rule has a when clause', () => {
     const signal = makeSignal();
     const alloc = makeAllocation();
-    expect(() => new StrategyHandle(sb, { name: 'Bad', rules: [{ when: [signal], hold: alloc }] })).toThrow('fallback');
+    expect(
+      () => new StrategyHandle(storage, market, { name: 'Bad', rules: [{ when: [signal], hold: alloc }] }),
+    ).toThrow('fallback');
   });
 
   it('throws if a non-last rule has an empty when array', () => {
     const alloc1 = makeAllocation();
     const alloc2 = makeAllocation();
     expect(
-      () => new StrategyHandle(sb, { name: 'Bad', rules: [{ when: [], hold: alloc1 }, { hold: alloc2 }] }),
+      () => new StrategyHandle(storage, market, { name: 'Bad', rules: [{ when: [], hold: alloc1 }, { hold: alloc2 }] }),
     ).toThrow('unreachable');
   });
 
   it('throws on .id before resolution', () => {
     const alloc = makeAllocation();
-    const handle = new StrategyHandle(sb, { name: 'Test', rules: [{ hold: alloc }] });
+    const handle = new StrategyHandle(storage, market, { name: 'Test', rules: [{ hold: alloc }] });
     expect(() => handle.id).toThrow('not yet resolved');
   });
 
   it('throws on .link before resolution', () => {
     const alloc = makeAllocation();
-    const handle = new StrategyHandle(sb, { name: 'Test', rules: [{ hold: alloc }] });
+    const handle = new StrategyHandle(storage, market, { name: 'Test', rules: [{ hold: alloc }] });
     expect(() => handle.link).toThrow('not yet resolved');
   });
 });
 
 describe('StrategyHandle construction - reference mode', () => {
   it('stores linkId with defaults', () => {
-    const handle = new StrategyHandle(sb, 'abc123');
+    const handle = new StrategyHandle(storage, market, 'abc123');
     expect(handle.name).toBeNull();
     expect(handle.freq).toBe('Daily');
     expect(handle.offset).toBe(0);
@@ -102,107 +107,45 @@ describe('StrategyHandle construction - reference mode', () => {
 
 describe('StrategyHandle.resolve - create mode', () => {
   it('resolves dependencies, generates link_id, and inserts strategy', async () => {
-    const indicatorRow = {
-      id: 10,
-      type: 'VIX',
-      ticker_id: null,
-      lookback: 0,
-      delay: 0,
-      unit: null,
-      threshold: null,
-      created_at: '',
+    const mockStorage: StorageProvider = {
+      tickers: {
+        upsert: vi.fn().mockResolvedValue({ id: 1 }),
+      },
+      indicators: {
+        upsert: vi.fn().mockResolvedValueOnce({ id: 10 }).mockResolvedValueOnce({ id: 11 }),
+        getSeries: vi.fn(),
+        writeSeries: vi.fn(),
+        getLatestSeriesDate: vi.fn(),
+        getValue: vi.fn(),
+      },
+      signals: {
+        upsert: vi.fn().mockResolvedValue({ id: 100 }),
+        getSeries: vi.fn(),
+        writeSeries: vi.fn(),
+        getLatestSeriesDate: vi.fn(),
+        getLastValue: vi.fn(),
+      },
+      allocations: {
+        findOrCreate: vi.fn().mockResolvedValue({ id: 50 }),
+      },
+      strategies: {
+        create: vi.fn().mockResolvedValue({ id: 200 }),
+        getSeries: vi.fn(),
+        writeSeries: vi.fn(),
+        getLatestSeriesDate: vi.fn(),
+        resolveReference: vi.fn(),
+      },
+      tradingDays: {
+        getRange: vi.fn(),
+        getLatestClosed: vi.fn(),
+      },
     };
-    const thresholdRow = {
-      id: 11,
-      type: 'Threshold',
-      ticker_id: null,
-      lookback: 0,
-      delay: 0,
-      unit: null,
-      threshold: 30,
-      created_at: '',
-    };
-    const signalRow = {
-      id: 100,
-      indicator_id_1: 10,
-      indicator_id_2: 11,
-      comparison: '>',
-      tolerance: 0,
-      created_at: '',
-    };
-    const tickerRow = { id: 1, symbol: 'SPY', leverage: 1, created_at: '' };
-    const allocRow = { id: 50, holdings: { SPY: 1.0 }, created_at: '' };
-    const strategyRow = {
-      id: 200,
-      link_id: 'generated-id',
-      name: 'Test',
-      trading_freq: 'Daily',
-      trading_offset: 0,
-      definition: {},
-      created_at: '',
+    const mockMarket: MarketProvider = {
+      fetchBars: vi.fn(),
     };
 
-    let indCallCount = 0;
-    const insertMock = vi.fn().mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        single: vi.fn().mockResolvedValue({ data: strategyRow, error: null }),
-      }),
-    });
-
-    const from = vi.fn().mockImplementation((table: string) => {
-      if (table === 'indicators') {
-        return {
-          upsert: vi.fn().mockReturnValue({
-            select: vi.fn().mockReturnValue({
-              single: vi.fn().mockImplementation(() => {
-                indCallCount++;
-                return Promise.resolve({
-                  data: indCallCount <= 1 ? indicatorRow : thresholdRow,
-                  error: null,
-                });
-              }),
-            }),
-          }),
-        };
-      }
-      if (table === 'signals') {
-        return {
-          upsert: vi.fn().mockReturnValue({
-            select: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({ data: signalRow, error: null }),
-            }),
-          }),
-        };
-      }
-      if (table === 'tickers') {
-        return {
-          upsert: vi.fn().mockReturnValue({
-            select: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({ data: tickerRow, error: null }),
-            }),
-          }),
-        };
-      }
-      if (table === 'allocations') {
-        return {
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              limit: vi.fn().mockReturnValue({
-                single: vi.fn().mockResolvedValue({ data: allocRow, error: null }),
-              }),
-            }),
-          }),
-        };
-      }
-      if (table === 'strategies') {
-        return { insert: insertMock };
-      }
-      return {};
-    });
-    const mockSb = { from } as unknown as TypedSupabaseClient;
-
-    const signal = new SignalHandle(mockSb, {
-      indicator1: new IndicatorHandle(mockSb, {
+    const signal = new SignalHandle(mockStorage, mockMarket, {
+      indicator1: new IndicatorHandle(mockStorage, mockMarket, {
         type: 'VIX',
         ticker: null,
         lookback: 0,
@@ -210,7 +153,7 @@ describe('StrategyHandle.resolve - create mode', () => {
         unit: null,
         threshold: null,
       }),
-      indicator2: new IndicatorHandle(mockSb, {
+      indicator2: new IndicatorHandle(mockStorage, mockMarket, {
         type: 'Threshold',
         ticker: null,
         lookback: 0,
@@ -221,10 +164,10 @@ describe('StrategyHandle.resolve - create mode', () => {
       comparison: '>',
       tolerance: 0,
     });
-    const alloc1 = new AllocationHandle(mockSb, [[new TickerHandle(mockSb, 'SPY'), 1.0]]);
-    const alloc2 = new AllocationHandle(mockSb, [[new TickerHandle(mockSb, 'SPY'), 1.0]]);
+    const alloc1 = new AllocationHandle(mockStorage, [[new TickerHandle(mockStorage, 'SPY'), 1.0]]);
+    const alloc2 = new AllocationHandle(mockStorage, [[new TickerHandle(mockStorage, 'SPY'), 1.0]]);
 
-    const handle = new StrategyHandle(mockSb, {
+    const handle = new StrategyHandle(mockStorage, mockMarket, {
       name: 'Test',
       rules: [{ when: [signal], hold: alloc1 }, { hold: alloc2 }],
     });
@@ -234,157 +177,121 @@ describe('StrategyHandle.resolve - create mode', () => {
     expect(result.id).toBe(200);
     expect(handle.id).toBe(200);
     expect(handle.link).toBeDefined();
-    expect(insertMock).toHaveBeenCalled();
-    const insertArg = insertMock.mock.calls[0][0];
-    expect(insertArg.name).toBe('Test');
-    expect(insertArg.link_id).toMatch(/^[A-Za-z0-9_-]+$/);
-    expect(insertArg.definition.rules).toHaveLength(2);
-    expect(insertArg.definition.rules[0].signalIds).toEqual([100]);
-    expect(insertArg.definition.rules[0].allocationId).toBe(50);
+    expect(mockStorage.strategies.create).toHaveBeenCalled();
+    const createArg = (mockStorage.strategies.create as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+      name: string;
+      linkId: string;
+      rules: { signalIds: number[]; allocationId: number }[];
+    };
+    expect(createArg.name).toBe('Test');
+    expect(createArg.linkId).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(createArg.rules).toHaveLength(2);
+    expect(createArg.rules[0].signalIds).toEqual([100]);
+    expect(createArg.rules[0].allocationId).toBe(50);
   });
 
   it('deduplicates concurrent resolve calls', async () => {
-    const strategyRow = {
-      id: 200,
-      link_id: 'x',
-      name: 'Test',
-      trading_freq: 'Daily',
-      trading_offset: 0,
-      definition: {},
-      created_at: '',
+    const createMock = vi.fn().mockResolvedValue({ id: 200 });
+    const mockStorage: StorageProvider = {
+      tickers: {
+        upsert: vi.fn().mockResolvedValue({ id: 1 }),
+      },
+      indicators: {
+        upsert: vi.fn(),
+        getSeries: vi.fn(),
+        writeSeries: vi.fn(),
+        getLatestSeriesDate: vi.fn(),
+        getValue: vi.fn(),
+      },
+      signals: {
+        upsert: vi.fn(),
+        getSeries: vi.fn(),
+        writeSeries: vi.fn(),
+        getLatestSeriesDate: vi.fn(),
+        getLastValue: vi.fn(),
+      },
+      allocations: {
+        findOrCreate: vi.fn().mockResolvedValue({ id: 50 }),
+      },
+      strategies: {
+        create: createMock,
+        getSeries: vi.fn(),
+        writeSeries: vi.fn(),
+        getLatestSeriesDate: vi.fn(),
+        resolveReference: vi.fn(),
+      },
+      tradingDays: {
+        getRange: vi.fn(),
+        getLatestClosed: vi.fn(),
+      },
     };
-    const allocRow = { id: 50, holdings: { SPY: 1.0 }, created_at: '' };
-    const tickerRow = { id: 1, symbol: 'SPY', leverage: 1, created_at: '' };
+    const mockMarket: MarketProvider = {
+      fetchBars: vi.fn(),
+    };
 
-    const insertMock = vi.fn().mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        single: vi.fn().mockResolvedValue({ data: strategyRow, error: null }),
-      }),
-    });
-    const from = vi.fn().mockImplementation((table: string) => {
-      if (table === 'tickers') {
-        return {
-          upsert: vi.fn().mockReturnValue({
-            select: vi.fn().mockReturnValue({ single: vi.fn().mockResolvedValue({ data: tickerRow, error: null }) }),
-          }),
-        };
-      }
-      if (table === 'allocations') {
-        return {
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              limit: vi.fn().mockReturnValue({ single: vi.fn().mockResolvedValue({ data: allocRow, error: null }) }),
-            }),
-          }),
-        };
-      }
-      if (table === 'strategies') {
-        return { insert: insertMock };
-      }
-      return {};
-    });
-    const mockSb = { from } as unknown as TypedSupabaseClient;
-
-    const alloc = new AllocationHandle(mockSb, [[new TickerHandle(mockSb, 'SPY'), 1.0]]);
-    const handle = new StrategyHandle(mockSb, { name: 'Test', rules: [{ hold: alloc }] });
+    const alloc = new AllocationHandle(mockStorage, [[new TickerHandle(mockStorage, 'SPY'), 1.0]]);
+    const handle = new StrategyHandle(mockStorage, mockMarket, { name: 'Test', rules: [{ hold: alloc }] });
 
     const [r1, r2] = await Promise.all([handle.resolve(), handle.resolve()]);
     expect(r1).toEqual(r2);
-    expect(insertMock).toHaveBeenCalledTimes(1);
+    expect(createMock).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('StrategyHandle.resolve - reference mode', () => {
   it('fetches strategy by link_id and reconstructs rules', async () => {
-    const strategyRow = {
+    const refData: StrategyReferenceData = {
       id: 200,
-      link_id: 'abc123',
       name: 'Tactical',
-      trading_freq: 'Monthly',
-      trading_offset: 2,
-      definition: {
-        rules: [
-          { signalIds: [100], allocationId: 50 },
-          { signalIds: [], allocationId: 51 },
+      freq: 'Monthly',
+      offset: 2,
+      rules: {
+        signals: [{ id: 100, indicatorId1: 10, indicatorId2: 11, comparison: '>', tolerance: 5 }],
+        allocations: [
+          { id: 50, holdings: { SPY: 1.0 } },
+          { id: 51, holdings: { SHY: 1.0 } },
         ],
+        indicators: [
+          { id: 10, type: 'Price', tickerId: 1, lookback: 0, delay: 0, unit: null, threshold: null },
+          { id: 11, type: 'SMA', tickerId: 1, lookback: 200, delay: 0, unit: null, threshold: null },
+        ],
+        tickers: [{ id: 1, symbol: 'SPY', leverage: 1 }],
+        definition: [{ signalIds: [100], allocationId: 50 }, { allocationId: 51 }],
       },
-      created_at: '',
     };
-    const signalRow = {
-      id: 100,
-      indicator_id_1: 10,
-      indicator_id_2: 11,
-      comparison: '>',
-      tolerance: 5,
-      created_at: '',
-    };
-    const indicatorRow1 = {
-      id: 10,
-      type: 'Price',
-      ticker_id: 1,
-      lookback: 0,
-      delay: 0,
-      unit: null,
-      threshold: null,
-      created_at: '',
-    };
-    const indicatorRow2 = {
-      id: 11,
-      type: 'SMA',
-      ticker_id: 1,
-      lookback: 200,
-      delay: 0,
-      unit: null,
-      threshold: null,
-      created_at: '',
-    };
-    const tickerRow = { id: 1, symbol: 'SPY', leverage: 1, created_at: '' };
-    const allocRow1 = { id: 50, holdings: { SPY: 1.0 }, created_at: '' };
-    const allocRow2 = { id: 51, holdings: { SHY: 1.0 }, created_at: '' };
 
-    const from = vi.fn().mockImplementation((table: string) => {
-      if (table === 'strategies') {
-        return {
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({ data: strategyRow, error: null }),
-            }),
-          }),
-        };
-      }
-      if (table === 'signals') {
-        return {
-          select: vi.fn().mockReturnValue({
-            in: vi.fn().mockResolvedValue({ data: [signalRow], error: null }),
-          }),
-        };
-      }
-      if (table === 'indicators') {
-        return {
-          select: vi.fn().mockReturnValue({
-            in: vi.fn().mockResolvedValue({ data: [indicatorRow1, indicatorRow2], error: null }),
-          }),
-        };
-      }
-      if (table === 'tickers') {
-        return {
-          select: vi.fn().mockReturnValue({
-            in: vi.fn().mockResolvedValue({ data: [tickerRow], error: null }),
-          }),
-        };
-      }
-      if (table === 'allocations') {
-        return {
-          select: vi.fn().mockReturnValue({
-            in: vi.fn().mockResolvedValue({ data: [allocRow1, allocRow2], error: null }),
-          }),
-        };
-      }
-      return {};
-    });
-    const mockSb = { from } as unknown as TypedSupabaseClient;
+    const mockStorage: StorageProvider = {
+      tickers: { upsert: vi.fn() },
+      indicators: {
+        upsert: vi.fn(),
+        getSeries: vi.fn(),
+        writeSeries: vi.fn(),
+        getLatestSeriesDate: vi.fn(),
+        getValue: vi.fn(),
+      },
+      signals: {
+        upsert: vi.fn(),
+        getSeries: vi.fn(),
+        writeSeries: vi.fn(),
+        getLatestSeriesDate: vi.fn(),
+        getLastValue: vi.fn(),
+      },
+      allocations: { findOrCreate: vi.fn() },
+      strategies: {
+        create: vi.fn(),
+        getSeries: vi.fn(),
+        writeSeries: vi.fn(),
+        getLatestSeriesDate: vi.fn(),
+        resolveReference: vi.fn().mockResolvedValue(refData),
+      },
+      tradingDays: {
+        getRange: vi.fn(),
+        getLatestClosed: vi.fn(),
+      },
+    };
+    const mockMarket: MarketProvider = { fetchBars: vi.fn() };
 
-    const handle = new StrategyHandle(mockSb, 'abc123');
+    const handle = new StrategyHandle(mockStorage, mockMarket, 'abc123');
     const result = await handle.resolve();
 
     expect(result.id).toBe(200);
@@ -402,154 +309,112 @@ describe('StrategyHandle.resolve - reference mode', () => {
   });
 
   it('throws on invalid link_id', async () => {
-    const from = vi.fn().mockImplementation(() => ({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({
-            data: null,
-            error: { code: 'PGRST116', message: 'not found' },
-          }),
-        }),
-      }),
-    }));
-    const mockSb = { from } as unknown as TypedSupabaseClient;
+    const mockStorage: StorageProvider = {
+      tickers: { upsert: vi.fn() },
+      indicators: {
+        upsert: vi.fn(),
+        getSeries: vi.fn(),
+        writeSeries: vi.fn(),
+        getLatestSeriesDate: vi.fn(),
+        getValue: vi.fn(),
+      },
+      signals: {
+        upsert: vi.fn(),
+        getSeries: vi.fn(),
+        writeSeries: vi.fn(),
+        getLatestSeriesDate: vi.fn(),
+        getLastValue: vi.fn(),
+      },
+      allocations: { findOrCreate: vi.fn() },
+      strategies: {
+        create: vi.fn(),
+        getSeries: vi.fn(),
+        writeSeries: vi.fn(),
+        getLatestSeriesDate: vi.fn(),
+        resolveReference: vi.fn().mockRejectedValue(new Error('not found')),
+      },
+      tradingDays: {
+        getRange: vi.fn(),
+        getLatestClosed: vi.fn(),
+      },
+    };
+    const mockMarket: MarketProvider = { fetchBars: vi.fn() };
 
-    const handle = new StrategyHandle(mockSb, 'invalid');
+    const handle = new StrategyHandle(mockStorage, mockMarket, 'invalid');
     await expect(handle.resolve()).rejects.toThrow();
   });
 });
 
 describe('StrategyHandle.series', () => {
   it('syncs signals, evaluates strategy, and returns StrategyBar[]', async () => {
-    const allocRow1 = { id: 50, holdings: { SPY: 1.0 }, created_at: '' };
-    const allocRow2 = { id: 51, holdings: { SHY: 1.0 }, created_at: '' };
-    const signalRow = {
-      id: 100,
-      indicator_id_1: 10,
-      indicator_id_2: 11,
-      comparison: '>' as const,
-      tolerance: 0,
-      created_at: '',
-    };
-    const strategyRow = {
-      id: 200,
-      link_id: 'test',
-      name: 'Test',
-      trading_freq: 'Daily' as const,
-      trading_offset: 0,
-      definition: {},
-      created_at: '',
-    };
-
     const signalBars: DailyBar[] = [
       { date: '2025-01-06', value: 1 },
       { date: '2025-01-07', value: 0 },
     ];
 
-    const tradingDayRows = [
-      { id: 1001, date: '2025-01-06', close: '2025-01-06T21:00:00Z' },
-      { id: 1002, date: '2025-01-07', close: '2025-01-07T21:00:00Z' },
-    ];
-
     // Build pre-resolved handles
-    const mockSb = {} as TypedSupabaseClient;
-    const ind1 = IndicatorHandle.fromRow(
-      mockSb,
-      {
-        id: 10,
-        type: 'VIX' as const,
-        ticker_id: null,
-        lookback: 0,
-        delay: 0,
-        unit: null,
-        threshold: null,
-        created_at: '',
-      },
-      null,
-    );
-    const ind2 = IndicatorHandle.fromRow(
-      mockSb,
-      {
-        id: 11,
-        type: 'Threshold' as const,
-        ticker_id: null,
-        lookback: 0,
-        delay: 0,
-        unit: null,
-        threshold: 30,
-        created_at: '',
-      },
-      null,
-    );
-    const signal = SignalHandle.fromRow(mockSb, signalRow, ind1, ind2);
+    const mockStorage = {} as StorageProvider;
+    const mockMarket = {} as MarketProvider;
+    const ind1 = IndicatorHandle.fromResolved(mockStorage, mockMarket, 10, {
+      type: 'VIX',
+      ticker: null,
+      lookback: 0,
+      delay: 0,
+      unit: null,
+      threshold: null,
+    });
+    const ind2 = IndicatorHandle.fromResolved(mockStorage, mockMarket, 11, {
+      type: 'Threshold',
+      ticker: null,
+      lookback: 0,
+      delay: 0,
+      unit: null,
+      threshold: 30,
+    });
+    const signal = SignalHandle.fromResolved(mockStorage, mockMarket, 100, {
+      indicator1: ind1,
+      indicator2: ind2,
+      comparison: '>',
+      tolerance: 0,
+    });
     vi.spyOn(signal, 'series').mockResolvedValue(signalBars);
 
-    const alloc1 = AllocationHandle.fromRow(mockSb, allocRow1);
-    const alloc2 = AllocationHandle.fromRow(mockSb, allocRow2);
+    const alloc1 = AllocationHandle.fromResolved(mockStorage, 50, [
+      [TickerHandle.fromResolved(mockStorage, 1, 'SPY', 1), 1.0],
+    ]);
+    const alloc2 = AllocationHandle.fromResolved(mockStorage, 51, [
+      [TickerHandle.fromResolved(mockStorage, 2, 'SHY', 1), 1.0],
+    ]);
 
-    const handle = new StrategyHandle(mockSb, {
+    const handle = new StrategyHandle(mockStorage, mockMarket, {
       name: 'Test',
       rules: [{ when: [signal], hold: alloc1 }, { hold: alloc2 }],
     });
 
     // Pre-resolve to skip create mode DB insert
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (handle as any)._resolved = strategyRow;
+    (handle as any)._resolvedId = 200;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (handle as any)._resolvedLinkId = 'test';
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (handle as any)._allocationMap.set(50, alloc1);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (handle as any)._allocationMap.set(51, alloc2);
 
-    // Now mock supabase for the sync flow
-    const upsertMock = vi.fn().mockResolvedValue({ error: null });
+    // Now mock storage for the sync flow
+    const writeSeriesMock = vi.fn().mockResolvedValue(undefined);
 
-    const mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'trading_days') {
-        return {
-          select: vi.fn().mockReturnValue({
-            lt: vi.fn().mockReturnValue({
-              order: vi.fn().mockImplementation((_col: string, opts?: { ascending: boolean }) => {
-                if (opts?.ascending === false) {
-                  // _getLatestClosedTradingDay: descending, limit(1).single()
-                  return {
-                    limit: vi.fn().mockReturnValue({
-                      single: vi.fn().mockResolvedValue({
-                        data: { date: '2025-01-07' },
-                        error: null,
-                      }),
-                    }),
-                  };
-                }
-                // _sync ascending: paginated with .range()
-                return {
-                  range: vi.fn().mockResolvedValue({ data: tradingDayRows, error: null }),
-                };
-              }),
-            }),
-          }),
-        };
-      }
-      if (table === 'strategies_series') {
-        return {
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              order: vi.fn().mockReturnValue({
-                limit: vi.fn().mockReturnValue({
-                  single: vi.fn().mockResolvedValue({
-                    data: null,
-                    error: { code: 'PGRST116' },
-                  }),
-                }),
-              }),
-            }),
-          }),
-          upsert: upsertMock,
-        };
-      }
-      return {};
-    });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (handle as any)._supabase = { from: mockFrom };
+    (handle as any)._storage = {
+      tradingDays: {
+        getLatestClosed: vi.fn().mockResolvedValue('2025-01-07'),
+        getRange: vi.fn().mockResolvedValue(['2025-01-06', '2025-01-07']),
+      },
+      strategies: {
+        getLatestSeriesDate: vi.fn().mockResolvedValue(null),
+        writeSeries: writeSeriesMock,
+      },
+    };
 
     // Spy on _querySeriesFromDb to return test data
     const queryResult: StrategyBar[] = [
@@ -566,6 +431,6 @@ describe('StrategyHandle.series', () => {
     expect(bars[0].allocation).toBe(alloc1);
     expect(bars[1].date).toBe('2025-01-07');
     expect(bars[1].allocation).toBe(alloc2);
-    expect(upsertMock).toHaveBeenCalled();
+    expect(writeSeriesMock).toHaveBeenCalled();
   });
 });
