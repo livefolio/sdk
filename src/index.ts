@@ -11,4 +11,4 @@ export { StrategyHandle } from './handles/strategy.js';
 export { PortfolioHandle } from './handles/portfolio.js';
 export type { StrategyRule, StrategyBar, StrategyOptions } from './handles/strategy.js';
 export { SimulationHandle } from './backtest/types.js';
-export type { SimulateOptions, Trade } from './backtest/types.js';
+export type { SimulateOptions, Trade, PortfolioSnapshot } from './backtest/types.js';
