@@ -33,7 +33,6 @@
       "prettier --write"
     ]
   },
-  "peerDependencies": {},
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.1.0",
