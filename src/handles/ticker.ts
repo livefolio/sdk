@@ -1,4 +1,4 @@
-import type { StorageProvider } from '../providers/storage.js';
+import type { StorageProvider } from '../providers/storage';
 
 export class TickerHandle {
   readonly symbol: string;

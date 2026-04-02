@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import { StrategyHandle } from './strategy.js';
-import { AllocationHandle } from './allocation.js';
-import { TickerHandle } from './ticker.js';
-import { PortfolioHandle } from './portfolio.js';
-import type { StrategyBar } from './strategy.js';
-import type { DailyBar } from './indicator.js';
-import type { StorageProvider } from '../providers/storage.js';
-import type { MarketProvider } from '../providers/market.js';
+import { StrategyHandle } from './strategy';
+import { AllocationHandle } from './allocation';
+import { TickerHandle } from './ticker';
+import { PortfolioHandle } from './portfolio';
+import type { StrategyBar } from './strategy';
+import type { DailyBar } from './indicator';
+import type { StorageProvider } from '../providers/storage';
+import type { MarketProvider } from '../providers/market';
 
 function stubAllocation(holdings: [{ symbol: string; leverage: number }, number][]): AllocationHandle {
   const tickerHoldings = holdings.map(

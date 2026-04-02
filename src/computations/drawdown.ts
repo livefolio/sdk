@@ -1,4 +1,4 @@
-import type { DailyBar } from '../handles/indicator.js';
+import type { DailyBar } from '../handles/indicator';
 
 export function computeDrawdown(bars: DailyBar[], lookback: number): DailyBar[] {
   if (bars.length < lookback) return [];

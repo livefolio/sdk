@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { evaluateSignal } from './signal.js';
-import type { DailyBar } from '../handles/indicator.js';
+import { evaluateSignal } from './signal';
+import type { DailyBar } from '../handles/indicator';
 
 function bars(values: number[], startDate = '2025-01-01'): DailyBar[] {
   return values.map((value, i) => {

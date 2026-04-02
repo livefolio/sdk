@@ -1,4 +1,4 @@
-import type { IndicatorType } from './types.js';
+import type { IndicatorType } from './types';
 
 export type ProviderInfo =
   | { provider: 'yahoo'; symbol: string }

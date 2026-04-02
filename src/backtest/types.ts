@@ -1,7 +1,7 @@
-import type { DailyBar } from '../handles/indicator.js';
-import type { AllocationHandle } from '../handles/allocation.js';
-import { PortfolioHandle } from '../handles/portfolio.js';
-import type { TickerHandle } from '../handles/ticker.js';
+import type { DailyBar } from '../handles/indicator';
+import type { AllocationHandle } from '../handles/allocation';
+import { PortfolioHandle } from '../handles/portfolio';
+import type { TickerHandle } from '../handles/ticker';
 
 export interface SimulateOptions {
   from: string;

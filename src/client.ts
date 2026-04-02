@@ -1,13 +1,13 @@
-import type { StorageProvider } from './providers/storage.js';
-import type { MarketProvider } from './providers/market.js';
-import type { IndicatorType, Unit } from './providers/types.js';
-import { TickerHandle } from './handles/ticker.js';
-import { IndicatorHandle } from './handles/indicator.js';
-import { SignalHandle } from './handles/signal.js';
-import { AllocationHandle } from './handles/allocation.js';
-import { StrategyHandle } from './handles/strategy.js';
-import { PortfolioHandle } from './handles/portfolio.js';
-import type { StrategyOptions } from './handles/strategy.js';
+import type { StorageProvider } from './providers/storage';
+import type { MarketProvider } from './providers/market';
+import type { IndicatorType, Unit } from './providers/types';
+import { TickerHandle } from './handles/ticker';
+import { IndicatorHandle } from './handles/indicator';
+import { SignalHandle } from './handles/signal';
+import { AllocationHandle } from './handles/allocation';
+import { StrategyHandle } from './handles/strategy';
+import { PortfolioHandle } from './handles/portfolio';
+import type { StrategyOptions } from './handles/strategy';
 
 type TreasuryTenor = Extract<
   IndicatorType,

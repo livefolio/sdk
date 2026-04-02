@@ -1,4 +1,4 @@
-import type { TradingFreq } from '../providers/types.js';
+import type { TradingFreq } from '../providers/types';
 
 function getPeriodKey(dateStr: string, freq: TradingFreq): string {
   const d = new Date(dateStr + 'T00:00:00Z');

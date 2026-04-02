@@ -1,4 +1,4 @@
-export { getProviderInfo } from './mappings.js';
-export type { ProviderInfo } from './mappings.js';
-export type { StorageProvider } from './storage.js';
-export type { MarketProvider } from './market.js';
+export { getProviderInfo } from './mappings';
+export type { ProviderInfo } from './mappings';
+export type { StorageProvider } from './storage';
+export type { MarketProvider } from './market';

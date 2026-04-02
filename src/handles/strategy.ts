@@ -1,16 +1,16 @@
 import { nanoid } from 'nanoid';
-import type { StorageProvider } from '../providers/storage.js';
-import type { MarketProvider } from '../providers/market.js';
-import type { TradingFreq, StrategySeriesEntry } from '../providers/types.js';
-import { SignalHandle } from './signal.js';
-import { AllocationHandle } from './allocation.js';
-import { TickerHandle } from './ticker.js';
-import { IndicatorHandle } from './indicator.js';
-import type { DateRange } from './indicator.js';
-import { evaluateStrategy, computeRebalanceDates } from '../computations/strategy.js';
-import { runSimulation } from '../backtest/simulate.js';
-import { SimulationHandle } from '../backtest/types.js';
-import type { SimulateOptions, FinalState } from '../backtest/types.js';
+import type { StorageProvider } from '../providers/storage';
+import type { MarketProvider } from '../providers/market';
+import type { TradingFreq, StrategySeriesEntry } from '../providers/types';
+import { SignalHandle } from './signal';
+import { AllocationHandle } from './allocation';
+import { TickerHandle } from './ticker';
+import { IndicatorHandle } from './indicator';
+import type { DateRange } from './indicator';
+import { evaluateStrategy, computeRebalanceDates } from '../computations/strategy';
+import { runSimulation } from '../backtest/simulate';
+import { SimulationHandle } from '../backtest/types';
+import type { SimulateOptions, FinalState } from '../backtest/types';
 
 export interface StrategyRule {
   when?: SignalHandle[];
@@ -62,12 +62,12 @@ export class StrategyHandle {
       if (opts.rules.length === 0) {
         throw new Error('Strategy must have at least one rule');
       }
-      const lastRule = opts.rules[opts.rules.length - 1];
+      const lastRule = opts.rules[opts.rules.length - 1]!;
       if (lastRule.when && lastRule.when.length > 0) {
         throw new Error('Last rule must be a fallback (no when clause)');
       }
       for (let i = 0; i < opts.rules.length - 1; i++) {
-        const rule = opts.rules[i];
+        const rule = opts.rules[i]!;
         if (rule.when !== undefined && rule.when.length === 0) {
           throw new Error(
             `Rule ${i} has an empty when clause and will match unconditionally, making subsequent rules unreachable`,
@@ -344,7 +344,7 @@ export class StrategyHandle {
     const rebalanceDates = computeRebalanceDates(tradingDays, this._freq, this._offset);
 
     // Force day 1 rebalance so existing positions align to strategy
-    rebalanceDates.add(bars[0].date);
+    rebalanceDates.add(bars[0]!.date);
 
     const result = runSimulation(bars, prices, rebalanceDates, options.portfolio);
 

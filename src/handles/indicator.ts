@@ -1,10 +1,10 @@
-import type { StorageProvider } from '../providers/storage.js';
-import type { MarketProvider } from '../providers/market.js';
-import type { IndicatorType, Unit } from '../providers/types.js';
-import { TickerHandle } from './ticker.js';
-import { getProviderInfo } from '../providers/mappings.js';
-import { getComputation } from '../computations/index.js';
-import { computeCalendar } from '../computations/calendar.js';
+import type { StorageProvider } from '../providers/storage';
+import type { MarketProvider } from '../providers/market';
+import type { IndicatorType, Unit } from '../providers/types';
+import { TickerHandle } from './ticker';
+import { getProviderInfo } from '../providers/mappings';
+import { getComputation } from '../computations/index';
+import { computeCalendar } from '../computations/calendar';
 
 export interface DailyBar {
   date: string;

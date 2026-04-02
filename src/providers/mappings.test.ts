@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getProviderInfo } from './mappings.js';
+import { getProviderInfo } from './mappings';
 
 describe('getProviderInfo', () => {
   it('maps Price to yahoo with ticker symbol', () => {

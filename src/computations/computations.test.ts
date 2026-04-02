@@ -1,14 +1,14 @@
 // src/computations/computations.test.ts
 import { describe, it, expect } from 'vitest';
-import type { DailyBar } from '../handles/indicator.js';
-import { computeSma } from './sma.js';
-import { computeEma } from './ema.js';
-import { computeRsi } from './rsi.js';
-import { computeReturns } from './returns.js';
-import { computeVolatility } from './volatility.js';
-import { computeDrawdown } from './drawdown.js';
-import { computeCalendar } from './calendar.js';
-import { getComputation } from './index.js';
+import type { DailyBar } from '../handles/indicator';
+import { computeSma } from './sma';
+import { computeEma } from './ema';
+import { computeRsi } from './rsi';
+import { computeReturns } from './returns';
+import { computeVolatility } from './volatility';
+import { computeDrawdown } from './drawdown';
+import { computeCalendar } from './calendar';
+import { getComputation } from './index';
 
 function makeBars(values: number[], startDate = '2025-01-01'): DailyBar[] {
   return values.map((value, i) => {

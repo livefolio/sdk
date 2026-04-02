@@ -1,3 +1,3 @@
-export { SimulationHandle } from './types.js';
-export type { SimulateOptions, Trade, PortfolioSnapshot, FinalState } from './types.js';
-export { runSimulation } from './simulate.js';
+export { SimulationHandle } from './types';
+export type { SimulateOptions, Trade, PortfolioSnapshot, FinalState } from './types';
+export { runSimulation } from './simulate';

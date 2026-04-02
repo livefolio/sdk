@@ -1,5 +1,5 @@
-import type { StorageProvider } from '../providers/storage.js';
-import { TickerHandle } from './ticker.js';
+import type { StorageProvider } from '../providers/storage';
+import { TickerHandle } from './ticker';
 
 export class AllocationHandle {
   readonly holdings: [TickerHandle, number][];

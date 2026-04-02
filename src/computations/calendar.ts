@@ -1,4 +1,4 @@
-import type { DailyBar } from '../handles/indicator.js';
+import type { DailyBar } from '../handles/indicator';
 
 type CalendarPeriod = 'Month' | 'Day of Week' | 'Day of Month' | 'Day of Year';
 

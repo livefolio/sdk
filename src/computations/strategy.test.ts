@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeRebalanceDates, evaluateStrategy } from './strategy.js';
+import { computeRebalanceDates, evaluateStrategy } from './strategy';
 
 describe('computeRebalanceDates', () => {
   it('Daily returns all trading days', () => {

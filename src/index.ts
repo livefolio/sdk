@@ -1,16 +1,25 @@
-export { createClient } from './client.js';
-export type { LivefolioClient, LivefolioClientOptions } from './client.js';
-export type { StorageProvider } from './providers/storage.js';
-export type { MarketProvider } from './providers/market.js';
-export type { IndicatorType, TradingFreq, Comparison, Unit } from './providers/types.js';
-export { TickerHandle } from './handles/ticker.js';
-export { IndicatorHandle } from './handles/indicator.js';
-export type { IndicatorIdentity, DateRange, DailyBar } from './handles/indicator.js';
-export { SignalHandle } from './handles/signal.js';
-export type { SignalIdentity } from './handles/signal.js';
-export { AllocationHandle } from './handles/allocation.js';
-export { StrategyHandle } from './handles/strategy.js';
-export { PortfolioHandle } from './handles/portfolio.js';
-export type { StrategyRule, StrategyBar, StrategyOptions } from './handles/strategy.js';
-export { SimulationHandle } from './backtest/types.js';
-export type { SimulateOptions, Trade, PortfolioSnapshot } from './backtest/types.js';
+export { createClient } from './client';
+export type { LivefolioClient, LivefolioClientOptions } from './client';
+export type { StorageProvider } from './providers/storage';
+export type { MarketProvider } from './providers/market';
+export type {
+  IndicatorType,
+  TradingFreq,
+  Comparison,
+  Unit,
+  StrategyDefinition,
+  StrategySeriesEntry,
+  StrategyReferenceData,
+  StrategyRuleDefinition,
+} from './providers/types';
+export { TickerHandle } from './handles/ticker';
+export { IndicatorHandle } from './handles/indicator';
+export type { IndicatorIdentity, DateRange, DailyBar } from './handles/indicator';
+export { SignalHandle } from './handles/signal';
+export type { SignalIdentity } from './handles/signal';
+export { AllocationHandle } from './handles/allocation';
+export { StrategyHandle } from './handles/strategy';
+export { PortfolioHandle } from './handles/portfolio';
+export type { StrategyRule, StrategyBar, StrategyOptions } from './handles/strategy';
+export { SimulationHandle } from './backtest/types';
+export type { SimulateOptions, Trade, PortfolioSnapshot } from './backtest/types';

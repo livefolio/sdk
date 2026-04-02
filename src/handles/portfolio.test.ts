@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { PortfolioHandle } from './portfolio.js';
-import { TickerHandle } from './ticker.js';
-import type { StorageProvider } from '../providers/storage.js';
-import { AllocationHandle } from './allocation.js';
+import { PortfolioHandle } from './portfolio';
+import { TickerHandle } from './ticker';
+import type { StorageProvider } from '../providers/storage';
+import { AllocationHandle } from './allocation';
 
 function mockStorage() {
   return {} as StorageProvider;

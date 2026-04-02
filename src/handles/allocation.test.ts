@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { AllocationHandle } from './allocation.js';
-import { TickerHandle } from './ticker.js';
-import type { StorageProvider } from '../providers/storage.js';
+import { AllocationHandle } from './allocation';
+import { TickerHandle } from './ticker';
+import type { StorageProvider } from '../providers/storage';
 
 function mockStorage(overrides?: {
   allocations?: Partial<StorageProvider['allocations']>;

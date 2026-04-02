@@ -1,14 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
-import { StrategyHandle } from './strategy.js';
-import type { StrategyBar } from './strategy.js';
-import { SignalHandle } from './signal.js';
-import { AllocationHandle } from './allocation.js';
-import { IndicatorHandle } from './indicator.js';
-import { TickerHandle } from './ticker.js';
-import type { StorageProvider } from '../providers/storage.js';
-import type { MarketProvider } from '../providers/market.js';
-import type { DailyBar } from './indicator.js';
-import type { StrategyReferenceData } from '../providers/types.js';
+import { StrategyHandle } from './strategy';
+import type { StrategyBar } from './strategy';
+import { SignalHandle } from './signal';
+import { AllocationHandle } from './allocation';
+import { IndicatorHandle } from './indicator';
+import { TickerHandle } from './ticker';
+import type { StorageProvider } from '../providers/storage';
+import type { MarketProvider } from '../providers/market';
+import type { DailyBar } from './indicator';
+import type { StrategyReferenceData } from '../providers/types';
 
 const storage = {} as StorageProvider;
 const market = {} as MarketProvider;

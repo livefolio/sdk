@@ -1,6 +1,6 @@
-import { TickerHandle } from './ticker.js';
-import type { Trade } from '../backtest/types.js';
-import { AllocationHandle } from './allocation.js';
+import { TickerHandle } from './ticker';
+import type { Trade } from '../backtest/types';
+import { AllocationHandle } from './allocation';
 
 export class PortfolioHandle {
   readonly holdings: [TickerHandle, number][];

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { createClient } from './client.js';
-import type { StorageProvider } from './providers/storage.js';
-import type { MarketProvider } from './providers/market.js';
+import { createClient } from './client';
+import type { StorageProvider } from './providers/storage';
+import type { MarketProvider } from './providers/market';
 
 const storage = {} as StorageProvider;
 const market = {} as MarketProvider;

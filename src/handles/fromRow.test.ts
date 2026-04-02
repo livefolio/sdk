@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { TickerHandle } from './ticker.js';
-import { IndicatorHandle } from './indicator.js';
-import { SignalHandle } from './signal.js';
-import { AllocationHandle } from './allocation.js';
-import type { StorageProvider } from '../providers/storage.js';
-import type { MarketProvider } from '../providers/market.js';
+import { TickerHandle } from './ticker';
+import { IndicatorHandle } from './indicator';
+import { SignalHandle } from './signal';
+import { AllocationHandle } from './allocation';
+import type { StorageProvider } from '../providers/storage';
+import type { MarketProvider } from '../providers/market';
 
 function mockStorage(): StorageProvider {
   return {

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { IndicatorHandle } from './indicator.js';
-import { TickerHandle } from './ticker.js';
-import type { StorageProvider } from '../providers/storage.js';
-import type { MarketProvider } from '../providers/market.js';
+import { IndicatorHandle } from './indicator';
+import { TickerHandle } from './ticker';
+import type { StorageProvider } from '../providers/storage';
+import type { MarketProvider } from '../providers/market';
 
 // ── Mock providers ───────────────────────────────────────────────────
 

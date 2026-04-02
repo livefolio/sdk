@@ -1,5 +1,5 @@
-import type { DailyBar, DateRange } from '../handles/indicator.js';
-import type { StrategyDefinition, StrategySeriesEntry, StrategyReferenceData } from './types.js';
+import type { DailyBar, DateRange } from '../handles/indicator';
+import type { StrategyDefinition, StrategySeriesEntry, StrategyReferenceData } from './types';
 
 export interface StorageProvider {
   tickers: {

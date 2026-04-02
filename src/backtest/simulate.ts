@@ -1,8 +1,8 @@
-import type { DailyBar } from '../handles/indicator.js';
-import type { StrategyBar } from '../handles/strategy.js';
-import type { TickerHandle } from '../handles/ticker.js';
-import type { Trade } from './types.js';
-import { PortfolioHandle } from '../handles/portfolio.js';
+import type { DailyBar } from '../handles/indicator';
+import type { StrategyBar } from '../handles/strategy';
+import type { TickerHandle } from '../handles/ticker';
+import type { Trade } from './types';
+import { PortfolioHandle } from '../handles/portfolio';
 
 const EPSILON = 1e-8;
 

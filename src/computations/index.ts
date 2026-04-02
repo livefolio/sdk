@@ -1,19 +1,19 @@
-import type { DailyBar } from '../handles/indicator.js';
-import type { IndicatorType } from '../providers/types.js';
-import { computeSma } from './sma.js';
-import { computeEma } from './ema.js';
-import { computeRsi } from './rsi.js';
-import { computeReturns } from './returns.js';
-import { computeVolatility } from './volatility.js';
-import { computeDrawdown } from './drawdown.js';
+import type { DailyBar } from '../handles/indicator';
+import type { IndicatorType } from '../providers/types';
+import { computeSma } from './sma';
+import { computeEma } from './ema';
+import { computeRsi } from './rsi';
+import { computeReturns } from './returns';
+import { computeVolatility } from './volatility';
+import { computeDrawdown } from './drawdown';
 
-export { computeSma } from './sma.js';
-export { computeEma } from './ema.js';
-export { computeRsi } from './rsi.js';
-export { computeReturns } from './returns.js';
-export { computeVolatility } from './volatility.js';
-export { computeDrawdown } from './drawdown.js';
-export { computeCalendar } from './calendar.js';
+export { computeSma } from './sma';
+export { computeEma } from './ema';
+export { computeRsi } from './rsi';
+export { computeReturns } from './returns';
+export { computeVolatility } from './volatility';
+export { computeDrawdown } from './drawdown';
+export { computeCalendar } from './calendar';
 type ComputeFn = (bars: DailyBar[], lookback: number) => DailyBar[];
 
 const COMPUTATIONS: Partial<Record<IndicatorType, ComputeFn>> = {

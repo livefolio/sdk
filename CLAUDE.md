@@ -2,7 +2,7 @@
 
 ## Project Conventions
 
-- **ES Modules**: All imports use `.js` extensions (`import { Foo } from './foo.js'`)
+- **ES Modules**: Extensionless imports (`import { Foo } from './foo'`), bundled with tsup
 - **Strict TypeScript**: `strict: true`, `noUncheckedIndexedAccess: true`
 - **Tests**: Co-located `*.test.ts` files, run with `npm test` (Vitest)
 - **Formatting**: Prettier on save, ESLint with typescript-eslint rules
@@ -13,7 +13,7 @@
 | Command | Purpose |
 |---------|---------|
 | `npm test` | Run all tests |
-| `npm run build` | Compile TypeScript to `dist/` |
+| `npm run build` | Bundle with tsup to `dist/` |
 | `npm run lint` | Check ESLint rules |
 | `npm run lint:fix` | Auto-fix ESLint issues |
 | `npm run format` | Format with Prettier |

@@ -1,9 +1,9 @@
 // src/handles/signal.ts
-import type { StorageProvider } from '../providers/storage.js';
-import type { MarketProvider } from '../providers/market.js';
-import type { Comparison } from '../providers/types.js';
-import type { IndicatorHandle, DailyBar, DateRange } from './indicator.js';
-import { evaluateSignal } from '../computations/signal.js';
+import type { StorageProvider } from '../providers/storage';
+import type { MarketProvider } from '../providers/market';
+import type { Comparison } from '../providers/types';
+import type { IndicatorHandle, DailyBar, DateRange } from './indicator';
+import { evaluateSignal } from '../computations/signal';
 
 const ABSOLUTE_TOLERANCE_TYPES = new Set([
   'Return',

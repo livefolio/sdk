@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { runSimulation } from './simulate.js';
-import type { StrategyBar } from '../handles/strategy.js';
-import { AllocationHandle } from '../handles/allocation.js';
-import { TickerHandle } from '../handles/ticker.js';
-import { PortfolioHandle } from '../handles/portfolio.js';
+import { runSimulation } from './simulate';
+import type { StrategyBar } from '../handles/strategy';
+import { AllocationHandle } from '../handles/allocation';
+import { TickerHandle } from '../handles/ticker';
+import { PortfolioHandle } from '../handles/portfolio';
 
 // Minimal stubs — we only read .holdings, .symbol, .leverage (synchronous properties)
 function stubAllocation(holdings: [{ symbol: string; leverage: number }, number][]): AllocationHandle {
