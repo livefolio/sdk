@@ -4,10 +4,19 @@ import type { StrategyDefinition, StrategySeriesEntry, StrategyReferenceData } f
 export interface StorageProvider {
   tickers: {
     upsert(symbol: string, leverage: number): Promise<{ id: number }>;
+    findOrCreate(symbol: string, leverage: number): Promise<{ id: number }>;
   };
 
   indicators: {
     upsert(identity: {
+      type: string;
+      tickerId: number | null;
+      lookback: number;
+      delay: number;
+      unit: string | null;
+      threshold: number | null;
+    }): Promise<{ id: number }>;
+    findOrCreate(identity: {
       type: string;
       tickerId: number | null;
       lookback: number;
@@ -23,6 +32,12 @@ export interface StorageProvider {
 
   signals: {
     upsert(identity: {
+      indicatorId1: number;
+      indicatorId2: number;
+      comparison: string;
+      tolerance: number;
+    }): Promise<{ id: number }>;
+    findOrCreate(identity: {
       indicatorId1: number;
       indicatorId2: number;
       comparison: string;
