@@ -9,7 +9,7 @@ function mockStorage(overrides?: {
 }): StorageProvider {
   return {
     tickers: {
-      upsert: vi.fn().mockResolvedValue({ id: 1 }),
+      findOrCreate: vi.fn().mockResolvedValue({ id: 1 }),
       ...overrides?.tickers,
     },
     indicators: {} as StorageProvider['indicators'],
@@ -86,7 +86,7 @@ describe('AllocationHandle.resolve', () => {
 
     expect(result).toEqual({ id: 10 });
     expect(handle.id).toBe(10);
-    expect(storage.tickers.upsert).toHaveBeenCalledWith('SPY', 1);
+    expect(storage.tickers.findOrCreate).toHaveBeenCalledWith('SPY', 1);
     expect(storage.allocations.findOrCreate).toHaveBeenCalledWith({ SPY: 1.0 });
   });
 
@@ -94,7 +94,7 @@ describe('AllocationHandle.resolve', () => {
     let tickerCallCount = 0;
     const storage = mockStorage({
       tickers: {
-        upsert: vi.fn().mockImplementation(() => {
+        findOrCreate: vi.fn().mockImplementation(() => {
           tickerCallCount++;
           return Promise.resolve({ id: tickerCallCount });
         }),
@@ -115,7 +115,7 @@ describe('AllocationHandle.resolve', () => {
 
     expect(result).toEqual({ id: 20 });
     expect(handle.id).toBe(20);
-    expect(storage.tickers.upsert).toHaveBeenCalledTimes(2);
+    expect(storage.tickers.findOrCreate).toHaveBeenCalledTimes(2);
     expect(storage.allocations.findOrCreate).toHaveBeenCalledWith({ SPY: 0.6, GLD: 0.4 });
   });
 

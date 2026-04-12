@@ -79,7 +79,7 @@ export class SignalHandle {
 
   private async _doResolve(): Promise<{ id: number }> {
     const [ind1, ind2] = await Promise.all([this.indicator1.resolve(), this.indicator2.resolve()]);
-    const result = await this._storage.signals.upsert({
+    const result = await this._storage.signals.findOrCreate({
       indicatorId1: ind1.id,
       indicatorId2: ind2.id,
       comparison: this.comparison,

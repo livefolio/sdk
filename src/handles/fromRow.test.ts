@@ -8,16 +8,16 @@ import type { MarketProvider } from '../providers/market';
 
 function mockStorage(): StorageProvider {
   return {
-    tickers: { upsert: vi.fn().mockResolvedValue({ id: 1 }) },
+    tickers: { findOrCreate: vi.fn().mockResolvedValue({ id: 1 }) },
     indicators: {
-      upsert: vi.fn().mockResolvedValue({ id: 1 }),
+      findOrCreate: vi.fn().mockResolvedValue({ id: 1 }),
       getSeries: vi.fn().mockResolvedValue([]),
       writeSeries: vi.fn().mockResolvedValue(undefined),
       getLatestSeriesDate: vi.fn().mockResolvedValue(null),
       getValue: vi.fn().mockResolvedValue(null),
     },
     signals: {
-      upsert: vi.fn().mockResolvedValue({ id: 1 }),
+      findOrCreate: vi.fn().mockResolvedValue({ id: 1 }),
       getSeries: vi.fn().mockResolvedValue([]),
       writeSeries: vi.fn().mockResolvedValue(undefined),
       getLatestSeriesDate: vi.fn().mockResolvedValue(null),
@@ -56,7 +56,7 @@ describe('TickerHandle.fromResolved', () => {
     const handle = TickerHandle.fromResolved(storage, 1, 'SPY', 1);
     const result = await handle.resolve();
     expect(result).toEqual({ id: 1 });
-    expect(storage.tickers.upsert).not.toHaveBeenCalled();
+    expect(storage.tickers.findOrCreate).not.toHaveBeenCalled();
   });
 });
 

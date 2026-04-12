@@ -30,17 +30,17 @@ const LATEST_CLOSED_DATE = '2026-03-28';
 function mockStorage(overrides?: Partial<StorageProvider>): StorageProvider {
   return {
     tickers: {
-      upsert: vi.fn().mockResolvedValue({ id: 1 }),
+      findOrCreate: vi.fn().mockResolvedValue({ id: 1 }),
     },
     indicators: {
-      upsert: vi.fn().mockResolvedValue({ id: 10 }),
+      findOrCreate: vi.fn().mockResolvedValue({ id: 10 }),
       getSeries: vi.fn().mockResolvedValue([]),
       writeSeries: vi.fn().mockResolvedValue(undefined),
       getLatestSeriesDate: vi.fn().mockResolvedValue(null),
       getValue: vi.fn().mockResolvedValue(null),
     },
     signals: {
-      upsert: vi.fn().mockResolvedValue({ id: 1 }),
+      findOrCreate: vi.fn().mockResolvedValue({ id: 1 }),
       getSeries: vi.fn().mockResolvedValue([]),
       writeSeries: vi.fn().mockResolvedValue(undefined),
       getLatestSeriesDate: vi.fn().mockResolvedValue(null),
@@ -84,7 +84,7 @@ describe('IndicatorHandle sync', () => {
   it('fetches from market provider when Price series is empty', async () => {
     const storage = mockStorage({
       indicators: {
-        upsert: vi.fn().mockResolvedValue({ id: 10 }),
+        findOrCreate: vi.fn().mockResolvedValue({ id: 10 }),
         getSeries: vi.fn().mockResolvedValue([
           { date: '2026-03-27', value: 100 },
           { date: '2026-03-28', value: 101 },
@@ -118,7 +118,7 @@ describe('IndicatorHandle sync', () => {
     const writtenBars: { date: string; value: number }[][] = [];
     const storage = mockStorage({
       indicators: {
-        upsert: vi.fn().mockResolvedValue({ id: 10 }),
+        findOrCreate: vi.fn().mockResolvedValue({ id: 10 }),
         getSeries: vi.fn().mockResolvedValue([]),
         writeSeries: vi.fn().mockImplementation((_id: number, bars: { date: string; value: number }[]) => {
           writtenBars.push(bars);
@@ -159,7 +159,7 @@ describe('IndicatorHandle sync', () => {
     const writtenBars: { date: string; value: number }[][] = [];
     const storage = mockStorage({
       indicators: {
-        upsert: vi.fn().mockResolvedValue({ id: 10 }),
+        findOrCreate: vi.fn().mockResolvedValue({ id: 10 }),
         getSeries: vi.fn().mockResolvedValue([]),
         writeSeries: vi.fn().mockImplementation((_id: number, bars: { date: string; value: number }[]) => {
           writtenBars.push(bars);
@@ -201,7 +201,7 @@ describe('IndicatorHandle sync', () => {
 
     const storage = mockStorage({
       indicators: {
-        upsert: vi.fn().mockResolvedValue({ id: 10 }),
+        findOrCreate: vi.fn().mockResolvedValue({ id: 10 }),
         getSeries: vi.fn().mockResolvedValue([
           { date: '2026-03-27', value: 4.25 },
           { date: '2026-03-28', value: 4.3 },
@@ -237,7 +237,7 @@ describe('IndicatorHandle sync', () => {
   it('skips sync when series is already fresh', async () => {
     const storage = mockStorage({
       indicators: {
-        upsert: vi.fn().mockResolvedValue({ id: 10 }),
+        findOrCreate: vi.fn().mockResolvedValue({ id: 10 }),
         getSeries: vi.fn().mockResolvedValue([
           { date: '2026-03-27', value: 100 },
           { date: '2026-03-28', value: 101 },
@@ -269,7 +269,7 @@ describe('IndicatorHandle sync', () => {
   it('caches series in memory on subsequent calls', async () => {
     const storage = mockStorage({
       indicators: {
-        upsert: vi.fn().mockResolvedValue({ id: 10 }),
+        findOrCreate: vi.fn().mockResolvedValue({ id: 10 }),
         getSeries: vi.fn().mockResolvedValue([
           { date: '2026-03-27', value: 100 },
           { date: '2026-03-28', value: 101 },

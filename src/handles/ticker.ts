@@ -33,7 +33,7 @@ export class TickerHandle {
   }
 
   private async _doResolve(): Promise<{ id: number }> {
-    const result = await this._storage.tickers.upsert(this.symbol, this.leverage);
+    const result = await this._storage.tickers.findOrCreate(this.symbol, this.leverage);
     this._resolvedId = result.id;
     return result;
   }

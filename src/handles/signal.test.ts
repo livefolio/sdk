@@ -9,17 +9,17 @@ import type { MarketProvider } from '../providers/market';
 function mockStorage(overrides?: Partial<StorageProvider>): StorageProvider {
   return {
     tickers: {
-      upsert: vi.fn().mockResolvedValue({ id: 1 }),
+      findOrCreate: vi.fn().mockResolvedValue({ id: 1 }),
     },
     indicators: {
-      upsert: vi.fn().mockResolvedValue({ id: 10 }),
+      findOrCreate: vi.fn().mockResolvedValue({ id: 10 }),
       getSeries: vi.fn().mockResolvedValue([]),
       writeSeries: vi.fn().mockResolvedValue(undefined),
       getLatestSeriesDate: vi.fn().mockResolvedValue(null),
       getValue: vi.fn().mockResolvedValue(null),
     },
     signals: {
-      upsert: vi.fn().mockResolvedValue({ id: 100 }),
+      findOrCreate: vi.fn().mockResolvedValue({ id: 100 }),
       getSeries: vi.fn().mockResolvedValue([]),
       writeSeries: vi.fn().mockResolvedValue(undefined),
       getLatestSeriesDate: vi.fn().mockResolvedValue(null),
@@ -145,14 +145,14 @@ describe('SignalHandle.resolve', () => {
   it('resolves both indicators then upserts signal', async () => {
     const storage = mockStorage({
       indicators: {
-        upsert: vi.fn().mockResolvedValueOnce({ id: 10 }).mockResolvedValueOnce({ id: 11 }),
+        findOrCreate: vi.fn().mockResolvedValueOnce({ id: 10 }).mockResolvedValueOnce({ id: 11 }),
         getSeries: vi.fn().mockResolvedValue([]),
         writeSeries: vi.fn().mockResolvedValue(undefined),
         getLatestSeriesDate: vi.fn().mockResolvedValue(null),
         getValue: vi.fn().mockResolvedValue(null),
       },
       signals: {
-        upsert: vi.fn().mockResolvedValue({ id: 100 }),
+        findOrCreate: vi.fn().mockResolvedValue({ id: 100 }),
         getSeries: vi.fn().mockResolvedValue([]),
         writeSeries: vi.fn().mockResolvedValue(undefined),
         getLatestSeriesDate: vi.fn().mockResolvedValue(null),
@@ -189,7 +189,7 @@ describe('SignalHandle.resolve', () => {
 
     expect(result).toEqual({ id: 100 });
     expect(handle.id).toBe(100);
-    expect(storage.signals.upsert).toHaveBeenCalledWith({
+    expect(storage.signals.findOrCreate).toHaveBeenCalledWith({
       indicatorId1: 10,
       indicatorId2: 11,
       comparison: '>',
@@ -227,7 +227,7 @@ describe('SignalHandle.resolve', () => {
     await handle.resolve();
     await handle.resolve();
 
-    expect(storage.signals.upsert).toHaveBeenCalledTimes(1);
+    expect(storage.signals.findOrCreate).toHaveBeenCalledTimes(1);
   });
 
   it('deduplicates concurrent resolve calls', async () => {
@@ -259,6 +259,6 @@ describe('SignalHandle.resolve', () => {
 
     const [r1, r2] = await Promise.all([handle.resolve(), handle.resolve()]);
     expect(r1).toEqual(r2);
-    expect(storage.signals.upsert).toHaveBeenCalledTimes(1);
+    expect(storage.signals.findOrCreate).toHaveBeenCalledTimes(1);
   });
 });

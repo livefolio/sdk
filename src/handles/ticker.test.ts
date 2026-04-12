@@ -5,7 +5,7 @@ import type { StorageProvider } from '../providers/storage';
 function mockStorage(overrides?: { tickers?: Partial<StorageProvider['tickers']> }): StorageProvider {
   return {
     tickers: {
-      upsert: vi.fn().mockResolvedValue({ id: 42 }),
+      findOrCreate: vi.fn().mockResolvedValue({ id: 42 }),
       ...overrides?.tickers,
     },
     indicators: {} as StorageProvider['indicators'],
@@ -33,7 +33,7 @@ describe('TickerHandle', () => {
     expect(() => handle.id).toThrow('not yet resolved');
   });
 
-  it('resolve() calls storage.tickers.upsert and sets .id', async () => {
+  it('resolve() calls storage.tickers.findOrCreate and sets .id', async () => {
     const storage = mockStorage();
     const handle = new TickerHandle(storage, 'qqq', 3);
 
@@ -41,17 +41,17 @@ describe('TickerHandle', () => {
 
     expect(result).toEqual({ id: 42 });
     expect(handle.id).toBe(42);
-    expect(storage.tickers.upsert).toHaveBeenCalledWith('QQQ', 3);
+    expect(storage.tickers.findOrCreate).toHaveBeenCalledWith('QQQ', 3);
   });
 
-  it('resolve() caches — only one upsert call', async () => {
+  it('resolve() caches — only one findOrCreate call', async () => {
     const storage = mockStorage();
     const handle = new TickerHandle(storage, 'SPY');
 
     await handle.resolve();
     await handle.resolve();
 
-    expect(storage.tickers.upsert).toHaveBeenCalledTimes(1);
+    expect(storage.tickers.findOrCreate).toHaveBeenCalledTimes(1);
   });
 
   it('deduplicates concurrent resolve calls', async () => {
@@ -62,7 +62,7 @@ describe('TickerHandle', () => {
 
     expect(r1).toEqual({ id: 42 });
     expect(r2).toEqual({ id: 42 });
-    expect(storage.tickers.upsert).toHaveBeenCalledTimes(1);
+    expect(storage.tickers.findOrCreate).toHaveBeenCalledTimes(1);
   });
 
   it('fromResolved() creates a pre-resolved handle', () => {
@@ -73,6 +73,6 @@ describe('TickerHandle', () => {
     expect(handle.symbol).toBe('AAPL');
     expect(handle.leverage).toBe(1);
     // Should not have called upsert
-    expect(storage.tickers.upsert).not.toHaveBeenCalled();
+    expect(storage.tickers.findOrCreate).not.toHaveBeenCalled();
   });
 });

@@ -109,17 +109,17 @@ describe('StrategyHandle.resolve - create mode', () => {
   it('resolves dependencies, generates link_id, and inserts strategy', async () => {
     const mockStorage: StorageProvider = {
       tickers: {
-        upsert: vi.fn().mockResolvedValue({ id: 1 }),
+        findOrCreate: vi.fn().mockResolvedValue({ id: 1 }),
       },
       indicators: {
-        upsert: vi.fn().mockResolvedValueOnce({ id: 10 }).mockResolvedValueOnce({ id: 11 }),
+        findOrCreate: vi.fn().mockResolvedValueOnce({ id: 10 }).mockResolvedValueOnce({ id: 11 }),
         getSeries: vi.fn(),
         writeSeries: vi.fn(),
         getLatestSeriesDate: vi.fn(),
         getValue: vi.fn(),
       },
       signals: {
-        upsert: vi.fn().mockResolvedValue({ id: 100 }),
+        findOrCreate: vi.fn().mockResolvedValue({ id: 100 }),
         getSeries: vi.fn(),
         writeSeries: vi.fn(),
         getLatestSeriesDate: vi.fn(),
@@ -194,17 +194,17 @@ describe('StrategyHandle.resolve - create mode', () => {
     const createMock = vi.fn().mockResolvedValue({ id: 200 });
     const mockStorage: StorageProvider = {
       tickers: {
-        upsert: vi.fn().mockResolvedValue({ id: 1 }),
+        findOrCreate: vi.fn().mockResolvedValue({ id: 1 }),
       },
       indicators: {
-        upsert: vi.fn(),
+        findOrCreate: vi.fn(),
         getSeries: vi.fn(),
         writeSeries: vi.fn(),
         getLatestSeriesDate: vi.fn(),
         getValue: vi.fn(),
       },
       signals: {
-        upsert: vi.fn(),
+        findOrCreate: vi.fn(),
         getSeries: vi.fn(),
         writeSeries: vi.fn(),
         getLatestSeriesDate: vi.fn(),
@@ -261,16 +261,16 @@ describe('StrategyHandle.resolve - reference mode', () => {
     };
 
     const mockStorage: StorageProvider = {
-      tickers: { upsert: vi.fn() },
+      tickers: { findOrCreate: vi.fn() },
       indicators: {
-        upsert: vi.fn(),
+        findOrCreate: vi.fn(),
         getSeries: vi.fn(),
         writeSeries: vi.fn(),
         getLatestSeriesDate: vi.fn(),
         getValue: vi.fn(),
       },
       signals: {
-        upsert: vi.fn(),
+        findOrCreate: vi.fn(),
         getSeries: vi.fn(),
         writeSeries: vi.fn(),
         getLatestSeriesDate: vi.fn(),
@@ -310,16 +310,16 @@ describe('StrategyHandle.resolve - reference mode', () => {
 
   it('throws on invalid link_id', async () => {
     const mockStorage: StorageProvider = {
-      tickers: { upsert: vi.fn() },
+      tickers: { findOrCreate: vi.fn() },
       indicators: {
-        upsert: vi.fn(),
+        findOrCreate: vi.fn(),
         getSeries: vi.fn(),
         writeSeries: vi.fn(),
         getLatestSeriesDate: vi.fn(),
         getValue: vi.fn(),
       },
       signals: {
-        upsert: vi.fn(),
+        findOrCreate: vi.fn(),
         getSeries: vi.fn(),
         writeSeries: vi.fn(),
         getLatestSeriesDate: vi.fn(),

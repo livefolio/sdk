@@ -78,7 +78,7 @@ export class IndicatorHandle {
 
   private async _doResolve(): Promise<{ id: number }> {
     const tickerId = this.ticker ? (await this.ticker.resolve()).id : null;
-    const result = await this._storage.indicators.upsert({
+    const result = await this._storage.indicators.findOrCreate({
       type: this.type,
       tickerId,
       lookback: this.lookback,
