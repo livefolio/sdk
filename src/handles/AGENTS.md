@@ -11,7 +11,7 @@ Lazy, database-backed handle classes that form the core abstraction layer. Each 
 | File | Description |
 |------|-------------|
 | `index.ts` | Barrel export for all handles and their public types |
-| `ticker.ts` | `TickerHandle` — wraps a (symbol, leverage) pair, upserts to `tickers` table |
+| `ticker.ts` | `TickerHandle` — wraps a (symbol, leverage) pair, uses `findOrCreate` to resolve against `tickers` table |
 | `indicator.ts` | `IndicatorHandle` — technical indicator definition + time-series sync from providers |
 | `signal.ts` | `SignalHandle` — comparison between two indicators (gt/lt/eq), produces boolean series |
 | `allocation.ts` | `AllocationHandle` — weighted portfolio holdings, upserts to `allocations` table |
@@ -22,7 +22,7 @@ Lazy, database-backed handle classes that form the core abstraction layer. Each 
 
 | File | Tests |
 |------|-------|
-| `ticker.test.ts` | Ticker resolution and upsert behavior |
+| `ticker.test.ts` | Ticker resolution and findOrCreate behavior |
 | `indicator.test.ts` | Indicator identity, series sync, and caching |
 | `signal.test.ts` | Signal resolution and boolean series computation |
 | `allocation.test.ts` | Allocation normalization and persistence |
@@ -35,7 +35,7 @@ Lazy, database-backed handle classes that form the core abstraction layer. Each 
 ## For AI Agents
 
 ### Working In This Directory
-- Every handle follows the same pattern: constructor stores identity → `.resolve()` upserts to DB → `.id` accessor throws if unresolved
+- Every handle follows the same pattern: constructor stores identity → `.resolve()` calls `findOrCreate` on the storage provider → `.id` accessor throws if unresolved
 - `fromResolved()` static methods reconstruct handles from known IDs without re-resolving
 - `IndicatorHandle` is the most complex — it orchestrates data fetching from providers and computation
 - `StrategyHandle` has two construction modes: create-new (with rules) and load-by-link-id

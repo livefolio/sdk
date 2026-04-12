@@ -26,6 +26,7 @@ Provider interfaces and indicator-type routing. Defines `StorageProvider` (persi
 
 ### Working In This Directory
 - `StorageProvider` and `MarketProvider` are the two core abstractions consumers must implement
+- Entity methods on `StorageProvider` expose both `upsert` (service_role, uses ON CONFLICT DO UPDATE) and `findOrCreate` (authenticated, SELECT-first then INSERT-if-missing) — SDK handles use `findOrCreate` by default
 - `getProviderInfo()` is the routing layer — given an indicator type, it returns which provider to use
 - Provider categories: `yahoo` (prices, VIX), `fred` (treasury rates), `computed` (SMA, EMA, etc. derived from Price), `calendar` (date-based), `none` (thresholds)
 - `types.ts` defines all shared enums/types previously derived from the Supabase database schema
