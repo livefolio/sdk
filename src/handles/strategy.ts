@@ -201,7 +201,7 @@ export class StrategyHandle {
         const match = key.match(/^(.+)\?L=(.+)$/);
         const symbol = match ? match[1]! : key;
         const leverage = match ? Number(match[2]) : 1;
-        return [TickerHandle.fromResolved(this._storage, 0, symbol, leverage), weight];
+        return [new TickerHandle(this._storage, symbol, leverage), weight];
       });
       const handle = AllocationHandle.fromResolved(this._storage, alloc.id, holdings);
       allocationHandleMap.set(alloc.id, handle);

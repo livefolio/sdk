@@ -308,6 +308,72 @@ describe('StrategyHandle.resolve - reference mode', () => {
     expect(handle.rules[1].hold.id).toBe(51);
   });
 
+  it('allocation tickers resolve lazily via findOrCreate (not pre-resolved with id=0)', async () => {
+    const refData: StrategyReferenceData = {
+      id: 200,
+      name: 'Tactical',
+      freq: 'Monthly',
+      offset: 2,
+      rules: {
+        signals: [],
+        allocations: [{ id: 50, holdings: { SPY: 0.6, 'GLD?L=2': 0.4 } }],
+        indicators: [],
+        tickers: [],
+        definition: [{ allocationId: 50 }],
+      },
+    };
+
+    const findOrCreateMock = vi.fn().mockResolvedValueOnce({ id: 42 }).mockResolvedValueOnce({ id: 43 });
+
+    const mockStorage: StorageProvider = {
+      tickers: { findOrCreate: findOrCreateMock },
+      indicators: {
+        findOrCreate: vi.fn(),
+        getSeries: vi.fn(),
+        writeSeries: vi.fn(),
+        getLatestSeriesDate: vi.fn(),
+        getValue: vi.fn(),
+      },
+      signals: {
+        findOrCreate: vi.fn(),
+        getSeries: vi.fn(),
+        writeSeries: vi.fn(),
+        getLatestSeriesDate: vi.fn(),
+        getLastValue: vi.fn(),
+      },
+      allocations: { findOrCreate: vi.fn() },
+      strategies: {
+        create: vi.fn(),
+        getSeries: vi.fn(),
+        writeSeries: vi.fn(),
+        getLatestSeriesDate: vi.fn(),
+        resolveReference: vi.fn().mockResolvedValue(refData),
+      },
+      tradingDays: {
+        getRange: vi.fn(),
+        getLatestClosed: vi.fn(),
+      },
+    };
+    const mockMarket: MarketProvider = { fetchBars: vi.fn() };
+
+    const handle = new StrategyHandle(mockStorage, mockMarket, 'abc123');
+    await handle.resolve();
+
+    // Allocation tickers should NOT be pre-resolved — they should resolve lazily
+    const alloc = handle.rules[0].hold;
+    const [spyTicker] = alloc.holdings[0];
+    const [gldTicker] = alloc.holdings[1];
+
+    // Resolve tickers — should call findOrCreate, not return id=0
+    const spyResult = await spyTicker.resolve();
+    const gldResult = await gldTicker.resolve();
+
+    expect(spyResult.id).toBe(42);
+    expect(gldResult.id).toBe(43);
+    expect(findOrCreateMock).toHaveBeenCalledWith('SPY', 1);
+    expect(findOrCreateMock).toHaveBeenCalledWith('GLD', 2);
+  });
+
   it('throws on invalid link_id', async () => {
     const mockStorage: StorageProvider = {
       tickers: { findOrCreate: vi.fn() },
