@@ -1,17 +1,6 @@
 import type { DailyBar, DateRange } from '../handles/indicator';
 import type { StrategyDefinition, StrategySeriesEntry, StrategyReferenceData } from './types';
 
-export type SubscriptionType = 'notify' | 'deploy';
-
-export interface Subscription {
-  id: number;
-  userId: string;
-  strategyId: number;
-  type: SubscriptionType;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface StorageProvider {
   tickers: {
     upsert(symbol: string, leverage: number): Promise<{ id: number }>;
@@ -75,13 +64,5 @@ export interface StorageProvider {
   tradingDays: {
     getRange(range?: DateRange): Promise<string[]>;
     getLatestClosed(): Promise<string | null>;
-  };
-
-  subscriptions: {
-    create(userId: string, strategyId: number, type: SubscriptionType): Promise<Subscription>;
-    update(userId: string, strategyId: number, type: SubscriptionType): Promise<Subscription>;
-    delete(userId: string, strategyId: number): Promise<void>;
-    listByUser(userId: string): Promise<Subscription[]>;
-    getByStrategy(userId: string, strategyId: number): Promise<Subscription | null>;
   };
 }
