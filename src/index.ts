@@ -1,6 +1,6 @@
 export { createClient } from './client';
 export type { LivefolioClient, LivefolioClientOptions } from './client';
-export type { StorageProvider } from './providers/storage';
+export type { StorageProvider, SubscriptionType, Subscription } from './providers/storage';
 export type { MarketProvider } from './providers/market';
 export type { PriceStream, StreamStatus } from './providers/price-stream';
 export type {
