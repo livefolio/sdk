@@ -358,7 +358,7 @@ export class StrategyHandle {
     for (const [ticker, _weight] of lastAllocation.holdings) {
       if (ticker.symbol === 'CASHX') continue;
       const key = `${ticker.symbol}:${ticker.leverage}`;
-      const price = prices[ticker.symbol]?.[lastDate];
+      const price = prices[key]?.[lastDate];
       if (price != null) leveragedPrices[key] = price;
     }
 
@@ -384,14 +384,15 @@ export class StrategyHandle {
     const tickerMap = new Map<string, TickerHandle>();
     for (const bar of bars) {
       for (const [ticker] of bar.allocation.holdings) {
-        if (!tickerMap.has(ticker.symbol)) {
-          tickerMap.set(ticker.symbol, ticker);
+        const key = `${ticker.symbol}:${ticker.leverage}`;
+        if (!tickerMap.has(key)) {
+          tickerMap.set(key, ticker);
         }
       }
     }
 
     const entries = await Promise.all(
-      Array.from(tickerMap.entries()).map(async ([symbol, ticker]) => {
+      Array.from(tickerMap.entries()).map(async ([key, ticker]) => {
         const priceIndicator = new IndicatorHandle(this._storage, this._market, {
           type: 'Price',
           ticker,
@@ -405,7 +406,7 @@ export class StrategyHandle {
         for (const bar of priceBars) {
           dateMap[bar.date] = bar.value;
         }
-        return [symbol, dateMap] as const;
+        return [key, dateMap] as const;
       }),
     );
 

@@ -155,6 +155,47 @@ describe('IndicatorHandle sync', () => {
     expect(values[1]).toBeCloseTo(104, 5);
   });
 
+  it('anchors leverage to last stored value on incremental sync', async () => {
+    const writtenBars: { date: string; value: number }[][] = [];
+    const storage = mockStorage({
+      indicators: {
+        findOrCreate: vi.fn().mockResolvedValue({ id: 10 }),
+        getSeries: vi.fn().mockResolvedValue([]),
+        writeSeries: vi.fn().mockImplementation((_id: number, bars: { date: string; value: number }[]) => {
+          writtenBars.push(bars);
+          return Promise.resolve();
+        }),
+        getLatestSeriesDate: vi.fn().mockResolvedValue('2026-03-27'), // incremental
+        getValue: vi.fn().mockResolvedValue(200), // last stored leveraged price
+      },
+    });
+    const market = mockMarket({
+      fetchBars: vi.fn().mockResolvedValue([
+        { date: '2026-03-27', value: 100 }, // raw Yahoo price at fromDate
+        { date: '2026-03-28', value: 102 }, // +2% raw return
+      ]),
+    });
+    const ticker = new TickerHandle(storage, 'SPY', 2);
+
+    const handle = new IndicatorHandle(storage, market, {
+      type: 'Price',
+      ticker,
+      lookback: 0,
+      delay: 0,
+      unit: null,
+      threshold: null,
+    });
+
+    await handle.series();
+
+    expect(writtenBars).toHaveLength(1);
+    const values = writtenBars[0].map((b) => b.value);
+    // First bar should be the stored leveraged value (200), NOT the raw price (100)
+    expect(values[0]).toBeCloseTo(200, 5);
+    // Second bar: 200 * (1 + 2 * 0.02) = 208
+    expect(values[1]).toBeCloseTo(208, 5);
+  });
+
   it('does not apply leverage when leverage is 1', async () => {
     const writtenBars: { date: string; value: number }[][] = [];
     const storage = mockStorage({

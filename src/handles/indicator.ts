@@ -195,7 +195,17 @@ export class IndicatorHandle {
     // Computed indicators (RSI, SMA, etc.) already read from the leveraged price series.
     const leverage = this.ticker?.leverage ?? 1;
     if (leverage !== 1 && info.provider !== 'computed' && bars.length > 0) {
-      const leveraged: DailyBar[] = [bars[0]!];
+      // For incremental syncs, anchor the leverage chain to the last stored
+      // leveraged price so we continue from where we left off rather than
+      // restarting from the raw Yahoo price.
+      let anchor: number;
+      if (fromDate) {
+        const lastStored = await this._storage.indicators.getValue(this._resolvedId!, fromDate);
+        anchor = lastStored ?? bars[0]!.value;
+      } else {
+        anchor = bars[0]!.value;
+      }
+      const leveraged: DailyBar[] = [{ date: bars[0]!.date, value: anchor }];
       for (let i = 1; i < bars.length; i++) {
         const dailyReturn = (bars[i]!.value - bars[i - 1]!.value) / bars[i - 1]!.value;
         const prev = leveraged[i - 1]!.value;

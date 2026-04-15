@@ -6,6 +6,10 @@ import { PortfolioHandle } from '../handles/portfolio';
 
 const EPSILON = 1e-8;
 
+function tkey(symbol: string, leverage: number): string {
+  return `${symbol}:${leverage}`;
+}
+
 export function runSimulation(
   bars: StrategyBar[],
   prices: Record<string, Record<string, number>>,
@@ -18,7 +22,7 @@ export function runSimulation(
     if (ticker.symbol === 'CASHX') {
       cash = quantity;
     } else {
-      positions[ticker.symbol] = quantity;
+      positions[tkey(ticker.symbol, ticker.leverage)] = quantity;
     }
   }
   const series: DailyBar[] = [];
@@ -30,40 +34,40 @@ export function runSimulation(
     if (rebalanceDates.has(date)) {
       // Compute current portfolio value before rebalancing
       let portfolioValue = cash;
-      for (const [symbol, shares] of Object.entries(positions)) {
-        const price = prices[symbol]?.[date];
+      for (const [key, shares] of Object.entries(positions)) {
+        const price = prices[key]?.[date];
         if (price != null) portfolioValue += shares * price;
       }
 
       // Determine target holdings
       const targetWeights: Record<string, number> = {};
       for (const [ticker, weight] of bar.allocation.holdings) {
-        targetWeights[ticker.symbol] = weight;
+        targetWeights[tkey(ticker.symbol, ticker.leverage)] = weight;
       }
 
       // Compute target shares and execute trades
-      const allSymbols = new Set([...Object.keys(positions), ...Object.keys(targetWeights)]);
-      for (const symbol of allSymbols) {
-        const price = prices[symbol]?.[date];
+      const allKeys = new Set([...Object.keys(positions), ...Object.keys(targetWeights)]);
+      for (const key of allKeys) {
+        const price = prices[key]?.[date];
         if (price == null || price <= 0) continue;
 
-        const currentShares = positions[symbol] ?? 0;
-        const targetValue = portfolioValue * (targetWeights[symbol] ?? 0);
+        const currentShares = positions[key] ?? 0;
+        const targetValue = portfolioValue * (targetWeights[key] ?? 0);
         const targetShares = targetValue / price;
         const delta = targetShares - currentShares;
 
         if (Math.abs(delta) <= EPSILON) continue;
 
         if (Math.abs(targetShares) <= EPSILON) {
-          delete positions[symbol];
+          delete positions[key];
         } else {
-          positions[symbol] = targetShares;
+          positions[key] = targetShares;
         }
         cash -= delta * price;
 
         trades.push({
           date,
-          symbol,
+          symbol: key.split(':')[0]!,
           quantity: Math.abs(delta),
           price,
           action: delta > 0 ? 'buy' : 'sell',
@@ -75,8 +79,8 @@ export function runSimulation(
 
     // Compute end-of-day portfolio value
     let value = cash;
-    for (const [symbol, shares] of Object.entries(positions)) {
-      const price = prices[symbol]?.[date];
+    for (const [key, shares] of Object.entries(positions)) {
+      const price = prices[key]?.[date];
       if (price != null) value += shares * price;
     }
     series.push({ date, value });
@@ -85,31 +89,33 @@ export function runSimulation(
   // Build finalPortfolio from ending positions + cash
   const finalHoldings: [TickerHandle, number][] = [];
 
-  // Map symbols back to TickerHandles from the last bar's allocation
-  const tickerBySymbol = new Map<string, TickerHandle>();
+  // Map ticker keys back to TickerHandles from allocations and starting portfolio
+  const tickerByKey = new Map<string, TickerHandle>();
   for (const bar of bars) {
     for (const [ticker] of bar.allocation.holdings) {
-      if (!tickerBySymbol.has(ticker.symbol)) {
-        tickerBySymbol.set(ticker.symbol, ticker);
+      const key = tkey(ticker.symbol, ticker.leverage);
+      if (!tickerByKey.has(key)) {
+        tickerByKey.set(key, ticker);
       }
     }
   }
-  // Also include tickers from the starting portfolio (may hold tickers not in any allocation)
   for (const [ticker] of portfolio.holdings) {
-    if (!tickerBySymbol.has(ticker.symbol)) {
-      tickerBySymbol.set(ticker.symbol, ticker);
+    const key = tkey(ticker.symbol, ticker.leverage);
+    if (!tickerByKey.has(key)) {
+      tickerByKey.set(key, ticker);
     }
   }
 
-  for (const [symbol, shares] of Object.entries(positions)) {
-    const ticker = tickerBySymbol.get(symbol);
+  for (const [key, shares] of Object.entries(positions)) {
+    const ticker = tickerByKey.get(key);
     if (ticker && Math.abs(shares) > EPSILON) {
       finalHoldings.push([ticker, shares]);
     }
   }
 
   // Add CASHX
-  const cashTicker = tickerBySymbol.get('CASHX') ?? portfolio.holdings.find(([t]) => t.symbol === 'CASHX')?.[0];
+  const cashKey = tkey('CASHX', 1);
+  const cashTicker = tickerByKey.get(cashKey) ?? portfolio.holdings.find(([t]) => t.symbol === 'CASHX')?.[0];
   if (cashTicker && Math.abs(cash) > EPSILON) {
     finalHoldings.push([cashTicker, cash]);
   }

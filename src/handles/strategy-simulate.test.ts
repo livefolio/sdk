@@ -45,7 +45,7 @@ describe('StrategyHandle.simulate', () => {
     vi.spyOn(strategy, 'series').mockResolvedValue(bars);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.spyOn(strategy as any, '_fetchPricesForTickers').mockResolvedValue({
-      SPY: Object.fromEntries(priceBars.map((b) => [b.date, b.value])),
+      'SPY:1': Object.fromEntries(priceBars.map((b) => [b.date, b.value])),
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.spyOn(strategy as any, '_fetchRawClosePrices').mockImplementation(
@@ -77,7 +77,7 @@ describe('StrategyHandle.simulate', () => {
     vi.spyOn(strategy, 'series').mockResolvedValue(bars);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.spyOn(strategy as any, '_fetchPricesForTickers').mockResolvedValue({
-      SPY: { '2025-01-06': 500 },
+      'SPY:1': { '2025-01-06': 500 },
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.spyOn(strategy as any, '_fetchRawClosePrices').mockImplementation(
@@ -115,7 +115,7 @@ describe('StrategyHandle.simulate', () => {
     vi.spyOn(strategy, 'series').mockResolvedValue(bars);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.spyOn(strategy as any, '_fetchPricesForTickers').mockResolvedValue({
-      SPY: Object.fromEntries(priceBars.map((b) => [b.date, b.value])),
+      'SPY:1': Object.fromEntries(priceBars.map((b) => [b.date, b.value])),
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     vi.spyOn(strategy as any, '_fetchRawClosePrices').mockImplementation(
