@@ -188,6 +188,36 @@ describe('runSimulation', () => {
     expect(result.series[1].value).toBeCloseTo(101_200, 2);
   });
 
+  it('carries forward last known price when today is missing', () => {
+    // Simulates a mutual fund whose NAV hasn't posted yet for the latest bar:
+    // we must keep valuing the position at its last close, not drop it to $0.
+    const alloc = stubAllocation([
+      [{ symbol: 'SPY', leverage: 1 }, 0.8],
+      [{ symbol: 'LCSIX', leverage: 1 }, 0.2],
+    ]);
+    const bars = makeBars(['2026-04-14', '2026-04-15', '2026-04-16'], alloc);
+    const prices = {
+      'SPY:1': {
+        '2026-04-14': 500,
+        '2026-04-15': 500,
+        '2026-04-16': 500,
+      },
+      'LCSIX:1': {
+        '2026-04-14': 100,
+        '2026-04-15': 100,
+        // '2026-04-16' missing — NAV not posted yet
+      },
+    };
+    const rebalanceDates = new Set(['2026-04-14']);
+
+    const result = runSimulation(bars, prices, rebalanceDates, cashPortfolio(100_000));
+
+    expect(result.series[0].value).toBeCloseTo(100_000, 2);
+    expect(result.series[1].value).toBeCloseTo(100_000, 2);
+    // Without carry-forward, day 3 would collapse to 80,000 (the LCSIX slice zeroed).
+    expect(result.series[2].value).toBeCloseTo(100_000, 2);
+  });
+
   it('returns empty results for empty bars', () => {
     const result = runSimulation([], {}, new Set(), cashPortfolio(100_000));
     expect(result.series).toHaveLength(0);

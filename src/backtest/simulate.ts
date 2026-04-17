@@ -17,6 +17,7 @@ export function runSimulation(
   portfolio: PortfolioHandle,
 ): { series: DailyBar[]; trades: Trade[]; finalPortfolio: PortfolioHandle } {
   const positions: Record<string, number> = {};
+  const lastPrice: Record<string, number> = {};
   let cash = 0;
   for (const [ticker, quantity] of portfolio.holdings) {
     if (ticker.symbol === 'CASHX') {
@@ -28,6 +29,18 @@ export function runSimulation(
   const series: DailyBar[] = [];
   const trades: Trade[] = [];
 
+  // Carry forward the last known close when today's price is missing so
+  // a held position isn't silently valued at $0 (e.g. mutual fund NAV that
+  // posts after the trading-day cutoff).
+  function valuationPrice(key: string, date: string): number | undefined {
+    const live = prices[key]?.[date];
+    if (live != null) {
+      lastPrice[key] = live;
+      return live;
+    }
+    return lastPrice[key];
+  }
+
   for (const bar of bars) {
     const date = bar.date;
 
@@ -35,7 +48,7 @@ export function runSimulation(
       // Compute current portfolio value before rebalancing
       let portfolioValue = cash;
       for (const [key, shares] of Object.entries(positions)) {
-        const price = prices[key]?.[date];
+        const price = valuationPrice(key, date);
         if (price != null) portfolioValue += shares * price;
       }
 
@@ -80,7 +93,7 @@ export function runSimulation(
     // Compute end-of-day portfolio value
     let value = cash;
     for (const [key, shares] of Object.entries(positions)) {
-      const price = prices[key]?.[date];
+      const price = valuationPrice(key, date);
       if (price != null) value += shares * price;
     }
     series.push({ date, value });
