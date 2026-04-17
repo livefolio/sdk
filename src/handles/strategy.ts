@@ -1,4 +1,4 @@
-import { nanoid } from 'nanoid';
+import { customAlphabet } from 'nanoid';
 import type { StorageProvider } from '../providers/storage';
 import type { MarketProvider } from '../providers/market';
 import type { TradingFreq, StrategySeriesEntry } from '../providers/types';
@@ -11,6 +11,8 @@ import { evaluateStrategy, computeRebalanceDates } from '../computations/strateg
 import { runSimulation } from '../backtest/simulate';
 import { SimulationHandle } from '../backtest/types';
 import type { SimulateOptions, FinalState } from '../backtest/types';
+
+const nanoid = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', 21);
 
 export interface StrategyRule {
   when?: SignalHandle[];
