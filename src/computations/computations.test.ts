@@ -76,6 +76,43 @@ describe('computeReturns', () => {
     expect(result).toHaveLength(1);
     expect(result[0].value).toBeCloseTo(0.21);
   });
+
+  it('computes absolute differences when mode is "abs"', () => {
+    const bars = makeBars([5.25, 5.3, 5.2]);
+    const result = computeReturns(bars, 1, 'abs');
+    expect(result).toHaveLength(2);
+    expect(result[0]!.value).toBeCloseTo(0.05, 6);
+    expect(result[1]!.value).toBeCloseTo(-0.1, 6);
+  });
+
+  it('abs mode is finite for rate-series fixtures containing zeros', () => {
+    // DTB3-like: rate drops to 0 and recovers. Pct mode would produce NaN/Infinity
+    // (0/0 or x/0); abs mode produces finite differences.
+    const bars = makeBars([0.05, 0, 0.05, 0]);
+    const result = computeReturns(bars, 1, 'abs');
+    expect(result).toHaveLength(3);
+    for (const r of result) {
+      expect(Number.isFinite(r.value)).toBe(true);
+    }
+    expect(result[0]!.value).toBeCloseTo(-0.05, 6);
+    expect(result[1]!.value).toBeCloseTo(0.05, 6);
+    expect(result[2]!.value).toBeCloseTo(-0.05, 6);
+  });
+
+  it('abs mode handles negative values (e.g. negative T-bill yields)', () => {
+    const bars = makeBars([0.01, -0.02, 0.03]);
+    const result = computeReturns(bars, 1, 'abs');
+    expect(result).toHaveLength(2);
+    expect(result[0]!.value).toBeCloseTo(-0.03, 6);
+    expect(result[1]!.value).toBeCloseTo(0.05, 6);
+  });
+
+  it('pct mode is the default when mode is omitted', () => {
+    const bars = makeBars([100, 110]);
+    const defaulted = computeReturns(bars, 1);
+    const explicit = computeReturns(bars, 1, 'pct');
+    expect(defaulted).toEqual(explicit);
+  });
 });
 
 describe('computeVolatility', () => {
