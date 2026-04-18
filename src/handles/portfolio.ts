@@ -1,6 +1,7 @@
 import { TickerHandle } from './ticker';
 import type { Trade } from '../backtest/types';
 import { AllocationHandle } from './allocation';
+import { isRateTickerSymbol } from '../providers/mappings';
 
 export class PortfolioHandle {
   readonly holdings: [TickerHandle, number][];
@@ -29,6 +30,7 @@ export class PortfolioHandle {
 
   private _priceFor(ticker: TickerHandle, priceMap: Map<string, number>): number {
     if (ticker.symbol === 'CASHX') return 1;
+    if (isRateTickerSymbol(ticker.symbol)) return 1;
     const key = `${ticker.symbol}:${ticker.leverage}`;
     const price = priceMap.get(key);
     if (price == null) {
