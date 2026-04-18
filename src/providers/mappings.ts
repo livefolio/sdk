@@ -7,6 +7,12 @@ export type ProviderInfo =
   | { provider: 'calendar' }
   | { provider: 'none' };
 
+const RATE_TICKER_SYMBOLS = new Set(['DTB3', 'DFF', 'DGS1', 'DGS2', 'DGS5', 'DGS10', 'DGS20', 'DGS30']);
+
+export function isRateTickerSymbol(symbol: string | null): boolean {
+  return symbol != null && RATE_TICKER_SYMBOLS.has(symbol);
+}
+
 const FRED_SERIES: Record<string, string> = {
   T3M: 'DGS3MO',
   T6M: 'DGS6MO',

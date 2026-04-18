@@ -395,4 +395,47 @@ describe('runSimulation', () => {
     expect(holdings).toHaveLength(1);
     expect(holdings[0][0].leverage).toBe(2);
   });
+
+  it('values rate-ticker positions at implicit $1 in NAV', () => {
+    const alloc = stubAllocation([[{ symbol: 'CASHX', leverage: 1 }, 1.0]]);
+    const bars = makeBars(['2025-01-06', '2025-01-07'], alloc);
+    // Starting portfolio includes a borrowed DTB3 position (allowed by Task 1).
+    const portfolio = stubPortfolio([
+      [{ symbol: 'CASHX', leverage: 1 }, 150_000],
+      [{ symbol: 'DTB3', leverage: 1 }, -50_000],
+    ]);
+    const prices = { 'DTB3:1': { '2025-01-06': 5.25, '2025-01-07': 5.25 } };
+    const rebalanceDates = new Set<string>(); // no rebalance — just value tracking
+
+    const result = runSimulation(bars, prices, rebalanceDates, portfolio);
+
+    // NAV = cash + DTB3 quantity × $1 = 150000 − 50000 = 100000
+    expect(result.series[0]).toEqual({ date: '2025-01-06', value: 100_000 });
+    // Without accrual (covered in Task 5), value stays flat here.
+    expect(result.series[1]!.value).toBeCloseTo(100_000, 2);
+  });
+
+  it('rebalances into a borrowed rate-ticker leg at $1 price', () => {
+    const alloc = stubAllocation([
+      [{ symbol: 'SPY', leverage: 1 }, 1.5],
+      [{ symbol: 'DTB3', leverage: 1 }, -0.5],
+    ]);
+    const bars = makeBars(['2025-01-06'], alloc);
+    const prices = {
+      'SPY:1': { '2025-01-06': 500 },
+      'DTB3:1': { '2025-01-06': 5.25 },
+    };
+    const rebalanceDates = new Set(['2025-01-06']);
+
+    const result = runSimulation(bars, prices, rebalanceDates, cashPortfolio(100_000));
+
+    // Target: SPY = 150k ÷ 500 = 300 shares; DTB3 = −50k ÷ $1 = −50000 shares.
+    // Cash: 100k − (300 × 500) − (−50000 × 1) = 100k − 150k + 50k = 0.
+    // NAV = 0 + 300×500 + (−50000)×1 = 100000.
+    expect(result.series[0]).toEqual({ date: '2025-01-06', value: 100_000 });
+
+    const tradeBySymbol = Object.fromEntries(result.trades.map((t) => [t.symbol, t]));
+    expect(tradeBySymbol.SPY).toMatchObject({ action: 'buy', quantity: 300, price: 500 });
+    expect(tradeBySymbol.DTB3).toMatchObject({ action: 'sell', quantity: 50_000, price: 1 });
+  });
 });

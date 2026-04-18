@@ -3,11 +3,36 @@ import type { StrategyBar } from '../handles/strategy';
 import type { TickerHandle } from '../handles/ticker';
 import type { Trade } from './types';
 import { PortfolioHandle } from '../handles/portfolio';
+import { isRateTickerSymbol } from '../providers/mappings';
 
 const EPSILON = 1e-8;
 
 function tkey(symbol: string, leverage: number): string {
   return `${symbol}:${leverage}`;
+}
+
+function symbolFromKey(key: string): string {
+  const idx = key.lastIndexOf(':');
+  return idx === -1 ? key : key.slice(0, idx);
+}
+
+function isRateKey(key: string): boolean {
+  return isRateTickerSymbol(symbolFromKey(key));
+}
+
+function navPriceForKey(
+  key: string,
+  date: string,
+  prices: Record<string, Record<string, number>>,
+  lastPrice: Record<string, number>,
+): number | undefined {
+  if (isRateKey(key)) return 1;
+  const live = prices[key]?.[date];
+  if (live != null) {
+    lastPrice[key] = live;
+    return live;
+  }
+  return lastPrice[key];
 }
 
 export function runSimulation(
@@ -33,12 +58,7 @@ export function runSimulation(
   // a held position isn't silently valued at $0 (e.g. mutual fund NAV that
   // posts after the trading-day cutoff).
   function valuationPrice(key: string, date: string): number | undefined {
-    const live = prices[key]?.[date];
-    if (live != null) {
-      lastPrice[key] = live;
-      return live;
-    }
-    return lastPrice[key];
+    return navPriceForKey(key, date, prices, lastPrice);
   }
 
   for (const bar of bars) {
@@ -61,8 +81,14 @@ export function runSimulation(
       // Compute target shares and execute trades
       const allKeys = new Set([...Object.keys(positions), ...Object.keys(targetWeights)]);
       for (const key of allKeys) {
-        const price = prices[key]?.[date];
-        if (price == null || price <= 0) continue;
+        let price: number;
+        if (isRateKey(key)) {
+          price = 1;
+        } else {
+          const live = prices[key]?.[date];
+          if (live == null || live <= 0) continue;
+          price = live;
+        }
 
         const currentShares = positions[key] ?? 0;
         const targetValue = portfolioValue * (targetWeights[key] ?? 0);
