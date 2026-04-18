@@ -241,6 +241,18 @@ export class IndicatorHandle {
     return this._storage.indicators.getSeries(id, range);
   }
 
+  withMarket(market: MarketProvider): IndicatorHandle {
+    if (market === this._market) return this;
+    return IndicatorHandle.fromResolved(this._storage, market, this.id, {
+      type: this.type,
+      ticker: this.ticker,
+      lookback: this.lookback,
+      delay: this.delay,
+      unit: this.unit,
+      threshold: this.threshold,
+    });
+  }
+
   // ── Public data access ─────────────────────────────────────────────
 
   async series(range?: DateRange): Promise<DailyBar[]> {

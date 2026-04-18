@@ -257,29 +257,39 @@ export class StrategyHandle {
 
   private async _sync(latestClosed: string): Promise<void> {
     const { id } = await this.resolve();
+    const { entries } = await this._evaluate(this._market, latestClosed);
+    if (entries.length > 0) {
+      await this._storage.strategies.writeSeries(id, entries);
+    }
+  }
 
-    // Sync all signals and collect their series
-    const signalSeries = new Map<number, Map<string, boolean>>();
+  /**
+   * Pure evaluate — runs the same pipeline as _sync but returns the computed
+   * evaluation instead of persisting. Used by both _sync (post-close write
+   * path) and previewAllocation (pre-close read-only path).
+   */
+  private async _evaluate(
+    market: MarketProvider,
+    limitDate: string,
+  ): Promise<{ allocations: AllocationHandle[]; entries: StrategySeriesEntry[] }> {
     const allSignals = new Set<SignalHandle>();
     for (const rule of this._rules) {
       if (rule.when) rule.when.forEach((s) => allSignals.add(s));
     }
 
+    const signalSeries = new Map<number, Map<string, boolean>>();
     await Promise.all(
       Array.from(allSignals).map(async (signal) => {
-        const bars = await signal.series();
+        const bars = await signal.withMarket(market).series();
         const dateMap = new Map<string, boolean>();
         for (const bar of bars) dateMap.set(bar.date, bar.value === 1);
         signalSeries.set(signal.id, dateMap);
       }),
     );
 
-    // Get all trading days
     const tradingDays = await this._storage.tradingDays.getRange();
-
     const rebalanceDates = computeRebalanceDates(tradingDays, this._freq, this._offset);
 
-    // Build allocation index mapping
     const allocations: AllocationHandle[] = [];
     const allocIndexMap = new Map<number, number>();
     const rulesInput = this._rules.map((rule) => {
@@ -295,20 +305,12 @@ export class StrategyHandle {
       };
     });
 
-    // Evaluate
     const evalResult = evaluateStrategy(signalSeries, rulesInput, rebalanceDates, tradingDays);
-
-    // Write strategy series
     const entries: StrategySeriesEntry[] = Array.from(evalResult.entries())
-      .filter(([date]) => date <= latestClosed)
-      .map(([date, allocIdx]) => ({
-        date,
-        allocationId: allocations[allocIdx]!.id,
-      }));
+      .filter(([date]) => date <= limitDate)
+      .map(([date, allocIdx]) => ({ date, allocationId: allocations[allocIdx]!.id }));
 
-    if (entries.length > 0) {
-      await this._storage.strategies.writeSeries(id, entries);
-    }
+    return { allocations, entries };
   }
 
   private async _querySeriesFromDb(range?: DateRange): Promise<StrategyBar[]> {

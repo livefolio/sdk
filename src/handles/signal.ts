@@ -161,6 +161,16 @@ export class SignalHandle {
     return this._storage.signals.getSeries(id, range);
   }
 
+  withMarket(market: MarketProvider): SignalHandle {
+    if (market === this._market) return this;
+    return SignalHandle.fromResolved(this._storage, market, this.id, {
+      indicator1: this.indicator1.withMarket(market),
+      indicator2: this.indicator2.withMarket(market),
+      comparison: this.comparison,
+      tolerance: this.tolerance,
+    });
+  }
+
   // ── Public data access ─────────────────────────────────────────────
 
   async series(range?: DateRange): Promise<DailyBar[]> {
