@@ -35,6 +35,14 @@ function navPriceForKey(
   return lastPrice[key];
 }
 
+function daysBetween(prevIsoDate: string, currIsoDate: string): number {
+  // Both inputs are 'YYYY-MM-DD'. UTC midnight → diff in ms → days.
+  const ms =
+    Date.UTC(Number(currIsoDate.slice(0, 4)), Number(currIsoDate.slice(5, 7)) - 1, Number(currIsoDate.slice(8, 10))) -
+    Date.UTC(Number(prevIsoDate.slice(0, 4)), Number(prevIsoDate.slice(5, 7)) - 1, Number(prevIsoDate.slice(8, 10)));
+  return Math.round(ms / (1000 * 60 * 60 * 24));
+}
+
 export function runSimulation(
   bars: StrategyBar[],
   prices: Record<string, Record<string, number>>,
@@ -61,8 +69,25 @@ export function runSimulation(
     return navPriceForKey(key, date, prices, lastPrice);
   }
 
+  let prevDate: string | null = null;
+
   for (const bar of bars) {
     const date = bar.date;
+
+    // Accrue interest on rate-ticker positions between the previous bar and today.
+    if (prevDate != null) {
+      const days = daysBetween(prevDate, date);
+      if (days > 0) {
+        for (const [key, shares] of Object.entries(positions)) {
+          if (!isRateKey(key)) continue;
+          const ratePct = prices[key]?.[prevDate];
+          if (ratePct == null) continue;
+          const leverage = Number(key.slice(key.lastIndexOf(':') + 1)) || 1;
+          const factor = 1 + leverage * (ratePct / 100) * (days / 360);
+          positions[key] = shares * factor;
+        }
+      }
+    }
 
     if (rebalanceDates.has(date)) {
       // Compute current portfolio value before rebalancing
@@ -123,6 +148,7 @@ export function runSimulation(
       if (price != null) value += shares * price;
     }
     series.push({ date, value });
+    prevDate = date;
   }
 
   // Build finalPortfolio from ending positions + cash
