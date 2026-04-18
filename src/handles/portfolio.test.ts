@@ -37,10 +37,12 @@ describe('PortfolioHandle construction', () => {
     ).toThrow('Duplicate ticker');
   });
 
-  it('throws on negative quantities', () => {
+  it('accepts negative quantities (borrowed / short positions)', () => {
     const sb = mockStorage();
     const spy = new TickerHandle(sb, 'SPY');
-    expect(() => new PortfolioHandle([[spy, -100]])).toThrow('negative');
+    const handle = new PortfolioHandle([[spy, -100]]);
+    expect(handle.holdings).toHaveLength(1);
+    expect(handle.holdings[0]![1]).toBe(-100);
   });
 
   it('accepts zero-quantity holdings', () => {
