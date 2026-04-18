@@ -268,6 +268,13 @@ export class StrategyHandle {
    * Pure evaluate — runs the same pipeline as _sync but returns the computed
    * evaluation instead of persisting. Used by both _sync (post-close write
    * path) and previewAllocation (pre-close read-only path).
+   *
+   * The `market === this._market` identity check is what distinguishes the two
+   * paths: when they are the same object the method takes the write path (syncing
+   * signals through storage as normal); when they differ it takes the read-only
+   * preview path (historical bars from storage, today's value computed in-memory
+   * via `computeAt`). Callers that want the preview path must therefore supply a
+   * *different* market object — for example one produced by `createQuoteOverlay`.
    */
   private async _evaluate(
     market: MarketProvider,
@@ -279,6 +286,10 @@ export class StrategyHandle {
     }
 
     const signalSeries = new Map<number, Map<string, boolean>>();
+
+    // Collect the ordered list of trading days once so the preview path can
+    // look up the day immediately before limitDate without a second storage call.
+    const tradingDays = await this._storage.tradingDays.getRange();
 
     if (market === this._market) {
       // Normal (post-close) path: sync signals through storage, may write.
@@ -293,6 +304,12 @@ export class StrategyHandle {
     } else {
       // Overlay (pre-close preview) path: read historical from storage, then
       // compute today's signal value in-memory via computeAt. No writes anywhere.
+      //
+      // Find the trading day immediately before limitDate so we can pass its
+      // in-memory boolean as prevBool to computeAt (hysteresis, Issue 4).
+      const limitIdx = tradingDays.indexOf(limitDate);
+      const prevDate = limitIdx > 0 ? tradingDays[limitIdx - 1] : undefined;
+
       await Promise.all(
         Array.from(allSignals).map(async (signal) => {
           // Read all historical signal bars from storage (pure read).
@@ -300,8 +317,12 @@ export class StrategyHandle {
           const dateMap = new Map<string, boolean>();
           for (const bar of historicalBars) dateMap.set(bar.date, bar.value === 1);
 
+          // Look up yesterday's boolean from the in-memory map (avoids stale
+          // storage read for hysteresis on the preview path).
+          const prevBool = prevDate !== undefined ? (dateMap.get(prevDate) ?? null) : null;
+
           // Compute today's (limitDate) signal value using the overlay market.
-          const todayValue = await signal.computeAt(market, limitDate);
+          const todayValue = await signal.computeAt(market, limitDate, prevBool);
           if (todayValue !== null) {
             dateMap.set(limitDate, todayValue);
           }
@@ -311,7 +332,6 @@ export class StrategyHandle {
       );
     }
 
-    const tradingDays = await this._storage.tradingDays.getRange();
     const rebalanceDates = computeRebalanceDates(tradingDays, this._freq, this._offset);
 
     const allocations: AllocationHandle[] = [];
