@@ -175,8 +175,14 @@ export class SignalHandle {
    * Compute the signal's boolean value at `date` using the given market
    * (typically an overlay market for pre-close preview). Pure — no writes.
    * Returns null if either indicator cannot produce a value at `date`.
+   *
+   * @param prevBool - The signal's boolean value at the bar immediately
+   *   preceding `date`, used for hysteresis when `tolerance > 0`. If not
+   *   provided, falls back to `storage.signals.getLastValue` (suitable for
+   *   standalone callers). On the preview path `_evaluate` passes this from
+   *   the in-memory `dateMap` so we never read stale storage.
    */
-  async computeAt(market: MarketProvider, date: string): Promise<boolean | null> {
+  async computeAt(market: MarketProvider, date: string, prevBool?: boolean | null): Promise<boolean | null> {
     const [v1, v2] = await Promise.all([
       this.indicator1.computeAt(market, date),
       this.indicator2.computeAt(market, date),
@@ -206,14 +212,20 @@ export class SignalHandle {
       return v1 >= lower && v1 <= upper;
     }
     // For '>' and '<' with tolerance, we need hysteresis (prev state).
-    // The prev state is the last persisted signal value.
-    const prev = await this._storage.signals.getLastValue(this.id);
-    const prevBool = prev === 1;
+    // Use the in-memory prevBool if provided (preview path); otherwise fall
+    // back to storage (standalone callers / write path).
+    let resolvedPrevBool: boolean;
+    if (prevBool !== undefined && prevBool !== null) {
+      resolvedPrevBool = prevBool;
+    } else {
+      const prev = await this._storage.signals.getLastValue(this.id);
+      resolvedPrevBool = prev === 1;
+    }
     if (this.comparison === '>') {
-      return prevBool ? v1 >= lower : v1 > upper;
+      return resolvedPrevBool ? v1 >= lower : v1 > upper;
     }
     // '<'
-    return prevBool ? v1 <= upper : v1 < lower;
+    return resolvedPrevBool ? v1 <= upper : v1 < lower;
   }
 
   // ── Public data access ─────────────────────────────────────────────

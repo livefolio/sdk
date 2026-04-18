@@ -262,3 +262,113 @@ describe('SignalHandle.resolve', () => {
     expect(storage.signals.findOrCreate).toHaveBeenCalledTimes(1);
   });
 });
+
+// ─── SignalHandle.computeAt — Issue 4: in-memory prevBool for hysteresis ──────
+
+describe('SignalHandle.computeAt — Issue 4: prevBool from dateMap avoids storage read', () => {
+  it('uses provided prevBool for hysteresis and does NOT call getLastValue', async () => {
+    // Signal: v1 > v2 with 10% tolerance
+    // v1 = 105, v2 = 100
+    // upper = 100 * 1.10 = 110, lower = 100 * 0.90 = 90
+    // With prevBool=true:  signal stays true if v1 >= lower (90) → 105 >= 90 → true
+    // With prevBool=false: signal flips true  if v1 > upper (110) → 105 > 110 → false
+    // So the result depends on prevBool — this verifies hysteresis is driven by prevBool.
+
+    const getLastValueSpy = vi.fn().mockResolvedValue(null);
+    const storage = mockStorage({
+      signals: {
+        findOrCreate: vi.fn().mockResolvedValue({ id: 100 }),
+        getSeries: vi.fn().mockResolvedValue([]),
+        writeSeries: vi.fn().mockResolvedValue(undefined),
+        getLatestSeriesDate: vi.fn().mockResolvedValue(null),
+        getLastValue: getLastValueSpy,
+      },
+    });
+
+    const market = mockMarket();
+
+    const ind1 = IndicatorHandle.fromResolved(storage, market, 10, {
+      type: 'VIX',
+      ticker: null,
+      lookback: 0,
+      delay: 0,
+      unit: null,
+      threshold: null,
+    });
+    const ind2 = IndicatorHandle.fromResolved(storage, market, 11, {
+      type: 'Threshold',
+      ticker: null,
+      lookback: 0,
+      delay: 0,
+      unit: null,
+      threshold: null,
+    });
+
+    const handle = SignalHandle.fromResolved(storage, market, 100, {
+      indicator1: ind1,
+      indicator2: ind2,
+      comparison: '>',
+      tolerance: 10,
+    });
+
+    // Stub computeAt on indicators to return controlled values
+    vi.spyOn(ind1, 'computeAt').mockResolvedValue(105);
+    vi.spyOn(ind2, 'computeAt').mockResolvedValue(100);
+
+    // With prevBool=true: v1=105 >= lower=90 → true (stays in signal)
+    const resultWithPrevTrue = await handle.computeAt(market, '2026-04-17', true);
+    expect(resultWithPrevTrue).toBe(true);
+    expect(getLastValueSpy).not.toHaveBeenCalled();
+
+    // With prevBool=false: v1=105 not > upper=110 → false (doesn't enter signal)
+    const resultWithPrevFalse = await handle.computeAt(market, '2026-04-17', false);
+    expect(resultWithPrevFalse).toBe(false);
+    expect(getLastValueSpy).not.toHaveBeenCalled();
+  });
+
+  it('falls back to getLastValue when prevBool is not provided', async () => {
+    const getLastValueSpy = vi.fn().mockResolvedValue(1); // prev was true
+    const storage = mockStorage({
+      signals: {
+        findOrCreate: vi.fn().mockResolvedValue({ id: 100 }),
+        getSeries: vi.fn().mockResolvedValue([]),
+        writeSeries: vi.fn().mockResolvedValue(undefined),
+        getLatestSeriesDate: vi.fn().mockResolvedValue(null),
+        getLastValue: getLastValueSpy,
+      },
+    });
+
+    const market = mockMarket();
+
+    const ind1 = IndicatorHandle.fromResolved(storage, market, 10, {
+      type: 'VIX',
+      ticker: null,
+      lookback: 0,
+      delay: 0,
+      unit: null,
+      threshold: null,
+    });
+    const ind2 = IndicatorHandle.fromResolved(storage, market, 11, {
+      type: 'Threshold',
+      ticker: null,
+      lookback: 0,
+      delay: 0,
+      unit: null,
+      threshold: null,
+    });
+
+    const handle = SignalHandle.fromResolved(storage, market, 100, {
+      indicator1: ind1,
+      indicator2: ind2,
+      comparison: '>',
+      tolerance: 10,
+    });
+
+    vi.spyOn(ind1, 'computeAt').mockResolvedValue(105);
+    vi.spyOn(ind2, 'computeAt').mockResolvedValue(100);
+
+    // No prevBool provided → falls back to storage.getLastValue
+    await handle.computeAt(market, '2026-04-17');
+    expect(getLastValueSpy).toHaveBeenCalled();
+  });
+});
