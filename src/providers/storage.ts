@@ -58,6 +58,7 @@ export interface StorageProvider {
     getSeries(strategyId: number, range?: DateRange): Promise<StrategySeriesEntry[]>;
     writeSeries(strategyId: number, entries: StrategySeriesEntry[]): Promise<void>;
     getLatestSeriesDate(strategyId: number): Promise<string | null>;
+    getLatestAllocationId(strategyId: number): Promise<number | null>;
     resolveReference(linkId: string): Promise<StrategyReferenceData>;
   };
 

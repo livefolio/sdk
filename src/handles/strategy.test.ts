@@ -133,6 +133,7 @@ describe('StrategyHandle.resolve - create mode', () => {
         getSeries: vi.fn(),
         writeSeries: vi.fn(),
         getLatestSeriesDate: vi.fn(),
+        getLatestAllocationId: vi.fn().mockResolvedValue(null),
         resolveReference: vi.fn(),
       },
       tradingDays: {
@@ -218,6 +219,7 @@ describe('StrategyHandle.resolve - create mode', () => {
         getSeries: vi.fn(),
         writeSeries: vi.fn(),
         getLatestSeriesDate: vi.fn(),
+        getLatestAllocationId: vi.fn().mockResolvedValue(null),
         resolveReference: vi.fn(),
       },
       tradingDays: {
@@ -282,6 +284,7 @@ describe('StrategyHandle.resolve - reference mode', () => {
         getSeries: vi.fn(),
         writeSeries: vi.fn(),
         getLatestSeriesDate: vi.fn(),
+        getLatestAllocationId: vi.fn().mockResolvedValue(null),
         resolveReference: vi.fn().mockResolvedValue(refData),
       },
       tradingDays: {
@@ -347,6 +350,7 @@ describe('StrategyHandle.resolve - reference mode', () => {
         getSeries: vi.fn(),
         writeSeries: vi.fn(),
         getLatestSeriesDate: vi.fn(),
+        getLatestAllocationId: vi.fn().mockResolvedValue(null),
         resolveReference: vi.fn().mockResolvedValue(refData),
       },
       tradingDays: {
@@ -397,6 +401,7 @@ describe('StrategyHandle.resolve - reference mode', () => {
         getSeries: vi.fn(),
         writeSeries: vi.fn(),
         getLatestSeriesDate: vi.fn(),
+        getLatestAllocationId: vi.fn().mockResolvedValue(null),
         resolveReference: vi.fn().mockRejectedValue(new Error('not found')),
       },
       tradingDays: {
@@ -583,6 +588,7 @@ describe('StrategyHandle.previewAllocation', () => {
         getSeries: vi.fn().mockResolvedValue([{ date: yesterday, allocationId: 51 }]),
         writeSeries: strategiesWriteSpy,
         getLatestSeriesDate: vi.fn().mockResolvedValue(yesterday),
+        getLatestAllocationId: vi.fn().mockResolvedValue(null),
         resolveReference: vi.fn(),
       },
       tradingDays: {
