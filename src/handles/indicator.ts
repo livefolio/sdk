@@ -253,6 +253,89 @@ export class IndicatorHandle {
     });
   }
 
+  /**
+   * Compute the indicator's value at `date` using the given market (typically
+   * an overlay market for pre-close preview). Pure — no writes to storage.
+   *
+   * For fetched types (yahoo/fred): fetches bars from `market`, applies leverage
+   * compounding anchored to the stored leveraged value at the bar before `date`.
+   * For computed types (SMA, RSI, etc.): fetches raw price bars from `market`,
+   * applies leverage, runs the computation, and returns the value at `date`.
+   * For Threshold: returns the threshold constant.
+   * For calendar: computes calendar value from the trading days list.
+   * Returns null if the value cannot be computed.
+   */
+  async computeAt(market: MarketProvider, date: string): Promise<number | null> {
+    // Threshold is a special case: it has no market data, just a constant value.
+    if (this.type === 'Threshold') return this.threshold;
+
+    const tickerSymbol = this.ticker?.symbol ?? null;
+    const info = getProviderInfo(this.type, tickerSymbol);
+
+    if (info.provider === 'none') return null;
+
+    if (info.provider === 'calendar') {
+      const allDays = await this._storage.tradingDays.getRange();
+      const dayBars: DailyBar[] = allDays.map((d) => ({ date: d, value: 0 }));
+      const computed = computeCalendar(dayBars, this.type as 'Month' | 'Day of Week' | 'Day of Month' | 'Day of Year');
+      return computed.find((b) => b.date === date)?.value ?? null;
+    }
+
+    if (info.provider === 'computed') {
+      // Fetch raw price bars from the overlay market (includes today's override)
+      const rawBars = await market.fetchBars(info.symbol);
+
+      // Apply leverage to the raw bars (same logic as _sync)
+      const leverage = this.ticker?.leverage ?? 1;
+      let priceBars: DailyBar[] = rawBars;
+      if (leverage !== 1 && rawBars.length > 0) {
+        // Anchor: stored leveraged value at the bar just before the first raw bar,
+        // or at the first raw bar itself.
+        const firstDate = rawBars[0]!.date;
+        const storedAnchor = await this._storage.indicators.getValue(this._resolvedId!, firstDate);
+        const anchor = storedAnchor ?? rawBars[0]!.value;
+        const leveraged: DailyBar[] = [{ date: rawBars[0]!.date, value: anchor }];
+        for (let i = 1; i < rawBars.length; i++) {
+          const dailyReturn = (rawBars[i]!.value - rawBars[i - 1]!.value) / rawBars[i - 1]!.value;
+          const prev = leveraged[i - 1]!.value;
+          leveraged.push({ date: rawBars[i]!.date, value: prev * (1 + leverage * dailyReturn) });
+        }
+        priceBars = leveraged;
+      }
+
+      const computeFn = getComputation(this.type);
+      if (!computeFn) throw new Error(`No computation found for type "${this.type}"`);
+      const computed = computeFn(priceBars, this.lookback);
+      return computed.find((b) => b.date === date)?.value ?? null;
+    }
+
+    // yahoo or fred: fetch raw bars from the overlay market
+    const symbol = info.provider === 'yahoo' ? info.symbol : info.seriesId;
+    const rawBars = await market.fetchBars(symbol);
+
+    const leverage = this.ticker?.leverage ?? 1;
+    if (leverage === 1) {
+      return rawBars.find((b) => b.date === date)?.value ?? null;
+    }
+
+    // Apply leverage compounding.
+    // Find the bar just before `date` in rawBars to use as anchor reference.
+    const dateIdx = rawBars.findIndex((b) => b.date === date);
+    if (dateIdx < 0) return null; // date not in bars at all
+
+    // We need the stored leveraged value at the previous day to anchor.
+    const prevBar = rawBars[dateIdx - 1];
+    if (!prevBar) {
+      // No previous bar — can't compound. Return raw value as fallback.
+      return rawBars[dateIdx]!.value;
+    }
+
+    const storedPrev = await this._storage.indicators.getValue(this._resolvedId!, prevBar.date);
+    const leveragedPrev = storedPrev ?? prevBar.value;
+    const rawReturn = (rawBars[dateIdx]!.value - prevBar.value) / prevBar.value;
+    return leveragedPrev * (1 + leverage * rawReturn);
+  }
+
   // ── Public data access ─────────────────────────────────────────────
 
   async series(range?: DateRange): Promise<DailyBar[]> {

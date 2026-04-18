@@ -11,6 +11,7 @@ import { evaluateStrategy, computeRebalanceDates } from '../computations/strateg
 import { runSimulation } from '../backtest/simulate';
 import { SimulationHandle } from '../backtest/types';
 import type { SimulateOptions, FinalState } from '../backtest/types';
+import { createQuoteOverlay } from '../providers/quote-overlay';
 
 const nanoid = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', 21);
 
@@ -278,14 +279,37 @@ export class StrategyHandle {
     }
 
     const signalSeries = new Map<number, Map<string, boolean>>();
-    await Promise.all(
-      Array.from(allSignals).map(async (signal) => {
-        const bars = await signal.withMarket(market).series();
-        const dateMap = new Map<string, boolean>();
-        for (const bar of bars) dateMap.set(bar.date, bar.value === 1);
-        signalSeries.set(signal.id, dateMap);
-      }),
-    );
+
+    if (market === this._market) {
+      // Normal (post-close) path: sync signals through storage, may write.
+      await Promise.all(
+        Array.from(allSignals).map(async (signal) => {
+          const bars = await signal.withMarket(market).series();
+          const dateMap = new Map<string, boolean>();
+          for (const bar of bars) dateMap.set(bar.date, bar.value === 1);
+          signalSeries.set(signal.id, dateMap);
+        }),
+      );
+    } else {
+      // Overlay (pre-close preview) path: read historical from storage, then
+      // compute today's signal value in-memory via computeAt. No writes anywhere.
+      await Promise.all(
+        Array.from(allSignals).map(async (signal) => {
+          // Read all historical signal bars from storage (pure read).
+          const historicalBars = await this._storage.signals.getSeries(signal.id);
+          const dateMap = new Map<string, boolean>();
+          for (const bar of historicalBars) dateMap.set(bar.date, bar.value === 1);
+
+          // Compute today's (limitDate) signal value using the overlay market.
+          const todayValue = await signal.computeAt(market, limitDate);
+          if (todayValue !== null) {
+            dateMap.set(limitDate, todayValue);
+          }
+
+          signalSeries.set(signal.id, dateMap);
+        }),
+      );
+    }
 
     const tradingDays = await this._storage.tradingDays.getRange();
     const rebalanceDates = computeRebalanceDates(tradingDays, this._freq, this._offset);
@@ -378,6 +402,38 @@ export class StrategyHandle {
     };
 
     return new SimulationHandle(result.series, result.trades, options.portfolio, finalState);
+  }
+
+  /**
+   * Preview the allocation this strategy would produce for `date` if today
+   * closed at the provided raw quote prices. Does NOT write to strategies_series,
+   * signals_series, or indicators_series. Safe to call before market close.
+   *
+   * @param date - The trading day to preview (must be in tradingDays.getRange()).
+   * @param quoteOverrides - Raw (unleveraged) live prices keyed by ticker symbol.
+   *   Symbols absent from this map will fall back to yesterday's close via the
+   *   quote overlay.
+   * @returns The AllocationHandle for `date`, or null if the strategy has no
+   *   evaluable entry for that date.
+   */
+  async previewAllocation(date: string, quoteOverrides: Record<string, number>): Promise<AllocationHandle | null> {
+    await this.resolve();
+
+    const tradingDays = await this._storage.tradingDays.getRange();
+    if (!tradingDays.includes(date)) {
+      throw new Error(`previewAllocation: ${date} is not a trading day`);
+    }
+
+    const overlayMarket = createQuoteOverlay(this._market, { [date]: quoteOverrides }, { fallbackMissingQuotes: true });
+
+    // _evaluate detects market !== this._market and takes the no-write path.
+    const { allocations, entries } = await this._evaluate(overlayMarket, date);
+
+    const target = entries.find((e) => e.date === date);
+    if (!target) return null;
+
+    const alloc = allocations.find((a) => a.id === target.allocationId);
+    return alloc ?? this._allocationMap.get(target.allocationId) ?? null;
   }
 
   private async _fetchPricesForTickers(

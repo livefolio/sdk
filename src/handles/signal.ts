@@ -171,6 +171,51 @@ export class SignalHandle {
     });
   }
 
+  /**
+   * Compute the signal's boolean value at `date` using the given market
+   * (typically an overlay market for pre-close preview). Pure — no writes.
+   * Returns null if either indicator cannot produce a value at `date`.
+   */
+  async computeAt(market: MarketProvider, date: string): Promise<boolean | null> {
+    const [v1, v2] = await Promise.all([
+      this.indicator1.computeAt(market, date),
+      this.indicator2.computeAt(market, date),
+    ]);
+    if (v1 === null || v2 === null) return null;
+
+    const absolute = ABSOLUTE_TOLERANCE_TYPES.has(this.indicator1.type);
+
+    // Replicate the evaluateSignal single-bar logic inline (no hysteresis needed
+    // for a single-point preview; we use the last historical value as "prev").
+    if (this.tolerance === 0) {
+      switch (this.comparison) {
+        case '>':
+          return v1 > v2;
+        case '<':
+          return v1 < v2;
+        case '=':
+          return v1 === v2;
+      }
+    }
+
+    const tolerance = this.tolerance;
+    const upper = absolute ? v2 + tolerance : v2 * (1 + tolerance / 100);
+    const lower = absolute ? v2 - tolerance : v2 * (1 - tolerance / 100);
+
+    if (this.comparison === '=') {
+      return v1 >= lower && v1 <= upper;
+    }
+    // For '>' and '<' with tolerance, we need hysteresis (prev state).
+    // The prev state is the last persisted signal value.
+    const prev = await this._storage.signals.getLastValue(this.id);
+    const prevBool = prev === 1;
+    if (this.comparison === '>') {
+      return prevBool ? v1 >= lower : v1 > upper;
+    }
+    // '<'
+    return prevBool ? v1 <= upper : v1 < lower;
+  }
+
   // ── Public data access ─────────────────────────────────────────────
 
   async series(range?: DateRange): Promise<DailyBar[]> {
