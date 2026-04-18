@@ -2,8 +2,9 @@ import type { StorageProvider } from '../providers/storage';
 import type { MarketProvider } from '../providers/market';
 import type { IndicatorType, Unit } from '../providers/types';
 import { TickerHandle } from './ticker';
-import { getProviderInfo } from '../providers/mappings';
+import { getProviderInfo, isRateTickerSymbol } from '../providers/mappings';
 import { getComputation } from '../computations/index';
+import { computeReturns } from '../computations/returns';
 import { computeCalendar } from '../computations/calendar';
 
 export interface DailyBar {
@@ -162,10 +163,15 @@ export class IndicatorHandle {
         // Read Price series from DB
         const priceBars = await priceHandle._querySeriesFromDb();
 
-        const computeFn = getComputation(this.type);
-        if (!computeFn) throw new Error(`No computation found for type "${this.type}"`);
-
-        bars = computeFn(priceBars, this.lookback);
+        if (this.type === 'Return') {
+          // For rate/yield series (e.g. DTB3, DFF), percentage change is broken
+          // near zero and semantically wrong; use absolute differences instead.
+          bars = computeReturns(priceBars, this.lookback, info.rateSeries ? 'abs' : 'pct');
+        } else {
+          const computeFn = getComputation(this.type);
+          if (!computeFn) throw new Error(`No computation found for type "${this.type}"`);
+          bars = computeFn(priceBars, this.lookback);
+        }
 
         // If incremental, filter to only new bars
         if (fromDate) {
@@ -193,8 +199,11 @@ export class IndicatorHandle {
 
     // Apply leverage to daily returns only for fetched (non-computed) indicators.
     // Computed indicators (RSI, SMA, etc.) already read from the leveraged price series.
+    // Rate tickers (DTB3, DFF, etc.) skip leverage compounding: the stored series
+    // stays raw; the simulator applies the leverage multiplier at accrual time.
     const leverage = this.ticker?.leverage ?? 1;
-    if (leverage !== 1 && info.provider !== 'computed' && bars.length > 0) {
+    const isRate = isRateTickerSymbol(this.ticker?.symbol ?? null);
+    if (leverage !== 1 && info.provider !== 'computed' && !isRate && bars.length > 0) {
       // For incremental syncs, anchor the leverage chain to the last stored
       // leveraged price so we continue from where we left off rather than
       // restarting from the raw Yahoo price.
