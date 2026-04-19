@@ -3,11 +3,44 @@ import type { StrategyBar } from '../handles/strategy';
 import type { TickerHandle } from '../handles/ticker';
 import type { Trade } from './types';
 import { PortfolioHandle } from '../handles/portfolio';
+import { isRateTickerSymbol } from '../providers/mappings';
 
 const EPSILON = 1e-8;
 
 function tkey(symbol: string, leverage: number): string {
   return `${symbol}:${leverage}`;
+}
+
+function symbolFromKey(key: string): string {
+  const idx = key.lastIndexOf(':');
+  return idx === -1 ? key : key.slice(0, idx);
+}
+
+function isRateKey(key: string): boolean {
+  return isRateTickerSymbol(symbolFromKey(key));
+}
+
+function navPriceForKey(
+  key: string,
+  date: string,
+  prices: Record<string, Record<string, number>>,
+  lastPrice: Record<string, number>,
+): number | undefined {
+  if (isRateKey(key)) return 1;
+  const live = prices[key]?.[date];
+  if (live != null) {
+    lastPrice[key] = live;
+    return live;
+  }
+  return lastPrice[key];
+}
+
+function daysBetween(prevIsoDate: string, currIsoDate: string): number {
+  // Both inputs are 'YYYY-MM-DD'. UTC midnight → diff in ms → days.
+  const ms =
+    Date.UTC(Number(currIsoDate.slice(0, 4)), Number(currIsoDate.slice(5, 7)) - 1, Number(currIsoDate.slice(8, 10))) -
+    Date.UTC(Number(prevIsoDate.slice(0, 4)), Number(prevIsoDate.slice(5, 7)) - 1, Number(prevIsoDate.slice(8, 10)));
+  return Math.round(ms / (1000 * 60 * 60 * 24));
 }
 
 export function runSimulation(
@@ -33,16 +66,28 @@ export function runSimulation(
   // a held position isn't silently valued at $0 (e.g. mutual fund NAV that
   // posts after the trading-day cutoff).
   function valuationPrice(key: string, date: string): number | undefined {
-    const live = prices[key]?.[date];
-    if (live != null) {
-      lastPrice[key] = live;
-      return live;
-    }
-    return lastPrice[key];
+    return navPriceForKey(key, date, prices, lastPrice);
   }
+
+  let prevDate: string | null = null;
 
   for (const bar of bars) {
     const date = bar.date;
+
+    // Accrue interest on rate-ticker positions between the previous bar and today.
+    if (prevDate != null) {
+      const days = daysBetween(prevDate, date);
+      if (days > 0) {
+        for (const [key, shares] of Object.entries(positions)) {
+          if (!isRateKey(key)) continue;
+          const ratePct = prices[key]?.[prevDate];
+          if (ratePct == null) continue;
+          const leverage = Number(key.slice(key.lastIndexOf(':') + 1)) || 1;
+          const factor = 1 + leverage * (ratePct / 100) * (days / 360);
+          positions[key] = shares * factor;
+        }
+      }
+    }
 
     if (rebalanceDates.has(date)) {
       // Compute current portfolio value before rebalancing
@@ -61,8 +106,14 @@ export function runSimulation(
       // Compute target shares and execute trades
       const allKeys = new Set([...Object.keys(positions), ...Object.keys(targetWeights)]);
       for (const key of allKeys) {
-        const price = prices[key]?.[date];
-        if (price == null || price <= 0) continue;
+        let price: number;
+        if (isRateKey(key)) {
+          price = 1;
+        } else {
+          const live = prices[key]?.[date];
+          if (live == null || live <= 0) continue;
+          price = live;
+        }
 
         const currentShares = positions[key] ?? 0;
         const targetValue = portfolioValue * (targetWeights[key] ?? 0);
@@ -97,6 +148,7 @@ export function runSimulation(
       if (price != null) value += shares * price;
     }
     series.push({ date, value });
+    prevDate = date;
   }
 
   // Build finalPortfolio from ending positions + cash

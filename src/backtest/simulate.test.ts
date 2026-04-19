@@ -395,4 +395,143 @@ describe('runSimulation', () => {
     expect(holdings).toHaveLength(1);
     expect(holdings[0][0].leverage).toBe(2);
   });
+
+  it('values rate-ticker positions at implicit $1 in NAV', () => {
+    const alloc = stubAllocation([[{ symbol: 'CASHX', leverage: 1 }, 1.0]]);
+    const bars = makeBars(['2025-01-06', '2025-01-07'], alloc);
+    // Starting portfolio includes a borrowed DTB3 position (allowed by Task 1).
+    const portfolio = stubPortfolio([
+      [{ symbol: 'CASHX', leverage: 1 }, 150_000],
+      [{ symbol: 'DTB3', leverage: 1 }, -50_000],
+    ]);
+    const prices = { 'DTB3:1': { '2025-01-06': 5.25, '2025-01-07': 5.25 } };
+    const rebalanceDates = new Set<string>(); // no rebalance — just value tracking
+
+    const result = runSimulation(bars, prices, rebalanceDates, portfolio);
+
+    // NAV = cash + DTB3 quantity × $1 = 150000 − 50000 = 100000
+    expect(result.series[0]).toEqual({ date: '2025-01-06', value: 100_000 });
+    // DTB3 accrues at 5.25% / 360 per day: -50000 × (1 + 0.0525/360) ≈ -50007.29
+    // NAV = 150000 + (-50007.29) ≈ 99992.71
+    const expectedDay1 = 150_000 + -50_000 * (1 + (0.0525 * 1) / 360);
+    expect(result.series[1]!.value).toBeCloseTo(expectedDay1, 2);
+  });
+
+  it('rebalances into a borrowed rate-ticker leg at $1 price', () => {
+    const alloc = stubAllocation([
+      [{ symbol: 'SPY', leverage: 1 }, 1.5],
+      [{ symbol: 'DTB3', leverage: 1 }, -0.5],
+    ]);
+    const bars = makeBars(['2025-01-06'], alloc);
+    const prices = {
+      'SPY:1': { '2025-01-06': 500 },
+      'DTB3:1': { '2025-01-06': 5.25 },
+    };
+    const rebalanceDates = new Set(['2025-01-06']);
+
+    const result = runSimulation(bars, prices, rebalanceDates, cashPortfolio(100_000));
+
+    // Target: SPY = 150k ÷ 500 = 300 shares; DTB3 = −50k ÷ $1 = −50000 shares.
+    // Cash: 100k − (300 × 500) − (−50000 × 1) = 100k − 150k + 50k = 0.
+    // NAV = 0 + 300×500 + (−50000)×1 = 100000.
+    expect(result.series[0]).toEqual({ date: '2025-01-06', value: 100_000 });
+
+    const tradeBySymbol = Object.fromEntries(result.trades.map((t) => [t.symbol, t]));
+    expect(tradeBySymbol.SPY).toMatchObject({ action: 'buy', quantity: 300, price: 500 });
+    expect(tradeBySymbol.DTB3).toMatchObject({ action: 'sell', quantity: 50_000, price: 1 });
+  });
+
+  it('accrues interest on rate-ticker positions per FRED 360-day convention', () => {
+    const alloc = stubAllocation([[{ symbol: 'CASHX', leverage: 1 }, 1.0]]);
+    // Mon → Tue = 1 calendar day
+    const bars = makeBars(['2025-01-06', '2025-01-07'], alloc);
+    const portfolio = stubPortfolio([
+      [{ symbol: 'CASHX', leverage: 1 }, 0],
+      [{ symbol: 'DTB3', leverage: 1 }, 100_000], // lent $100k
+    ]);
+    const prices = { 'DTB3:1': { '2025-01-06': 5.25, '2025-01-07': 5.25 } };
+
+    const result = runSimulation(bars, prices, new Set(), portfolio);
+
+    // Day 0: no accrual yet (first bar). NAV = 100_000.
+    expect(result.series[0]!.value).toBeCloseTo(100_000, 2);
+    // Day 1: positions *= 1 + 5.25/100 × 1/360 ≈ 1.00014583
+    const expected = 100_000 * (1 + (0.0525 * 1) / 360);
+    expect(result.series[1]!.value).toBeCloseTo(expected, 2);
+  });
+
+  it('accrues interest across weekend gaps (Fri → Mon = 3 days)', () => {
+    const alloc = stubAllocation([[{ symbol: 'CASHX', leverage: 1 }, 1.0]]);
+    // 2025-01-03 is Fri, 2025-01-06 is Mon → 3 calendar days
+    const bars = makeBars(['2025-01-03', '2025-01-06'], alloc);
+    const portfolio = stubPortfolio([
+      [{ symbol: 'CASHX', leverage: 1 }, 0],
+      [{ symbol: 'DTB3', leverage: 1 }, 100_000],
+    ]);
+    const prices = { 'DTB3:1': { '2025-01-03': 5.25, '2025-01-06': 5.25 } };
+
+    const result = runSimulation(bars, prices, new Set(), portfolio);
+
+    const expected = 100_000 * (1 + (0.0525 * 3) / 360);
+    expect(result.series[1]!.value).toBeCloseTo(expected, 2);
+  });
+
+  it('applies leverage multiplier to rate accrual', () => {
+    const alloc = stubAllocation([[{ symbol: 'CASHX', leverage: 1 }, 1.0]]);
+    const bars = makeBars(['2025-01-06', '2025-01-07'], alloc);
+    const portfolio = stubPortfolio([
+      [{ symbol: 'CASHX', leverage: 1 }, 0],
+      [{ symbol: 'DTB3', leverage: 2 }, 100_000], // DTB3?L=2, lent
+    ]);
+    const prices = { 'DTB3:2': { '2025-01-06': 5.25, '2025-01-07': 5.25 } };
+
+    const result = runSimulation(bars, prices, new Set(), portfolio);
+
+    // 2× accrual → 2 × 0.0525 × 1/360
+    const expected = 100_000 * (1 + (2 * 0.0525 * 1) / 360);
+    expect(result.series[1]!.value).toBeCloseTo(expected, 2);
+  });
+
+  it('skips accrual when rate is missing for the previous bar', () => {
+    const alloc = stubAllocation([[{ symbol: 'CASHX', leverage: 1 }, 1.0]]);
+    const bars = makeBars(['2025-01-06', '2025-01-07', '2025-01-08'], alloc);
+    const portfolio = stubPortfolio([
+      [{ symbol: 'CASHX', leverage: 1 }, 0],
+      [{ symbol: 'DTB3', leverage: 1 }, 100_000],
+    ]);
+    // Rate missing at 2025-01-06 → no accrual on the step to 2025-01-07
+    const prices = { 'DTB3:1': { '2025-01-07': 5.25 } };
+
+    const result = runSimulation(bars, prices, new Set(), portfolio);
+
+    expect(result.series[1]!.value).toBeCloseTo(100_000, 2); // unchanged
+    // Next step uses 2025-01-07's rate for the 2025-01-07 → 2025-01-08 gap
+    const expected = 100_000 * (1 + (0.0525 * 1) / 360);
+    expect(result.series[2]!.value).toBeCloseTo(expected, 2);
+  });
+
+  it('rebalances out of a borrowed rate leg cleanly', () => {
+    const allocBorrow = stubAllocation([
+      [{ symbol: 'SPY', leverage: 1 }, 1.5],
+      [{ symbol: 'DTB3', leverage: 1 }, -0.5],
+    ]);
+    const allocCash = stubAllocation([[{ symbol: 'CASHX', leverage: 1 }, 1.0]]);
+    const bars: StrategyBar[] = [
+      { date: '2025-01-06', allocation: allocBorrow },
+      { date: '2025-01-07', allocation: allocCash },
+    ];
+    const prices = {
+      'SPY:1': { '2025-01-06': 500, '2025-01-07': 500 }, // flat SPY
+      'DTB3:1': { '2025-01-06': 0, '2025-01-07': 0 }, // 0% rate → no accrual effect
+    };
+    const rebalanceDates = new Set(['2025-01-06', '2025-01-07']);
+
+    const result = runSimulation(bars, prices, rebalanceDates, cashPortfolio(100_000));
+
+    // After day-2 rebalance: all cash, no positions.
+    expect(result.finalPortfolio.holdings).toHaveLength(1);
+    const [cashTicker, cashQty] = result.finalPortfolio.holdings[0]!;
+    expect(cashTicker.symbol).toBe('CASHX');
+    expect(cashQty).toBeCloseTo(100_000, 2);
+  });
 });

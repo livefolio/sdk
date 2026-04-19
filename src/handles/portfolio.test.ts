@@ -37,10 +37,12 @@ describe('PortfolioHandle construction', () => {
     ).toThrow('Duplicate ticker');
   });
 
-  it('throws on negative quantities', () => {
+  it('accepts negative quantities (borrowed / short positions)', () => {
     const sb = mockStorage();
     const spy = new TickerHandle(sb, 'SPY');
-    expect(() => new PortfolioHandle([[spy, -100]])).toThrow('negative');
+    const handle = new PortfolioHandle([[spy, -100]]);
+    expect(handle.holdings).toHaveLength(1);
+    expect(handle.holdings[0]![1]).toBe(-100);
   });
 
   it('accepts zero-quantity holdings', () => {
@@ -95,6 +97,41 @@ describe('PortfolioHandle.value', () => {
   it('returns 0 for empty portfolio', () => {
     const portfolio = new PortfolioHandle([]);
     expect(portfolio.value([])).toBe(0);
+  });
+
+  it('treats rate-ticker price as 1.0 regardless of provided prices', () => {
+    const sb = mockStorage();
+    const dtb3 = new TickerHandle(sb, 'DTB3');
+    const spy = new TickerHandle(sb, 'SPY');
+    const portfolio = new PortfolioHandle([
+      [dtb3, -50_000],
+      [spy, 100],
+    ]);
+    // Price table carries the *rate* (e.g. 5.25%); must be ignored for DTB3
+    const prices: [TickerHandle, number][] = [
+      [dtb3, 5.25],
+      [spy, 500],
+    ];
+    // -50000 * 1.0 + 100 * 500 = -50000 + 50000 = 0
+    expect(portfolio.value(prices)).toBeCloseTo(0, 2);
+  });
+
+  it('allows mixed long / short / rate holdings', () => {
+    const sb = mockStorage();
+    const spy = new TickerHandle(sb, 'SPY');
+    const dtb3 = new TickerHandle(sb, 'DTB3');
+    const cashx = new TickerHandle(sb, 'CASHX');
+    const portfolio = new PortfolioHandle([
+      [spy, 300],
+      [dtb3, -50_000],
+      [cashx, 0],
+    ]);
+    const prices: [TickerHandle, number][] = [
+      [spy, 500],
+      [dtb3, 5.25],
+    ];
+    // 300 * 500 + -50000 * 1 + 0 * 1 = 150000 - 50000 = 100000
+    expect(portfolio.value(prices)).toBeCloseTo(100_000, 2);
   });
 });
 

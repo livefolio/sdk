@@ -1,6 +1,7 @@
 import { TickerHandle } from './ticker';
 import type { Trade } from '../backtest/types';
 import { AllocationHandle } from './allocation';
+import { isRateTickerSymbol } from '../providers/mappings';
 
 export class PortfolioHandle {
   readonly holdings: [TickerHandle, number][];
@@ -8,16 +9,12 @@ export class PortfolioHandle {
   constructor(holdings: [TickerHandle, number][]) {
     // Check for duplicates
     const seen = new Set<string>();
-    for (const [ticker, quantity] of holdings) {
+    for (const [ticker] of holdings) {
       const key = `${ticker.symbol}:${ticker.leverage}`;
       if (seen.has(key)) {
         throw new Error(`Duplicate ticker: ${ticker.symbol}`);
       }
       seen.add(key);
-
-      if (quantity < 0) {
-        throw new Error(`Quantity for ${ticker.symbol} is negative: ${quantity}`);
-      }
     }
 
     this.holdings = holdings;
@@ -33,6 +30,7 @@ export class PortfolioHandle {
 
   private _priceFor(ticker: TickerHandle, priceMap: Map<string, number>): number {
     if (ticker.symbol === 'CASHX') return 1;
+    if (isRateTickerSymbol(ticker.symbol)) return 1;
     const key = `${ticker.symbol}:${ticker.leverage}`;
     const price = priceMap.get(key);
     if (price == null) {
