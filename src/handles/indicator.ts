@@ -318,10 +318,15 @@ export class IndicatorHandle {
     }
 
     if (info.provider === 'computed') {
-      // Fetch enough raw price bars to cover lookback + buffer (weekends/holidays).
-      // We need `lookback` trading days before `date`, so we request a calendar
-      // window of (lookback + 10) days to comfortably cover non-trading days.
-      const from = _subtractCalendarDays(date, this.lookback + 10);
+      // Size the bar window by the computation's convergence needs, not just
+      // `lookback`. Wilder's RSI seeds from the first `lookback` changes and
+      // decays at ~10%/bar — a narrow window can start pinned to 100 (or 0)
+      // if every seed bar is a gain (or loss) and not recover within the
+      // window, diverging from `_sync`'s full-history value. Indicators like
+      // SMA / EMA / Volatility / Drawdown read exactly `lookback` bars and
+      // only need the weekend buffer.
+      const bufferDays = this.type === 'RSI' ? Math.max(this.lookback * 10, 90) : 10;
+      const from = _subtractCalendarDays(date, this.lookback + bufferDays);
       const rawBars = await this._resolveRawBars(info.symbol, from, date, overrides);
 
       // Apply leverage anchored to the stored leveraged value at the date just
