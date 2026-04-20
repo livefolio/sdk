@@ -510,7 +510,27 @@ export class IndicatorHandle {
     }
     await this._ensureFresh();
     if (this._cachedSeries && !range) return this._cachedSeries;
-    const bars = await this._querySeriesFromDb(range);
+    let bars = await this._querySeriesFromDb(range);
+
+    // Trading-day delay caps the visible end of the series so consumers
+    // (signals, rule-card displays, etc.) see the indicator's lagging
+    // "current" window. Anchor is `range.to` when supplied, otherwise the
+    // latest trading day. Cascades into signal / strategy series naturally
+    // because both consume indicator bars via this method.
+    if (this.delay > 0) {
+      const tradingDays = await this._storage.tradingDays.getRange();
+      const anchor = range?.to ?? tradingDays.at(-1);
+      if (anchor !== undefined) {
+        const idx = tradingDays.indexOf(anchor);
+        if (idx < this.delay) {
+          bars = [];
+        } else {
+          const maxDate = tradingDays[idx - this.delay]!;
+          bars = bars.filter((b) => b.date <= maxDate);
+        }
+      }
+    }
+
     if (!range) this._cachedSeries = bars;
     return bars;
   }
