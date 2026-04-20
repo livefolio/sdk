@@ -138,9 +138,21 @@ export class IndicatorHandle {
     // In-memory cache still valid
     if (this._cachedAsOf === latestClosed) return;
 
+    // `horizon` = the latest date this indicator's series can be written at.
+    // delay = 0 → latestClosed; delay > 0 → latestClosed − delay trading days.
+    // "Fresh" means the stored series already reaches that horizon.
+    let horizon = latestClosed;
+    if (this.delay > 0) {
+      const tradingDays = await this._storage.tradingDays.getRange();
+      const idx = tradingDays.indexOf(latestClosed);
+      if (idx >= this.delay) {
+        horizon = tradingDays[idx - this.delay]!;
+      }
+    }
+
     const latestSeries = await this._getLatestSeriesDate(id);
 
-    if (latestSeries === latestClosed) {
+    if (latestSeries === horizon) {
       // DB is fresh — invalidate in-memory cache so next read picks up DB data
       this._cachedSeries = null;
       this._cachedAsOf = latestClosed;
@@ -239,8 +251,20 @@ export class IndicatorHandle {
       bars = await this._applyLeverage(bars, fromDate);
     }
 
-    // Filter bars up to latestClosed
-    bars = bars.filter((b) => b.date <= latestClosed);
+    // Filter bars up to the indicator's publishable horizon: `latestClosed`
+    // normally, or `latestClosed − delay` trading days when `delay > 0`. Each
+    // (type, ticker, lookback, delay) tuple is its own `indicators` row with
+    // its own `indicators_series`, so the stored series itself lags.
+    let horizon = latestClosed;
+    if (this.delay > 0) {
+      const tradingDays = await this._storage.tradingDays.getRange();
+      const idx = tradingDays.indexOf(latestClosed);
+      if (idx < this.delay) {
+        return; // not enough history yet for this delay
+      }
+      horizon = tradingDays[idx - this.delay]!;
+    }
+    bars = bars.filter((b) => b.date <= horizon);
 
     if (bars.length > 0) {
       await this._upsertSeries(bars);
@@ -310,19 +334,6 @@ export class IndicatorHandle {
    * value cannot be computed.
    */
   async computeAt(date: string, overrides?: Record<string, number>): Promise<number | null> {
-    // Apply trading-day delay: the indicator's value "at" eval date D is the
-    // raw computation at D − delay trading days. For delay > 0 the effective
-    // date is historical, so live-quote overrides (today's tick) don't apply.
-    if (this.delay > 0) {
-      const tradingDays = await this._storage.tradingDays.getRange();
-      const idx = tradingDays.indexOf(date);
-      if (idx < this.delay) return null;
-      return this._computeAtRaw(tradingDays[idx - this.delay]!, undefined);
-    }
-    return this._computeAtRaw(date, overrides);
-  }
-
-  private async _computeAtRaw(date: string, overrides?: Record<string, number>): Promise<number | null> {
     // Threshold is a special case: it has no market data, just a constant value.
     if (this.type === 'Threshold') return this.threshold;
 
@@ -510,27 +521,7 @@ export class IndicatorHandle {
     }
     await this._ensureFresh();
     if (this._cachedSeries && !range) return this._cachedSeries;
-    let bars = await this._querySeriesFromDb(range);
-
-    // Trading-day delay caps the visible end of the series so consumers
-    // (signals, rule-card displays, etc.) see the indicator's lagging
-    // "current" window. Anchor is `range.to` when supplied, otherwise the
-    // latest trading day. Cascades into signal / strategy series naturally
-    // because both consume indicator bars via this method.
-    if (this.delay > 0) {
-      const tradingDays = await this._storage.tradingDays.getRange();
-      const anchor = range?.to ?? tradingDays.at(-1);
-      if (anchor !== undefined) {
-        const idx = tradingDays.indexOf(anchor);
-        if (idx < this.delay) {
-          bars = [];
-        } else {
-          const maxDate = tradingDays[idx - this.delay]!;
-          bars = bars.filter((b) => b.date <= maxDate);
-        }
-      }
-    }
-
+    const bars = await this._querySeriesFromDb(range);
     if (!range) this._cachedSeries = bars;
     return bars;
   }
@@ -565,20 +556,6 @@ export class IndicatorHandle {
       throw new Error(`previewSeries: ${date} is not a trading day`);
     }
 
-    // Apply delay: the returned series' most-recent bar reflects the
-    // indicator's value computed at `effectiveDate = date − delay trading
-    // days`. Overrides (live tick) only apply when the effective date is
-    // still `date` (delay = 0); for delay > 0 the effective date is
-    // historical so overrides are ignored.
-    let effectiveDate = date;
-    let effectiveOverrides = overrides;
-    if (this.delay > 0) {
-      const idx = tradingDays.indexOf(date);
-      if (idx < this.delay) return [];
-      effectiveDate = tradingDays[idx - this.delay]!;
-      effectiveOverrides = {};
-    }
-
     let bars: DailyBar[];
     if (this.type === 'Threshold') {
       bars = await this._syntheticThresholdSeries();
@@ -586,20 +563,19 @@ export class IndicatorHandle {
       bars = await this._querySeriesFromDb();
     }
 
-    const todayValue = await this._computeAtRaw(effectiveDate, effectiveOverrides);
-    if (todayValue !== null) {
-      const idx = bars.findIndex((b) => b.date === effectiveDate);
-      if (idx >= 0) {
-        bars[idx] = { date: effectiveDate, value: todayValue };
-      } else {
-        bars = [...bars, { date: effectiveDate, value: todayValue }].sort((a, b) => a.date.localeCompare(b.date));
+    // Only splice a "today" bar when the indicator is publishable at `date`
+    // — i.e. `delay === 0`. For delay > 0 the latest usable point is already
+    // `latestClosed − delay`, which lives in `bars` as-is from storage.
+    if (this.delay === 0) {
+      const todayValue = await this.computeAt(date, overrides);
+      if (todayValue !== null) {
+        const idx = bars.findIndex((b) => b.date === date);
+        if (idx >= 0) {
+          bars[idx] = { date, value: todayValue };
+        } else {
+          bars = [...bars, { date, value: todayValue }].sort((a, b) => a.date.localeCompare(b.date));
+        }
       }
-    }
-
-    // Drop any stored bars after the effective date so callers that read
-    // `series.at(-1)` see the delay-adjusted latest point.
-    if (this.delay > 0) {
-      bars = bars.filter((b) => b.date <= effectiveDate);
     }
 
     if (range) {
