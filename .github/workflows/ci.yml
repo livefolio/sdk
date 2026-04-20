@@ -25,6 +25,44 @@ jobs:
       - run: npm run lint
       - run: npm test
 
+  version-guard:
+    # If a PR touches src/, it must bump the package version. Merging without a
+    # bump would block the release job on main (which only publishes when the
+    # version changes), silently shipping nothing — this check fails loudly at
+    # PR time instead.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need both sides of the diff — checkout defaults to the PR merge
+          # commit, fetch-depth: 0 gives us base branch history too.
+          fetch-depth: 0
+
+      - name: Check version bump when src/ changes
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          BASE_SHA=$(git merge-base "origin/${BASE_REF}" HEAD)
+
+          SRC_CHANGED=$(git diff --name-only "${BASE_SHA}" HEAD -- src/ | wc -l | tr -d ' ')
+
+          if [ "$SRC_CHANGED" = "0" ]; then
+            echo "No changes under src/; version bump not required."
+            exit 0
+          fi
+
+          CURRENT=$(node -p "require('./package.json').version")
+          PREVIOUS=$(git show "${BASE_SHA}:package.json" | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).version")
+
+          if [ "$CURRENT" = "$PREVIOUS" ]; then
+            echo "::error::src/ changed but package.json version is unchanged ($CURRENT). Bump the version (e.g. 'npm version patch --no-git-tag-version') before merging."
+            exit 1
+          fi
+
+          echo "Version bumped: $PREVIOUS -> $CURRENT (src/ touched $SRC_CHANGED file(s))."
+
   release:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

@@ -10,8 +10,14 @@ import type { DateRange } from './indicator';
 import { evaluateStrategy, computeRebalanceDates } from '../computations/strategy';
 import { runSimulation } from '../backtest/simulate';
 import { SimulationHandle } from '../backtest/types';
-import type { SimulateOptions, FinalState } from '../backtest/types';
-import { createQuoteOverlay } from '../providers/quote-overlay';
+import type {
+  SimulateOptions,
+  FinalState,
+  LiveEvaluator,
+  StrategyLiveState,
+  LiveRuleState,
+  LiveSignalState,
+} from '../backtest/types';
 
 const nanoid = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', 21);
 
@@ -246,9 +252,13 @@ export class StrategyHandle {
     }
 
     if (!this._syncing) {
-      this._syncing = this._sync(latestClosed).finally(() => {
-        this._syncing = null;
-      });
+      this._syncing = this._sync(latestClosed)
+        .catch((err) => {
+          console.warn('[sdk] strategy sync failed, using stored data:', err);
+        })
+        .finally(() => {
+          this._syncing = null;
+        });
     }
     await this._syncing;
 
@@ -258,7 +268,7 @@ export class StrategyHandle {
 
   private async _sync(latestClosed: string): Promise<void> {
     const { id } = await this.resolve();
-    const { entries } = await this._evaluate(this._market, latestClosed);
+    const { entries } = await this._evaluate(latestClosed);
     if (entries.length > 0) {
       await this._storage.strategies.writeSeries(id, entries);
     }
@@ -267,18 +277,17 @@ export class StrategyHandle {
   /**
    * Pure evaluate — runs the same pipeline as _sync but returns the computed
    * evaluation instead of persisting. Used by both _sync (post-close write
-   * path) and previewAllocation (pre-close read-only path).
+   * path) and the public preview methods (pre-close read-only path).
    *
-   * The `market === this._market` identity check is what distinguishes the two
-   * paths: when they are the same object the method takes the write path (syncing
-   * signals through storage as normal); when they differ it takes the read-only
-   * preview path (historical bars from storage, today's value computed in-memory
-   * via `computeAt`). Callers that want the preview path must therefore supply a
-   * *different* market object — for example one produced by `createQuoteOverlay`.
+   * When `overrides` is `undefined` we take the write path — syncing signals
+   * through storage as normal. When `overrides` is provided (even an empty
+   * map) we take the read-only preview path: historical signal bars come
+   * straight from storage, today's bar is computed in-memory via
+   * `signal.computeAt(date, overrides, prevBool)`, and nothing is written.
    */
   private async _evaluate(
-    market: MarketProvider,
     limitDate: string,
+    overrides?: Record<string, number>,
   ): Promise<{ allocations: AllocationHandle[]; entries: StrategySeriesEntry[] }> {
     const allSignals = new Set<SignalHandle>();
     for (const rule of this._rules) {
@@ -291,22 +300,22 @@ export class StrategyHandle {
     // look up the day immediately before limitDate without a second storage call.
     const tradingDays = await this._storage.tradingDays.getRange();
 
-    if (market === this._market) {
+    if (overrides === undefined) {
       // Normal (post-close) path: sync signals through storage, may write.
       await Promise.all(
         Array.from(allSignals).map(async (signal) => {
-          const bars = await signal.withMarket(market).series();
+          const bars = await signal.series();
           const dateMap = new Map<string, boolean>();
           for (const bar of bars) dateMap.set(bar.date, bar.value === 1);
           signalSeries.set(signal.id, dateMap);
         }),
       );
     } else {
-      // Overlay (pre-close preview) path: read historical from storage, then
+      // Preview (pre-close, no-write) path: read historical from storage, then
       // compute today's signal value in-memory via computeAt. No writes anywhere.
       //
       // Find the trading day immediately before limitDate so we can pass its
-      // in-memory boolean as prevBool to computeAt (hysteresis, Issue 4).
+      // in-memory boolean as prevBool to computeAt (hysteresis).
       const limitIdx = tradingDays.indexOf(limitDate);
       const prevDate = limitIdx > 0 ? tradingDays[limitIdx - 1] : undefined;
 
@@ -321,8 +330,7 @@ export class StrategyHandle {
           // storage read for hysteresis on the preview path).
           const prevBool = prevDate !== undefined ? (dateMap.get(prevDate) ?? null) : null;
 
-          // Compute today's (limitDate) signal value using the overlay market.
-          const todayValue = await signal.computeAt(market, limitDate, prevBool);
+          const todayValue = await signal.computeAt(limitDate, overrides, prevBool);
           if (todayValue !== null) {
             dateMap.set(limitDate, todayValue);
           }
@@ -421,7 +429,10 @@ export class StrategyHandle {
       leveragedPrices,
     };
 
-    return new SimulationHandle(result.series, result.trades, options.portfolio, finalState);
+    const liveEvaluator: LiveEvaluator = {
+      previewLiveState: (date, overrides) => this.previewLiveState(date, overrides),
+    };
+    return new SimulationHandle(result.series, result.trades, options.portfolio, finalState, liveEvaluator);
   }
 
   /**
@@ -430,13 +441,13 @@ export class StrategyHandle {
    * signals_series, or indicators_series. Safe to call before market close.
    *
    * @param date - The trading day to preview (must be in tradingDays.getRange()).
-   * @param quoteOverrides - Raw (unleveraged) live prices keyed by ticker symbol.
-   *   Symbols absent from this map will fall back to yesterday's close via the
-   *   quote overlay.
+   * @param overrides - Raw (unleveraged) live prices keyed by market symbol.
+   *   Symbols absent from this map fall back to the last stored value
+   *   (see `IndicatorHandle._resolveRawBars`).
    * @returns The AllocationHandle for `date`, or null if the strategy has no
    *   evaluable entry for that date.
    */
-  async previewAllocation(date: string, quoteOverrides: Record<string, number>): Promise<AllocationHandle | null> {
+  async previewAllocation(date: string, overrides: Record<string, number>): Promise<AllocationHandle | null> {
     await this.resolve();
 
     const tradingDays = await this._storage.tradingDays.getRange();
@@ -444,10 +455,7 @@ export class StrategyHandle {
       throw new Error(`previewAllocation: ${date} is not a trading day`);
     }
 
-    const overlayMarket = createQuoteOverlay(this._market, { [date]: quoteOverrides }, { fallbackMissingQuotes: true });
-
-    // _evaluate detects market !== this._market and takes the no-write path.
-    const { allocations, entries } = await this._evaluate(overlayMarket, date);
+    const { allocations, entries } = await this._evaluate(date, overrides);
 
     const target = entries.find((e) => e.date === date);
     if (!target) return null;
@@ -459,13 +467,13 @@ export class StrategyHandle {
   /**
    * Read-only preview of the strategy's allocation series including `date`.
    * Returns stored historical allocations plus an in-memory bar at `date`
-   * computed via the same overlay path as `previewAllocation`.
+   * computed via the same overrides-based preview path as `previewAllocation`.
    *
-   * @param date - Target trading day to splice in-memory via overlay market.
-   * @param quoteOverrides - Raw (unleveraged) quotes keyed by ticker symbol.
+   * @param date - Target trading day to splice in-memory.
+   * @param overrides - Raw (unleveraged) quotes keyed by market symbol.
    * @param range - Optional filter applied to the returned bars.
    */
-  async previewSeries(date: string, quoteOverrides: Record<string, number>, range?: DateRange): Promise<StrategyBar[]> {
+  async previewSeries(date: string, overrides: Record<string, number>, range?: DateRange): Promise<StrategyBar[]> {
     await this.resolve();
 
     const tradingDays = await this._storage.tradingDays.getRange();
@@ -473,9 +481,7 @@ export class StrategyHandle {
       throw new Error(`previewSeries: ${date} is not a trading day`);
     }
 
-    const overlayMarket = createQuoteOverlay(this._market, { [date]: quoteOverrides }, { fallbackMissingQuotes: true });
-
-    const { allocations, entries } = await this._evaluate(overlayMarket, date);
+    const { allocations, entries } = await this._evaluate(date, overrides);
 
     const allocById = new Map<number, AllocationHandle>();
     for (const a of allocations) allocById.set(a.id, a);
@@ -493,6 +499,78 @@ export class StrategyHandle {
     }
 
     return bars;
+  }
+
+  /**
+   * Full live strategy view at `date` under live-quote `overrides`: the active
+   * allocation, the index of the rule that fired (or fallback), and per-rule
+   * per-signal indicator values + truth. Computed entirely through the
+   * overrides preview path — no writes to any `*_series` tables.
+   *
+   * Threshold indicators have their date suppressed (`null`) since their
+   * synthetic series runs over every trading day in storage including future
+   * dates and would report a far-future date for the last bar.
+   */
+  async previewLiveState(date: string, overrides: Record<string, number>): Promise<StrategyLiveState> {
+    await this.resolve();
+
+    const tradingDays = await this._storage.tradingDays.getRange();
+    if (!tradingDays.includes(date)) {
+      throw new Error(`previewLiveState: ${date} is not a trading day`);
+    }
+
+    const [{ allocations, entries }, rules] = await Promise.all([
+      this._evaluate(date, overrides),
+      Promise.all(
+        this._rules.map(async (rule): Promise<LiveRuleState> => {
+          const signalHandles = rule.when ?? [];
+          const signals: LiveSignalState[] = await Promise.all(
+            signalHandles.map(async (sig) => {
+              const [i1Series, i2Series, sigSeries] = await Promise.all([
+                sig.indicator1.previewSeries(date, overrides),
+                sig.indicator2.previewSeries(date, overrides),
+                sig.previewSeries(date, overrides),
+              ]);
+              const last1 = i1Series.at(-1);
+              const last2 = i2Series.at(-1);
+              const lastSig = sigSeries.at(-1);
+              const i1IsThreshold = sig.indicator1.type === 'Threshold';
+              const i2IsThreshold = sig.indicator2.type === 'Threshold';
+              return {
+                indicator1: {
+                  value: last1?.value ?? null,
+                  date: i1IsThreshold ? null : (last1?.date ?? null),
+                },
+                indicator2: {
+                  value: last2?.value ?? null,
+                  date: i2IsThreshold ? null : (last2?.date ?? null),
+                },
+                isTrue: lastSig?.value === 1,
+              };
+            }),
+          );
+          return { signals };
+        }),
+      ),
+    ]);
+
+    const target = entries.find((e) => e.date === date);
+    const allocation = target
+      ? (allocations.find((a) => a.id === target.allocationId) ?? this._allocationMap.get(target.allocationId) ?? null)
+      : null;
+
+    const fallbackIndex = this._rules.length - 1;
+    let activeRuleIndex = fallbackIndex;
+    if (target) {
+      for (let r = 0; r < this._rules.length; r++) {
+        if (this._rules[r]!.hold.id === target.allocationId) {
+          activeRuleIndex = r;
+          break;
+        }
+      }
+    }
+
+    return { allocation, activeRuleIndex, rules };
   }
 
   private async _fetchPricesForTickers(

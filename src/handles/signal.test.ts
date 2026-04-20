@@ -317,12 +317,12 @@ describe('SignalHandle.computeAt — Issue 4: prevBool from dateMap avoids stora
     vi.spyOn(ind2, 'computeAt').mockResolvedValue(100);
 
     // With prevBool=true: v1=105 >= lower=90 → true (stays in signal)
-    const resultWithPrevTrue = await handle.computeAt(market, '2026-04-17', true);
+    const resultWithPrevTrue = await handle.computeAt('2026-04-17', undefined, true);
     expect(resultWithPrevTrue).toBe(true);
     expect(getLastValueSpy).not.toHaveBeenCalled();
 
     // With prevBool=false: v1=105 not > upper=110 → false (doesn't enter signal)
-    const resultWithPrevFalse = await handle.computeAt(market, '2026-04-17', false);
+    const resultWithPrevFalse = await handle.computeAt('2026-04-17', undefined, false);
     expect(resultWithPrevFalse).toBe(false);
     expect(getLastValueSpy).not.toHaveBeenCalled();
   });
@@ -369,7 +369,7 @@ describe('SignalHandle.computeAt — Issue 4: prevBool from dateMap avoids stora
     vi.spyOn(ind2, 'computeAt').mockResolvedValue(100);
 
     // No prevBool provided → falls back to storage.getLastValue
-    await handle.computeAt(market, '2026-04-17');
+    await handle.computeAt('2026-04-17', undefined);
     expect(getLastValueSpy).toHaveBeenCalled();
   });
 });

@@ -4,7 +4,6 @@ import type { MarketProvider } from '../providers/market';
 import type { Comparison } from '../providers/types';
 import type { IndicatorHandle, DailyBar, DateRange } from './indicator';
 import { evaluateSignal } from '../computations/signal';
-import { createQuoteOverlay } from '../providers/quote-overlay';
 
 const ABSOLUTE_TOLERANCE_TYPES = new Set([
   'Return',
@@ -38,7 +37,6 @@ export class SignalHandle {
   readonly tolerance: number;
 
   private _storage: StorageProvider;
-  private _market: MarketProvider;
   private _resolvedId: number | null = null;
   private _resolving: Promise<{ id: number }> | null = null;
 
@@ -46,9 +44,12 @@ export class SignalHandle {
   private _cachedAsOf: string | null = null;
   private _syncing: Promise<void> | null = null;
 
-  constructor(storage: StorageProvider, market: MarketProvider, identity: SignalIdentity) {
+  // The `market` parameter is kept in the signature for API compatibility with
+  // `new SignalHandle(storage, market, identity)` — signals no longer carry
+  // their own market reference since `computeAt` delegates to the indicator
+  // handles, which already hold one.
+  constructor(storage: StorageProvider, _market: MarketProvider, identity: SignalIdentity) {
     this._storage = storage;
-    this._market = market;
     this.indicator1 = identity.indicator1;
     this.indicator2 = identity.indicator2;
     this.comparison = identity.comparison;
@@ -124,9 +125,13 @@ export class SignalHandle {
     }
 
     if (!this._syncing) {
-      this._syncing = this._sync(latestSeries ?? undefined, latestClosed).finally(() => {
-        this._syncing = null;
-      });
+      this._syncing = this._sync(latestSeries ?? undefined, latestClosed)
+        .catch((err) => {
+          console.warn('[sdk] signal sync failed, using stored data:', err);
+        })
+        .finally(() => {
+          this._syncing = null;
+        });
     }
     await this._syncing;
 
@@ -162,20 +167,11 @@ export class SignalHandle {
     return this._storage.signals.getSeries(id, range);
   }
 
-  withMarket(market: MarketProvider): SignalHandle {
-    if (market === this._market) return this;
-    return SignalHandle.fromResolved(this._storage, market, this.id, {
-      indicator1: this.indicator1.withMarket(market),
-      indicator2: this.indicator2.withMarket(market),
-      comparison: this.comparison,
-      tolerance: this.tolerance,
-    });
-  }
-
   /**
-   * Compute the signal's boolean value at `date` using the given market
-   * (typically an overlay market for pre-close preview). Pure — no writes.
-   * Returns null if either indicator cannot produce a value at `date`.
+   * Compute the signal's boolean value at `date` without persisting anything,
+   * with optional live-quote `overrides` that are routed through each
+   * indicator's `computeAt`. Returns null if either indicator cannot produce
+   * a value at `date`.
    *
    * @param prevBool - The signal's boolean value at the bar immediately
    *   preceding `date`, used for hysteresis when `tolerance > 0`. If not
@@ -183,10 +179,14 @@ export class SignalHandle {
    *   standalone callers). On the preview path `_evaluate` passes this from
    *   the in-memory `dateMap` so we never read stale storage.
    */
-  async computeAt(market: MarketProvider, date: string, prevBool?: boolean | null): Promise<boolean | null> {
+  async computeAt(
+    date: string,
+    overrides?: Record<string, number>,
+    prevBool?: boolean | null,
+  ): Promise<boolean | null> {
     const [v1, v2] = await Promise.all([
-      this.indicator1.computeAt(market, date),
-      this.indicator2.computeAt(market, date),
+      this.indicator1.computeAt(date, overrides),
+      this.indicator2.computeAt(date, overrides),
     ]);
     if (v1 === null || v2 === null) return null;
 
@@ -251,20 +251,18 @@ export class SignalHandle {
 
   /**
    * Read-only preview of the signal series with an in-memory bar at `date`
-   * computed via `computeAt` against a quote-overlay market. Does NOT write
-   * to `signals_series`.
+   * computed via `computeAt` with the supplied live-quote `overrides`. Does
+   * NOT write to `signals_series`.
    *
    * @param date - Target trading day whose boolean is computed in-memory.
-   * @param quoteOverrides - Raw (unleveraged) quotes keyed by ticker symbol.
+   * @param overrides - Raw (unleveraged) quotes keyed by market symbol.
    * @param range - Optional filter applied to the returned bars.
    */
-  async previewSeries(date: string, quoteOverrides: Record<string, number>, range?: DateRange): Promise<DailyBar[]> {
+  async previewSeries(date: string, overrides: Record<string, number>, range?: DateRange): Promise<DailyBar[]> {
     const tradingDays = await this._storage.tradingDays.getRange();
     if (!tradingDays.includes(date)) {
       throw new Error(`previewSeries: ${date} is not a trading day`);
     }
-
-    const overlay = createQuoteOverlay(this._market, { [date]: quoteOverrides }, { fallbackMissingQuotes: true });
 
     let bars = await this._querySeriesFromDb();
 
@@ -277,7 +275,7 @@ export class SignalHandle {
     const prevDate = limitIdx > 0 ? tradingDays[limitIdx - 1] : undefined;
     const prevBool = prevDate !== undefined ? (dateMap.get(prevDate) ?? null) : null;
 
-    const todayBool = await this.computeAt(overlay, date, prevBool);
+    const todayBool = await this.computeAt(date, overrides, prevBool);
     if (todayBool !== null) {
       const numeric = todayBool ? 1 : 0;
       const idx = bars.findIndex((b) => b.date === date);

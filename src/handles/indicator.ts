@@ -6,7 +6,24 @@ import { getProviderInfo, isRateTickerSymbol } from '../providers/mappings';
 import { getComputation } from '../computations/index';
 import { computeReturns } from '../computations/returns';
 import { computeCalendar } from '../computations/calendar';
-import { createQuoteOverlay } from '../providers/quote-overlay';
+
+/**
+ * Inverse of `FRED_SERIES` in `providers/mappings.ts`. Lets `_readStoredBars`
+ * map a FRED series ID (`DGS3MO`, `DGS10`, etc.) back to the indicator type
+ * whose stored series holds that series' history.
+ */
+const FRED_SYMBOL_TO_TYPE: Record<string, string> = {
+  DGS3MO: 'T3M',
+  DGS6MO: 'T6M',
+  DGS1: 'T1Y',
+  DGS2: 'T2Y',
+  DGS3: 'T3Y',
+  DGS5: 'T5Y',
+  DGS7: 'T7Y',
+  DGS10: 'T10Y',
+  DGS20: 'T20Y',
+  DGS30: 'T30Y',
+};
 
 /**
  * Subtract `days` calendar days from an ISO date string (YYYY-MM-DD).
@@ -121,20 +138,40 @@ export class IndicatorHandle {
     // In-memory cache still valid
     if (this._cachedAsOf === latestClosed) return;
 
+    // `horizon` = the latest date this indicator's series can be written at.
+    // delay = 0 → latestClosed; delay > 0 → latestClosed − delay trading days.
+    // "Fresh" means the stored series already reaches that horizon.
+    let horizon = latestClosed;
+    if (this.delay > 0) {
+      const tradingDays = await this._storage.tradingDays.getRange();
+      const idx = tradingDays.indexOf(latestClosed);
+      if (idx >= this.delay) {
+        horizon = tradingDays[idx - this.delay]!;
+      }
+    }
+
     const latestSeries = await this._getLatestSeriesDate(id);
 
-    if (latestSeries === latestClosed) {
+    if (latestSeries === horizon) {
       // DB is fresh — invalidate in-memory cache so next read picks up DB data
       this._cachedSeries = null;
       this._cachedAsOf = latestClosed;
       return;
     }
 
-    // Need to sync — deduplicate concurrent calls
+    // Need to sync — deduplicate concurrent calls. On sync failure (e.g.,
+    // browser has no market provider, or upstream feed hasn't published the
+    // new date yet), fall back to whatever storage already has and treat the
+    // cache as fresh so downstream callers don't retry the failing sync on
+    // every read.
     if (!this._syncing) {
-      this._syncing = this._sync(latestSeries ?? undefined, latestClosed).finally(() => {
-        this._syncing = null;
-      });
+      this._syncing = this._sync(latestSeries ?? undefined, latestClosed)
+        .catch((err) => {
+          console.warn('[sdk] indicator sync failed, using stored data:', err);
+        })
+        .finally(() => {
+          this._syncing = null;
+        });
     }
     await this._syncing;
 
@@ -214,8 +251,20 @@ export class IndicatorHandle {
       bars = await this._applyLeverage(bars, fromDate);
     }
 
-    // Filter bars up to latestClosed
-    bars = bars.filter((b) => b.date <= latestClosed);
+    // Filter bars up to the indicator's publishable horizon: `latestClosed`
+    // normally, or `latestClosed − delay` trading days when `delay > 0`. Each
+    // (type, ticker, lookback, delay) tuple is its own `indicators` row with
+    // its own `indicators_series`, so the stored series itself lags.
+    let horizon = latestClosed;
+    if (this.delay > 0) {
+      const tradingDays = await this._storage.tradingDays.getRange();
+      const idx = tradingDays.indexOf(latestClosed);
+      if (idx < this.delay) {
+        return; // not enough history yet for this delay
+      }
+      horizon = tradingDays[idx - this.delay]!;
+    }
+    bars = bars.filter((b) => b.date <= horizon);
 
     if (bars.length > 0) {
       await this._upsertSeries(bars);
@@ -230,18 +279,6 @@ export class IndicatorHandle {
   private async _querySeriesFromDb(range?: DateRange): Promise<DailyBar[]> {
     const { id } = await this.resolve();
     return this._storage.indicators.getSeries(id, range);
-  }
-
-  withMarket(market: MarketProvider): IndicatorHandle {
-    if (market === this._market) return this;
-    return IndicatorHandle.fromResolved(this._storage, market, this.id, {
-      type: this.type,
-      ticker: this.ticker,
-      lookback: this.lookback,
-      delay: this.delay,
-      unit: this.unit,
-      threshold: this.threshold,
-    });
   }
 
   /**
@@ -282,21 +319,21 @@ export class IndicatorHandle {
   }
 
   /**
-   * Compute the indicator's value at `date` using the given market (typically
-   * an overlay market for pre-close preview). Pure — no writes to storage.
+   * Compute the indicator's value at `date` without persisting anything, with
+   * optional live-quote `overrides` keyed by raw market symbol (the same symbol
+   * space `MarketProvider.fetchBars` uses — ticker symbols for Price/SMA/etc.,
+   * `^VIX` / `^VIX3M` for macro, FRED series IDs like `DGS3MO` for Treasury).
    *
-   * For fetched types (yahoo/fred): fetches a small window of bars from
-   * `market`, applies leverage compounding anchored to the stored leveraged
-   * value at the bar before `date`.
-   * For computed types (SMA, RSI, etc.): fetches enough raw price bars to
-   * cover the indicator's lookback from `market`, applies leverage anchored
-   * to the stored value just before the fetch window, runs the computation,
-   * and returns the value at `date`.
-   * For Threshold: returns the threshold constant.
-   * For calendar: computes calendar value from the trading days list.
-   * Returns null if the value cannot be computed.
+   * Bars for the underlying symbol are resolved storage-first when the market
+   * hasn't yet produced bars for `date` (trading day still open), and storage
+   * is the fallback whenever the remote fetch fails — see `_resolveRawBars`.
+   *
+   * For Threshold: returns the threshold constant. For calendar types: computed
+   * from `tradingDays.getRange()`. For all others: `_resolveRawBars` → leverage
+   * compounding (if any) → lookback-specific computation. Returns null if the
+   * value cannot be computed.
    */
-  async computeAt(market: MarketProvider, date: string): Promise<number | null> {
+  async computeAt(date: string, overrides?: Record<string, number>): Promise<number | null> {
     // Threshold is a special case: it has no market data, just a constant value.
     if (this.type === 'Threshold') return this.threshold;
 
@@ -313,15 +350,36 @@ export class IndicatorHandle {
     }
 
     if (info.provider === 'computed') {
-      // Fetch enough raw price bars to cover lookback + buffer (weekends/holidays).
-      // We need `lookback` trading days before `date`, so we request a calendar
-      // window of (lookback + 10) days to comfortably cover non-trading days.
-      const from = _subtractCalendarDays(date, this.lookback + 10);
-      const rawBars = await market.fetchBars(info.symbol, from);
+      // Size the bar window by the computation's actual needs, expressed in
+      // calendar days. Three buckets:
+      //
+      //   Exact reads (SMA / Return / Volatility / Drawdown) want `lookback`
+      //   *trading* days in the result; with ~5 trading days per 7 calendar
+      //   days plus holidays that's ~`lookback * 1.5` calendar days, plus a
+      //   small fixed buffer for long weekends.
+      //
+      //   EMA is recursive: seed = first N-bar SMA, then `(1-α)^k` decay with
+      //   α = 2 / (N+1). For small N the decay is fast; for N=200 decay is
+      //   ~0.99/bar, so we want several multiples of `lookback` to get close
+      //   to the fully-synced EMA value.
+      //
+      //   Wilder's RSI decays at ~10%/bar regardless of lookback and starts
+      //   from a simple-average seed that can pin at 100 (or 0) for a window
+      //   full of only-up (or only-down) days; it needs the widest window.
+      let calendarDays: number;
+      if (this.type === 'RSI') {
+        calendarDays = Math.max(this.lookback * 10, 90);
+      } else if (this.type === 'EMA') {
+        calendarDays = Math.max(this.lookback * 5, 60);
+      } else {
+        // SMA, Return, Volatility, Drawdown — exact-read, only need coverage.
+        calendarDays = Math.ceil(this.lookback * 1.5) + 15;
+      }
+      const from = _subtractCalendarDays(date, this.lookback + calendarDays);
+      const rawBars = await this._resolveRawBars(info.symbol, from, date, overrides);
 
       // Apply leverage anchored to the stored leveraged value at the date just
-      // before the first fetched raw bar. This mirrors _sync's anchor logic
-      // exactly: fromDate is the last stored bar, anchor is getValue(id, fromDate).
+      // before the first resolved raw bar. Mirrors `_sync`'s anchor logic.
       const anchorDate = rawBars.length > 0 ? rawBars[0]!.date : undefined;
       const priceBars = await this._applyLeverage(rawBars, anchorDate);
 
@@ -331,12 +389,13 @@ export class IndicatorHandle {
       return computed.find((b) => b.date === date)?.value ?? null;
     }
 
-    // yahoo or fred: fetch a small window — just enough to get `date` and one
-    // prior bar (needed for leverage return calculation). 5 calendar days is
-    // enough to bridge a long weekend.
+    // yahoo or fred: resolve a small window — just enough to get `date` and
+    // one prior bar (needed for leverage return calculation). 15 calendar days
+    // comfortably bridges a long weekend + holiday gap; FRED series in
+    // particular publish on T+1 / T+2 cadences and can miss a market day.
     const symbol = info.provider === 'yahoo' ? info.symbol : info.seriesId;
-    const from = _subtractCalendarDays(date, 5);
-    const rawBars = await market.fetchBars(symbol, from);
+    const from = _subtractCalendarDays(date, 15);
+    const rawBars = await this._resolveRawBars(symbol, from, date, overrides);
 
     const leverage = this.ticker?.leverage ?? 1;
     if (leverage === 1) {
@@ -344,11 +403,9 @@ export class IndicatorHandle {
     }
 
     // Apply leverage compounding.
-    // Find the bar just before `date` in rawBars to use as anchor reference.
     const dateIdx = rawBars.findIndex((b) => b.date === date);
     if (dateIdx < 0) return null; // date not in bars at all
 
-    // We need the stored leveraged value at the previous day to anchor.
     const prevBar = rawBars[dateIdx - 1];
     if (!prevBar) {
       // No previous bar in the window — can't compound. Return raw value as fallback.
@@ -359,6 +416,101 @@ export class IndicatorHandle {
     const leveragedPrev = storedPrev ?? prevBar.value;
     const rawReturn = (rawBars[dateIdx]!.value - prevBar.value) / prevBar.value;
     return leveragedPrev * (1 + leverage * rawReturn);
+  }
+
+  /**
+   * Raw (unleveraged) bars for `symbol` up through `date`, with the live quote
+   * from `overrides[symbol]` (if any) spliced in at `date`.
+   *
+   * Decision policy:
+   *   - `date` > `tradingDays.getLatestClosed()`: market has nothing for that
+   *     day yet — skip the remote fetch entirely and read from storage.
+   *   - otherwise: try `this._market.fetchBars(symbol, from)`. On failure, fall
+   *     back to storage — upstream HTTP providers (Yahoo / FRED) are flaky.
+   *
+   * After the base is resolved, `overrides[symbol]` is spliced at `date`
+   * (replaces the existing bar, or is appended in-order). When no override is
+   * present but `date` isn't in the base bars, the last known value is carried
+   * forward to `date` — this preserves the fallbackMissingQuotes behaviour the
+   * old overlay exposed so leverage compounding / computations always have a
+   * point at `date` to land on.
+   */
+  private async _resolveRawBars(
+    symbol: string,
+    from: string,
+    date: string,
+    overrides?: Record<string, number>,
+  ): Promise<DailyBar[]> {
+    const latestClosed = await this._storage.tradingDays.getLatestClosed();
+    const closedForDate = latestClosed !== null && date <= latestClosed;
+
+    let bars: DailyBar[];
+    if (closedForDate) {
+      try {
+        bars = await this._market.fetchBars(symbol, from);
+      } catch {
+        bars = await this._readStoredBars(symbol, from);
+      }
+    } else {
+      bars = await this._readStoredBars(symbol, from);
+    }
+
+    const override = overrides?.[symbol];
+    const existingIdx = bars.findIndex((b) => b.date === date);
+
+    if (override !== undefined) {
+      if (existingIdx >= 0) {
+        bars[existingIdx] = { date, value: override };
+      } else {
+        bars = [...bars, { date, value: override }].sort((a, b) => a.date.localeCompare(b.date));
+      }
+    } else if (existingIdx < 0 && bars.length > 0) {
+      // Carry last known value forward to `date` (matches the overlay's
+      // `fallbackMissingQuotes` behaviour for every consumer that used it).
+      bars = [...bars, { date, value: bars[bars.length - 1]!.value }];
+    }
+
+    return bars;
+  }
+
+  /**
+   * Resolve raw (unleveraged) bars for a market symbol from storage. Maps:
+   *   - `^VIX`   → the VIX indicator's stored series
+   *   - `^VIX3M` → the VIX3M indicator's stored series
+   *   - `DGS*`   → the matching Treasury-tenor indicator's stored series
+   *   - anything else → the `Price` indicator for that ticker symbol with
+   *     `leverage = 1` (the raw contract that `MarketProvider.fetchBars` has).
+   *
+   * Returns `[]` when the resolved indicator has no stored bars yet.
+   */
+  private async _readStoredBars(symbol: string, from: string): Promise<DailyBar[]> {
+    let identity: {
+      type: string;
+      tickerId: number | null;
+      lookback: number;
+      delay: number;
+      unit: string | null;
+      threshold: number | null;
+    };
+    if (symbol === '^VIX') {
+      identity = { type: 'VIX', tickerId: null, lookback: 0, delay: 0, unit: null, threshold: null };
+    } else if (symbol === '^VIX3M') {
+      identity = { type: 'VIX3M', tickerId: null, lookback: 0, delay: 0, unit: null, threshold: null };
+    } else if (FRED_SYMBOL_TO_TYPE[symbol]) {
+      identity = {
+        type: FRED_SYMBOL_TO_TYPE[symbol]!,
+        tickerId: null,
+        lookback: 0,
+        delay: 0,
+        unit: null,
+        threshold: null,
+      };
+    } else {
+      const { id: tickerId } = await this._storage.tickers.findOrCreate(symbol, 1);
+      identity = { type: 'Price', tickerId, lookback: 0, delay: 0, unit: null, threshold: null };
+    }
+    const { id } = await this._storage.indicators.findOrCreate(identity);
+    return this._storage.indicators.getSeries(id, { from });
   }
 
   // ── Public data access ─────────────────────────────────────────────
@@ -387,24 +539,22 @@ export class IndicatorHandle {
   }
 
   /**
-   * Read-only preview of the indicator series that includes an in-memory bar
-   * at `date` computed via `computeAt` against a quote-overlay market. Does
+   * Read-only preview of the indicator series with an in-memory bar at `date`
+   * computed via `computeAt` with the supplied live-quote `overrides`. Does
    * NOT write to `indicators_series`. Safe to call before market close.
    *
-   * @param date - Target trading day whose value is computed in-memory from
-   *   the overridden quotes. Must be in `tradingDays.getRange()`.
-   * @param quoteOverrides - Raw (unleveraged) quotes keyed by ticker symbol.
-   *   Symbols omitted here fall back to yesterday's close via the overlay.
+   * @param date - Target trading day whose value is computed in-memory.
+   *   Must be in `tradingDays.getRange()`.
+   * @param overrides - Raw (unleveraged) quotes keyed by market symbol.
+   *   Symbols omitted fall back to the last known value (see `_resolveRawBars`).
    * @param range - Optional filter applied to the returned bars.
    * @returns Stored historical bars plus (or with) today's in-memory value.
    */
-  async previewSeries(date: string, quoteOverrides: Record<string, number>, range?: DateRange): Promise<DailyBar[]> {
+  async previewSeries(date: string, overrides: Record<string, number>, range?: DateRange): Promise<DailyBar[]> {
     const tradingDays = await this._storage.tradingDays.getRange();
     if (!tradingDays.includes(date)) {
       throw new Error(`previewSeries: ${date} is not a trading day`);
     }
-
-    const overlay = createQuoteOverlay(this._market, { [date]: quoteOverrides }, { fallbackMissingQuotes: true });
 
     let bars: DailyBar[];
     if (this.type === 'Threshold') {
@@ -413,13 +563,18 @@ export class IndicatorHandle {
       bars = await this._querySeriesFromDb();
     }
 
-    const todayValue = await this.computeAt(overlay, date);
-    if (todayValue !== null) {
-      const idx = bars.findIndex((b) => b.date === date);
-      if (idx >= 0) {
-        bars[idx] = { date, value: todayValue };
-      } else {
-        bars = [...bars, { date, value: todayValue }].sort((a, b) => a.date.localeCompare(b.date));
+    // Only splice a "today" bar when the indicator is publishable at `date`
+    // — i.e. `delay === 0`. For delay > 0 the latest usable point is already
+    // `latestClosed − delay`, which lives in `bars` as-is from storage.
+    if (this.delay === 0) {
+      const todayValue = await this.computeAt(date, overrides);
+      if (todayValue !== null) {
+        const idx = bars.findIndex((b) => b.date === date);
+        if (idx >= 0) {
+          bars[idx] = { date, value: todayValue };
+        } else {
+          bars = [...bars, { date, value: todayValue }].sort((a, b) => a.date.localeCompare(b.date));
+        }
       }
     }
 
