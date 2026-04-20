@@ -318,14 +318,31 @@ export class IndicatorHandle {
     }
 
     if (info.provider === 'computed') {
-      // Size the bar window by the computation's needs, expressed in calendar
-      // days. Exact reads (SMA / EMA / Volatility / Drawdown) want `lookback`
-      // *trading* days — with ~5 trading days per 7 calendar days plus holidays
-      // we need ~lookback * 1.5 calendar days to have any hope of collecting
-      // them. Wilder's RSI seeds from the first `lookback` changes and decays
-      // at ~10%/bar; a narrow window can start pinned to 100 (or 0) and never
-      // converge within it, so we widen further.
-      const calendarDays = this.type === 'RSI' ? Math.max(this.lookback * 10, 90) : Math.ceil(this.lookback * 1.5) + 15;
+      // Size the bar window by the computation's actual needs, expressed in
+      // calendar days. Three buckets:
+      //
+      //   Exact reads (SMA / Return / Volatility / Drawdown) want `lookback`
+      //   *trading* days in the result; with ~5 trading days per 7 calendar
+      //   days plus holidays that's ~`lookback * 1.5` calendar days, plus a
+      //   small fixed buffer for long weekends.
+      //
+      //   EMA is recursive: seed = first N-bar SMA, then `(1-α)^k` decay with
+      //   α = 2 / (N+1). For small N the decay is fast; for N=200 decay is
+      //   ~0.99/bar, so we want several multiples of `lookback` to get close
+      //   to the fully-synced EMA value.
+      //
+      //   Wilder's RSI decays at ~10%/bar regardless of lookback and starts
+      //   from a simple-average seed that can pin at 100 (or 0) for a window
+      //   full of only-up (or only-down) days; it needs the widest window.
+      let calendarDays: number;
+      if (this.type === 'RSI') {
+        calendarDays = Math.max(this.lookback * 10, 90);
+      } else if (this.type === 'EMA') {
+        calendarDays = Math.max(this.lookback * 5, 60);
+      } else {
+        // SMA, Return, Volatility, Drawdown — exact-read, only need coverage.
+        calendarDays = Math.ceil(this.lookback * 1.5) + 15;
+      }
       const from = _subtractCalendarDays(date, this.lookback + calendarDays);
       const rawBars = await this._resolveRawBars(info.symbol, from, date, overrides);
 
@@ -341,10 +358,11 @@ export class IndicatorHandle {
     }
 
     // yahoo or fred: resolve a small window — just enough to get `date` and
-    // one prior bar (needed for leverage return calculation). 5 calendar days
-    // covers a long weekend.
+    // one prior bar (needed for leverage return calculation). 15 calendar days
+    // comfortably bridges a long weekend + holiday gap; FRED series in
+    // particular publish on T+1 / T+2 cadences and can miss a market day.
     const symbol = info.provider === 'yahoo' ? info.symbol : info.seriesId;
-    const from = _subtractCalendarDays(date, 5);
+    const from = _subtractCalendarDays(date, 15);
     const rawBars = await this._resolveRawBars(symbol, from, date, overrides);
 
     const leverage = this.ticker?.leverage ?? 1;
