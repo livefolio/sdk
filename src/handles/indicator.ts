@@ -318,15 +318,15 @@ export class IndicatorHandle {
     }
 
     if (info.provider === 'computed') {
-      // Size the bar window by the computation's convergence needs, not just
-      // `lookback`. Wilder's RSI seeds from the first `lookback` changes and
-      // decays at ~10%/bar — a narrow window can start pinned to 100 (or 0)
-      // if every seed bar is a gain (or loss) and not recover within the
-      // window, diverging from `_sync`'s full-history value. Indicators like
-      // SMA / EMA / Volatility / Drawdown read exactly `lookback` bars and
-      // only need the weekend buffer.
-      const bufferDays = this.type === 'RSI' ? Math.max(this.lookback * 10, 90) : 10;
-      const from = _subtractCalendarDays(date, this.lookback + bufferDays);
+      // Size the bar window by the computation's needs, expressed in calendar
+      // days. Exact reads (SMA / EMA / Volatility / Drawdown) want `lookback`
+      // *trading* days — with ~5 trading days per 7 calendar days plus holidays
+      // we need ~lookback * 1.5 calendar days to have any hope of collecting
+      // them. Wilder's RSI seeds from the first `lookback` changes and decays
+      // at ~10%/bar; a narrow window can start pinned to 100 (or 0) and never
+      // converge within it, so we widen further.
+      const calendarDays = this.type === 'RSI' ? Math.max(this.lookback * 10, 90) : Math.ceil(this.lookback * 1.5) + 15;
+      const from = _subtractCalendarDays(date, this.lookback + calendarDays);
       const rawBars = await this._resolveRawBars(info.symbol, from, date, overrides);
 
       // Apply leverage anchored to the stored leveraged value at the date just
