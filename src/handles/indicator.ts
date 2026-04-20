@@ -310,6 +310,19 @@ export class IndicatorHandle {
    * value cannot be computed.
    */
   async computeAt(date: string, overrides?: Record<string, number>): Promise<number | null> {
+    // Apply trading-day delay: the indicator's value "at" eval date D is the
+    // raw computation at D − delay trading days. For delay > 0 the effective
+    // date is historical, so live-quote overrides (today's tick) don't apply.
+    if (this.delay > 0) {
+      const tradingDays = await this._storage.tradingDays.getRange();
+      const idx = tradingDays.indexOf(date);
+      if (idx < this.delay) return null;
+      return this._computeAtRaw(tradingDays[idx - this.delay]!, undefined);
+    }
+    return this._computeAtRaw(date, overrides);
+  }
+
+  private async _computeAtRaw(date: string, overrides?: Record<string, number>): Promise<number | null> {
     // Threshold is a special case: it has no market data, just a constant value.
     if (this.type === 'Threshold') return this.threshold;
 
@@ -532,6 +545,20 @@ export class IndicatorHandle {
       throw new Error(`previewSeries: ${date} is not a trading day`);
     }
 
+    // Apply delay: the returned series' most-recent bar reflects the
+    // indicator's value computed at `effectiveDate = date − delay trading
+    // days`. Overrides (live tick) only apply when the effective date is
+    // still `date` (delay = 0); for delay > 0 the effective date is
+    // historical so overrides are ignored.
+    let effectiveDate = date;
+    let effectiveOverrides = overrides;
+    if (this.delay > 0) {
+      const idx = tradingDays.indexOf(date);
+      if (idx < this.delay) return [];
+      effectiveDate = tradingDays[idx - this.delay]!;
+      effectiveOverrides = {};
+    }
+
     let bars: DailyBar[];
     if (this.type === 'Threshold') {
       bars = await this._syntheticThresholdSeries();
@@ -539,14 +566,20 @@ export class IndicatorHandle {
       bars = await this._querySeriesFromDb();
     }
 
-    const todayValue = await this.computeAt(date, overrides);
+    const todayValue = await this._computeAtRaw(effectiveDate, effectiveOverrides);
     if (todayValue !== null) {
-      const idx = bars.findIndex((b) => b.date === date);
+      const idx = bars.findIndex((b) => b.date === effectiveDate);
       if (idx >= 0) {
-        bars[idx] = { date, value: todayValue };
+        bars[idx] = { date: effectiveDate, value: todayValue };
       } else {
-        bars = [...bars, { date, value: todayValue }].sort((a, b) => a.date.localeCompare(b.date));
+        bars = [...bars, { date: effectiveDate, value: todayValue }].sort((a, b) => a.date.localeCompare(b.date));
       }
+    }
+
+    // Drop any stored bars after the effective date so callers that read
+    // `series.at(-1)` see the delay-adjusted latest point.
+    if (this.delay > 0) {
+      bars = bars.filter((b) => b.date <= effectiveDate);
     }
 
     if (range) {
