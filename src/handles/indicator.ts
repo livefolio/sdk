@@ -6,6 +6,7 @@ import { getProviderInfo, isRateTickerSymbol } from '../providers/mappings';
 import { getComputation } from '../computations/index';
 import { computeReturns } from '../computations/returns';
 import { computeCalendar } from '../computations/calendar';
+import { createQuoteOverlay } from '../providers/quote-overlay';
 
 /**
  * Subtract `days` calendar days from an ISO date string (YYYY-MM-DD).
@@ -383,5 +384,51 @@ export class IndicatorHandle {
     await this._ensureFresh();
     const { id } = await this.resolve();
     return this._storage.indicators.getValue(id, date);
+  }
+
+  /**
+   * Read-only preview of the indicator series that includes an in-memory bar
+   * at `date` computed via `computeAt` against a quote-overlay market. Does
+   * NOT write to `indicators_series`. Safe to call before market close.
+   *
+   * @param date - Target trading day whose value is computed in-memory from
+   *   the overridden quotes. Must be in `tradingDays.getRange()`.
+   * @param quoteOverrides - Raw (unleveraged) quotes keyed by ticker symbol.
+   *   Symbols omitted here fall back to yesterday's close via the overlay.
+   * @param range - Optional filter applied to the returned bars.
+   * @returns Stored historical bars plus (or with) today's in-memory value.
+   */
+  async previewSeries(date: string, quoteOverrides: Record<string, number>, range?: DateRange): Promise<DailyBar[]> {
+    const tradingDays = await this._storage.tradingDays.getRange();
+    if (!tradingDays.includes(date)) {
+      throw new Error(`previewSeries: ${date} is not a trading day`);
+    }
+
+    const overlay = createQuoteOverlay(this._market, { [date]: quoteOverrides }, { fallbackMissingQuotes: true });
+
+    let bars: DailyBar[];
+    if (this.type === 'Threshold') {
+      bars = await this._syntheticThresholdSeries();
+    } else {
+      bars = await this._querySeriesFromDb();
+    }
+
+    const todayValue = await this.computeAt(overlay, date);
+    if (todayValue !== null) {
+      const idx = bars.findIndex((b) => b.date === date);
+      if (idx >= 0) {
+        bars[idx] = { date, value: todayValue };
+      } else {
+        bars = [...bars, { date, value: todayValue }].sort((a, b) => a.date.localeCompare(b.date));
+      }
+    }
+
+    if (range) {
+      bars = bars.filter(
+        (b) => (range.from === undefined || b.date >= range.from) && (range.to === undefined || b.date <= range.to),
+      );
+    }
+
+    return bars;
   }
 }

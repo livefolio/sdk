@@ -4,6 +4,7 @@ import type { MarketProvider } from '../providers/market';
 import type { Comparison } from '../providers/types';
 import type { IndicatorHandle, DailyBar, DateRange } from './indicator';
 import { evaluateSignal } from '../computations/signal';
+import { createQuoteOverlay } from '../providers/quote-overlay';
 
 const ABSOLUTE_TOLERANCE_TYPES = new Set([
   'Return',
@@ -246,5 +247,53 @@ export class SignalHandle {
     }
     const { id } = await this.resolve();
     return this._storage.signals.getLastValue(id);
+  }
+
+  /**
+   * Read-only preview of the signal series with an in-memory bar at `date`
+   * computed via `computeAt` against a quote-overlay market. Does NOT write
+   * to `signals_series`.
+   *
+   * @param date - Target trading day whose boolean is computed in-memory.
+   * @param quoteOverrides - Raw (unleveraged) quotes keyed by ticker symbol.
+   * @param range - Optional filter applied to the returned bars.
+   */
+  async previewSeries(date: string, quoteOverrides: Record<string, number>, range?: DateRange): Promise<DailyBar[]> {
+    const tradingDays = await this._storage.tradingDays.getRange();
+    if (!tradingDays.includes(date)) {
+      throw new Error(`previewSeries: ${date} is not a trading day`);
+    }
+
+    const overlay = createQuoteOverlay(this._market, { [date]: quoteOverrides }, { fallbackMissingQuotes: true });
+
+    let bars = await this._querySeriesFromDb();
+
+    // Derive yesterday's boolean from the in-memory dateMap for hysteresis,
+    // mirroring StrategyHandle._evaluate's preview path.
+    const dateMap = new Map<string, boolean>();
+    for (const bar of bars) dateMap.set(bar.date, bar.value === 1);
+
+    const limitIdx = tradingDays.indexOf(date);
+    const prevDate = limitIdx > 0 ? tradingDays[limitIdx - 1] : undefined;
+    const prevBool = prevDate !== undefined ? (dateMap.get(prevDate) ?? null) : null;
+
+    const todayBool = await this.computeAt(overlay, date, prevBool);
+    if (todayBool !== null) {
+      const numeric = todayBool ? 1 : 0;
+      const idx = bars.findIndex((b) => b.date === date);
+      if (idx >= 0) {
+        bars[idx] = { date, value: numeric };
+      } else {
+        bars = [...bars, { date, value: numeric }].sort((a, b) => a.date.localeCompare(b.date));
+      }
+    }
+
+    if (range) {
+      bars = bars.filter(
+        (b) => (range.from === undefined || b.date >= range.from) && (range.to === undefined || b.date <= range.to),
+      );
+    }
+
+    return bars;
   }
 }

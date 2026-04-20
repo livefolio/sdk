@@ -456,6 +456,45 @@ export class StrategyHandle {
     return alloc ?? this._allocationMap.get(target.allocationId) ?? null;
   }
 
+  /**
+   * Read-only preview of the strategy's allocation series including `date`.
+   * Returns stored historical allocations plus an in-memory bar at `date`
+   * computed via the same overlay path as `previewAllocation`.
+   *
+   * @param date - Target trading day to splice in-memory via overlay market.
+   * @param quoteOverrides - Raw (unleveraged) quotes keyed by ticker symbol.
+   * @param range - Optional filter applied to the returned bars.
+   */
+  async previewSeries(date: string, quoteOverrides: Record<string, number>, range?: DateRange): Promise<StrategyBar[]> {
+    await this.resolve();
+
+    const tradingDays = await this._storage.tradingDays.getRange();
+    if (!tradingDays.includes(date)) {
+      throw new Error(`previewSeries: ${date} is not a trading day`);
+    }
+
+    const overlayMarket = createQuoteOverlay(this._market, { [date]: quoteOverrides }, { fallbackMissingQuotes: true });
+
+    const { allocations, entries } = await this._evaluate(overlayMarket, date);
+
+    const allocById = new Map<number, AllocationHandle>();
+    for (const a of allocations) allocById.set(a.id, a);
+    for (const [id, a] of this._allocationMap) if (!allocById.has(id)) allocById.set(id, a);
+
+    let bars: StrategyBar[] = entries.map((e) => ({
+      date: e.date,
+      allocation: allocById.get(e.allocationId)!,
+    }));
+
+    if (range) {
+      bars = bars.filter(
+        (b) => (range.from === undefined || b.date >= range.from) && (range.to === undefined || b.date <= range.to),
+      );
+    }
+
+    return bars;
+  }
+
   private async _fetchPricesForTickers(
     bars: StrategyBar[],
     from: string,
