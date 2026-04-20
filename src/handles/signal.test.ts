@@ -373,3 +373,103 @@ describe('SignalHandle.computeAt — Issue 4: prevBool from dateMap avoids stora
     expect(getLastValueSpy).toHaveBeenCalled();
   });
 });
+
+// ─── SignalHandle.previewSeries tests ─────────────────────────────────────────
+
+describe('SignalHandle.previewSeries', () => {
+  const tradingDays = ['2026-04-14', '2026-04-15', '2026-04-16', '2026-04-17'];
+  const yesterday = '2026-04-16';
+  const today = '2026-04-17';
+
+  it('appends today in-memory bool to stored historical series', async () => {
+    const historical = [
+      { date: '2026-04-14', value: 0 },
+      { date: '2026-04-15', value: 0 },
+      { date: yesterday, value: 0 },
+    ];
+    const writeSpy = vi.fn();
+    const storage = mockStorage({
+      signals: {
+        findOrCreate: vi.fn().mockResolvedValue({ id: 100 }),
+        getSeries: vi.fn().mockResolvedValue(historical),
+        writeSeries: writeSpy,
+        getLatestSeriesDate: vi.fn().mockResolvedValue(yesterday),
+        getLastValue: vi.fn().mockResolvedValue(0),
+      },
+      tradingDays: {
+        getRange: vi.fn().mockResolvedValue(tradingDays),
+        getLatestClosed: vi.fn().mockResolvedValue(yesterday),
+      },
+    });
+
+    const market = mockMarket();
+    const ind1 = IndicatorHandle.fromResolved(storage, market, 10, {
+      type: 'Price',
+      ticker: TickerHandle.fromResolved(storage, 1, 'SPY', 1),
+      lookback: 0,
+      delay: 0,
+      unit: null,
+      threshold: null,
+    });
+    const ind2 = IndicatorHandle.fromResolved(storage, market, 11, {
+      type: 'Threshold',
+      ticker: null,
+      lookback: 0,
+      delay: 0,
+      unit: null,
+      threshold: 100,
+    });
+
+    vi.spyOn(ind1, 'computeAt').mockResolvedValue(110);
+    vi.spyOn(ind2, 'computeAt').mockResolvedValue(100);
+
+    const handle = SignalHandle.fromResolved(storage, market, 100, {
+      indicator1: ind1,
+      indicator2: ind2,
+      comparison: '>',
+      tolerance: 0,
+    });
+
+    const bars = await handle.previewSeries(today, { SPY: 110 });
+
+    expect(bars).toHaveLength(4);
+    expect(bars[3]).toEqual({ date: today, value: 1 });
+    expect(writeSpy).not.toHaveBeenCalled();
+  });
+
+  it('throws when date is not a trading day', async () => {
+    const storage = mockStorage({
+      tradingDays: {
+        getRange: vi.fn().mockResolvedValue(tradingDays),
+        getLatestClosed: vi.fn().mockResolvedValue(yesterday),
+      },
+    });
+
+    const market = mockMarket();
+    const ind1 = IndicatorHandle.fromResolved(storage, market, 10, {
+      type: 'Price',
+      ticker: TickerHandle.fromResolved(storage, 1, 'SPY', 1),
+      lookback: 0,
+      delay: 0,
+      unit: null,
+      threshold: null,
+    });
+    const ind2 = IndicatorHandle.fromResolved(storage, market, 11, {
+      type: 'Threshold',
+      ticker: null,
+      lookback: 0,
+      delay: 0,
+      unit: null,
+      threshold: 100,
+    });
+
+    const handle = SignalHandle.fromResolved(storage, market, 100, {
+      indicator1: ind1,
+      indicator2: ind2,
+      comparison: '>',
+      tolerance: 0,
+    });
+
+    await expect(handle.previewSeries('2026-04-18', {})).rejects.toThrow('not a trading day');
+  });
+});

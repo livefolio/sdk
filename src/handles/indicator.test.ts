@@ -405,3 +405,124 @@ describe('IndicatorHandle.computeAt — Issue 2: bounded bar fetch', () => {
     expect(callArgs[1]! < '2026-04-17').toBe(true);
   });
 });
+
+// ─── IndicatorHandle.previewSeries tests ──────────────────────────────────────
+
+describe('IndicatorHandle.previewSeries', () => {
+  const tradingDays = ['2026-04-14', '2026-04-15', '2026-04-16', '2026-04-17'];
+  const yesterday = '2026-04-16';
+  const today = '2026-04-17';
+
+  it('appends today in-memory bar to stored historical series', async () => {
+    const historical = [
+      { date: '2026-04-14', value: 100 },
+      { date: '2026-04-15', value: 101 },
+      { date: yesterday, value: 102 },
+    ];
+    const writeSpy = vi.fn();
+    const storage = mockStorage({
+      indicators: {
+        findOrCreate: vi.fn().mockResolvedValue({ id: 10 }),
+        getSeries: vi.fn().mockResolvedValue(historical),
+        writeSeries: writeSpy,
+        getLatestSeriesDate: vi.fn().mockResolvedValue(yesterday),
+        getValue: vi.fn().mockImplementation(async (_id: number, d?: string) => {
+          if (!d) return 102;
+          return historical.find((b) => b.date === d)?.value ?? null;
+        }),
+      },
+      tradingDays: {
+        getRange: vi.fn().mockResolvedValue(tradingDays),
+        getLatestClosed: vi.fn().mockResolvedValue(yesterday),
+      },
+    });
+
+    const baseMarket = mockMarket({
+      fetchBars: vi.fn().mockResolvedValue([{ date: yesterday, value: 102 }]),
+    });
+
+    const ticker = TickerHandle.fromResolved(storage, 1, 'SPY', 1);
+    const handle = IndicatorHandle.fromResolved(storage, baseMarket, 10, {
+      type: 'Price',
+      ticker,
+      lookback: 0,
+      delay: 0,
+      unit: null,
+      threshold: null,
+    });
+
+    const bars = await handle.previewSeries(today, { SPY: 110 });
+
+    expect(bars).toHaveLength(4);
+    expect(bars[3]).toEqual({ date: today, value: 110 });
+    expect(writeSpy).not.toHaveBeenCalled();
+  });
+
+  it('overwrites existing stored bar when date is already in storage', async () => {
+    const historical = [
+      { date: '2026-04-14', value: 100 },
+      { date: '2026-04-15', value: 101 },
+      { date: yesterday, value: 102 },
+      { date: today, value: 103 },
+    ];
+    const writeSpy = vi.fn();
+    const storage = mockStorage({
+      indicators: {
+        findOrCreate: vi.fn().mockResolvedValue({ id: 10 }),
+        getSeries: vi.fn().mockResolvedValue(historical),
+        writeSeries: writeSpy,
+        getLatestSeriesDate: vi.fn().mockResolvedValue(today),
+        getValue: vi.fn().mockImplementation(async (_id: number, d?: string) => {
+          return historical.find((b) => b.date === d)?.value ?? null;
+        }),
+      },
+      tradingDays: {
+        getRange: vi.fn().mockResolvedValue(tradingDays),
+        getLatestClosed: vi.fn().mockResolvedValue(today),
+      },
+    });
+
+    const baseMarket = mockMarket({
+      fetchBars: vi.fn().mockResolvedValue([
+        { date: yesterday, value: 102 },
+        { date: today, value: 103 },
+      ]),
+    });
+
+    const ticker = TickerHandle.fromResolved(storage, 1, 'SPY', 1);
+    const handle = IndicatorHandle.fromResolved(storage, baseMarket, 10, {
+      type: 'Price',
+      ticker,
+      lookback: 0,
+      delay: 0,
+      unit: null,
+      threshold: null,
+    });
+
+    const bars = await handle.previewSeries(today, { SPY: 120 });
+
+    expect(bars).toHaveLength(4);
+    expect(bars[3]).toEqual({ date: today, value: 120 });
+    expect(writeSpy).not.toHaveBeenCalled();
+  });
+
+  it('throws when date is not a trading day', async () => {
+    const storage = mockStorage({
+      tradingDays: {
+        getRange: vi.fn().mockResolvedValue(tradingDays),
+        getLatestClosed: vi.fn().mockResolvedValue(yesterday),
+      },
+    });
+
+    const handle = IndicatorHandle.fromResolved(storage, mockMarket(), 10, {
+      type: 'Price',
+      ticker: TickerHandle.fromResolved(storage, 1, 'SPY', 1),
+      lookback: 0,
+      delay: 0,
+      unit: null,
+      threshold: null,
+    });
+
+    await expect(handle.previewSeries('2026-04-18', {})).rejects.toThrow('not a trading day');
+  });
+});
