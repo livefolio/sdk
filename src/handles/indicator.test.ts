@@ -230,52 +230,62 @@ describe('IndicatorHandle.resolve', () => {
 
 // ─── IndicatorHandle.computeAt tests ──────────────────────────────────────────
 
-describe('IndicatorHandle.computeAt — Issue 1: leverage anchor for computed indicators', () => {
+describe('IndicatorHandle.computeAt — leverage anchor for computed indicators', () => {
   it('compounds from stored leveraged anchor, not raw value, for SMA with leverage', async () => {
     // Setup:
     //   leverage = 3, lookback = 2 (SMA-2)
-    //   Raw price history: 100, 100, 100, 102  (last is today's overlay bar)
-    //   Stored leveraged Price series up to yesterday (2026-04-16):
-    //     anchor at first bar (2026-04-14): 300 (i.e. raw 100 × leverage = 300)
-    //     2026-04-15: 300 (raw stayed flat)
-    //     2026-04-16: 300 (raw stayed flat)
-    //   Today raw = 102 → rawReturn = (102-100)/100 = 0.02
-    //   Leveraged today = 300 * (1 + 3 * 0.02) = 318
+    //   Raw prices stored under the lev=1 Price indicator (id=20): 100, 100 up to yesterday
+    //   Stored leveraged Price series (id=10) anchor for '2026-04-15' = 300
+    //   Today's raw override via computeAt arg: 102
+    //   Leveraged bars after _applyLeverage:
+    //     04-15: 300 (anchor)
+    //     04-16: rawReturn=0 → 300
+    //     04-17: rawReturn=0.02 → 300*(1+3*0.02)=318
     //   SMA-2 of [300, 318] = 309
-
     const storedLeveraged: Record<string, number> = {
       '2026-04-14': 300,
       '2026-04-15': 300,
       '2026-04-16': 300,
     };
 
-    // The overlay market returns raw bars for the fetch window
-    // computeAt will call fetchBars(symbol, from) where from < 2026-04-16
-    const rawBarsInWindow = [
+    const storedRawBars = [
       { date: '2026-04-15', value: 100 },
       { date: '2026-04-16', value: 100 },
-      { date: '2026-04-17', value: 102 }, // today's override
     ];
 
     const storage = mockStorage({
+      tickers: {
+        // lev=3 ticker → id 1 (used by the SMA's ticker), lev=1 ticker → id 2 (used by the raw Price lookup)
+        findOrCreate: vi.fn().mockImplementation(async (_sym: string, lev: number) => ({ id: lev === 1 ? 2 : 1 })),
+      },
       indicators: {
-        findOrCreate: vi.fn().mockResolvedValue({ id: 10 }),
-        getSeries: vi.fn().mockResolvedValue([]),
+        findOrCreate: vi.fn().mockImplementation(async (identity: { type: string; tickerId: number | null }) => {
+          // Raw Price SPY (tickerId = 2) → id 20; everything else → id 10
+          if (identity.type === 'Price' && identity.tickerId === 2) return { id: 20 };
+          return { id: 10 };
+        }),
+        getSeries: vi.fn().mockImplementation(async (indicatorId: number) => {
+          if (indicatorId === 20) return storedRawBars;
+          return [];
+        }),
         writeSeries: vi.fn().mockResolvedValue(undefined),
         getLatestSeriesDate: vi.fn().mockResolvedValue('2026-04-16'),
         getValue: vi.fn().mockImplementation(async (_id: number, date?: string) => {
+          // Anchor lookup for _applyLeverage — returns the stored leveraged value.
           if (!date) return storedLeveraged['2026-04-16'] ?? null;
           return storedLeveraged[date] ?? null;
         }),
       },
+      tradingDays: {
+        getRange: vi.fn().mockResolvedValue([]),
+        // latestClosed = yesterday means date=today (04-17) skips the market fetch — pure storage path.
+        getLatestClosed: vi.fn().mockResolvedValue('2026-04-16'),
+      },
     });
 
-    const overlayMarket = mockMarket({
-      fetchBars: vi.fn().mockResolvedValue(rawBarsInWindow),
-    });
-
+    const market = mockMarket();
     const ticker = TickerHandle.fromResolved(storage, 1, 'SPY', 3);
-    const handle = IndicatorHandle.fromResolved(storage, overlayMarket, 10, {
+    const handle = IndicatorHandle.fromResolved(storage, market, 10, {
       type: 'SMA',
       ticker,
       lookback: 2,
@@ -284,32 +294,30 @@ describe('IndicatorHandle.computeAt — Issue 1: leverage anchor for computed in
       threshold: null,
     });
 
-    const result = await handle.computeAt(overlayMarket, '2026-04-17');
+    const result = await handle.computeAt('2026-04-17', { SPY: 102 });
 
-    // Leveraged bars in window:
-    //   2026-04-15: anchor from storage = 300, leveraged[0] = 300
-    //   2026-04-16: rawReturn=(100-100)/100=0, leveraged[1] = 300*(1+3*0) = 300
-    //   2026-04-17: rawReturn=(102-100)/100=0.02, leveraged[2] = 300*(1+3*0.02) = 318
-    // SMA-2 of last 2 = (300 + 318) / 2 = 309
     expect(result).toBeCloseTo(309, 5);
   });
 
   it('uses stored leveraged anchor, not raw value, for Price indicator with leverage', async () => {
-    // leverage = 3, yesterday raw = 100, yesterday leveraged = 300
-    // today raw = 110 → rawReturn = 0.10 → leveraged today = 300 * (1 + 3*0.10) = 390
-    const storedLeveraged: Record<string, number> = {
-      '2026-04-16': 300,
-    };
-
-    const rawBarsInWindow = [
-      { date: '2026-04-16', value: 100 },
-      { date: '2026-04-17', value: 110 },
-    ];
+    // leverage=3, yesterday raw=100, yesterday leveraged=300
+    // today raw override=110 → rawReturn=0.10 → leveraged today = 300*(1+3*0.10)=390
+    const storedLeveraged: Record<string, number> = { '2026-04-16': 300 };
+    const storedRawBars = [{ date: '2026-04-16', value: 100 }];
 
     const storage = mockStorage({
+      tickers: {
+        findOrCreate: vi.fn().mockImplementation(async (_sym: string, lev: number) => ({ id: lev === 1 ? 2 : 1 })),
+      },
       indicators: {
-        findOrCreate: vi.fn().mockResolvedValue({ id: 10 }),
-        getSeries: vi.fn().mockResolvedValue([]),
+        findOrCreate: vi.fn().mockImplementation(async (identity: { type: string; tickerId: number | null }) => {
+          if (identity.type === 'Price' && identity.tickerId === 2) return { id: 20 };
+          return { id: 10 };
+        }),
+        getSeries: vi.fn().mockImplementation(async (indicatorId: number) => {
+          if (indicatorId === 20) return storedRawBars;
+          return [];
+        }),
         writeSeries: vi.fn().mockResolvedValue(undefined),
         getLatestSeriesDate: vi.fn().mockResolvedValue('2026-04-16'),
         getValue: vi.fn().mockImplementation(async (_id: number, date?: string) => {
@@ -317,14 +325,15 @@ describe('IndicatorHandle.computeAt — Issue 1: leverage anchor for computed in
           return storedLeveraged[date] ?? null;
         }),
       },
+      tradingDays: {
+        getRange: vi.fn().mockResolvedValue([]),
+        getLatestClosed: vi.fn().mockResolvedValue('2026-04-16'),
+      },
     });
 
-    const overlayMarket = mockMarket({
-      fetchBars: vi.fn().mockResolvedValue(rawBarsInWindow),
-    });
-
+    const market = mockMarket();
     const ticker = TickerHandle.fromResolved(storage, 1, 'SPY', 3);
-    const handle = IndicatorHandle.fromResolved(storage, overlayMarket, 10, {
+    const handle = IndicatorHandle.fromResolved(storage, market, 10, {
       type: 'Price',
       ticker,
       lookback: 0,
@@ -333,16 +342,15 @@ describe('IndicatorHandle.computeAt — Issue 1: leverage anchor for computed in
       threshold: null,
     });
 
-    const result = await handle.computeAt(overlayMarket, '2026-04-17');
-    // leveragedPrev = 300, rawReturn = (110-100)/100 = 0.10, leverage = 3
-    // result = 300 * (1 + 3 * 0.10) = 390
+    const result = await handle.computeAt('2026-04-17', { SPY: 110 });
     expect(result).toBeCloseTo(390, 5);
   });
 });
 
-describe('IndicatorHandle.computeAt — Issue 2: bounded bar fetch', () => {
-  it('calls fetchBars with a non-undefined from for a computed indicator with large lookback', async () => {
+describe('IndicatorHandle.computeAt — bounded bar fetch from market (closed-day path)', () => {
+  it('calls fetchBars with a bounded `from` for a computed indicator with large lookback', async () => {
     const fetchBarsSpy = vi.fn().mockResolvedValue([
+      { date: '2026-04-15', value: 100 },
       { date: '2026-04-16', value: 100 },
       { date: '2026-04-17', value: 100 },
     ]);
@@ -355,12 +363,16 @@ describe('IndicatorHandle.computeAt — Issue 2: bounded bar fetch', () => {
         getLatestSeriesDate: vi.fn().mockResolvedValue(null),
         getValue: vi.fn().mockResolvedValue(null),
       },
+      tradingDays: {
+        getRange: vi.fn().mockResolvedValue([]),
+        // Market has closed for `date` → _resolveRawBars prefers market first.
+        getLatestClosed: vi.fn().mockResolvedValue('2026-04-17'),
+      },
     });
 
-    const overlayMarket: MarketProvider = { fetchBars: fetchBarsSpy };
-
+    const market: MarketProvider = { fetchBars: fetchBarsSpy };
     const ticker = TickerHandle.fromResolved(storage, 1, 'SPY', 1);
-    const handle = IndicatorHandle.fromResolved(storage, overlayMarket, 10, {
+    const handle = IndicatorHandle.fromResolved(storage, market, 10, {
       type: 'SMA',
       ticker,
       lookback: 200,
@@ -369,26 +381,28 @@ describe('IndicatorHandle.computeAt — Issue 2: bounded bar fetch', () => {
       threshold: null,
     });
 
-    await handle.computeAt(overlayMarket, '2026-04-17');
+    await handle.computeAt('2026-04-17');
 
     expect(fetchBarsSpy).toHaveBeenCalled();
     const callArgs = fetchBarsSpy.mock.calls[0] as [string, string | undefined];
     expect(callArgs[1]).toBeDefined();
-    expect(callArgs[1]).not.toBeUndefined();
-    // The from date should be well before the target date to cover the 200-bar lookback
     expect(callArgs[1]! < '2026-04-17').toBe(true);
   });
 
-  it('calls fetchBars with a non-undefined from for a fetched (yahoo/fred) indicator', async () => {
+  it('calls fetchBars with a bounded `from` for a fetched (yahoo/fred) indicator', async () => {
     const fetchBarsSpy = vi.fn().mockResolvedValue([
       { date: '2026-04-16', value: 20 },
       { date: '2026-04-17', value: 21 },
     ]);
 
-    const storage = mockStorage();
-    const overlayMarket: MarketProvider = { fetchBars: fetchBarsSpy };
-
-    const handle = IndicatorHandle.fromResolved(storage, overlayMarket, 10, {
+    const storage = mockStorage({
+      tradingDays: {
+        getRange: vi.fn().mockResolvedValue([]),
+        getLatestClosed: vi.fn().mockResolvedValue('2026-04-17'),
+      },
+    });
+    const market: MarketProvider = { fetchBars: fetchBarsSpy };
+    const handle = IndicatorHandle.fromResolved(storage, market, 10, {
       type: 'VIX',
       ticker: null,
       lookback: 0,
@@ -397,7 +411,7 @@ describe('IndicatorHandle.computeAt — Issue 2: bounded bar fetch', () => {
       threshold: null,
     });
 
-    await handle.computeAt(overlayMarket, '2026-04-17');
+    await handle.computeAt('2026-04-17');
 
     expect(fetchBarsSpy).toHaveBeenCalled();
     const callArgs = fetchBarsSpy.mock.calls[0] as [string, string | undefined];

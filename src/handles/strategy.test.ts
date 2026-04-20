@@ -545,20 +545,40 @@ describe('StrategyHandle.previewAllocation', () => {
       fetchBars: vi.fn().mockResolvedValue(opts.basePriceBars),
     };
 
-    // Build storage mock
+    // Build storage mock.
+    //
+    // Under the new storage-first computeAt, preview-path reads for the
+    // underlying `SPY` raw price go through `tickers.findOrCreate('SPY', 1)` +
+    // `indicators.findOrCreate({type:'Price', tickerId, ...})`. We need that to
+    // resolve to a *different* indicator row than ind1 (which represents the
+    // leveraged Price SPY when leverage > 1), otherwise raw and leveraged bars
+    // collapse to one series and the leverage anchor is ignored.
     const mockStorage: StorageProvider = {
       tickers: {
-        findOrCreate: vi.fn().mockResolvedValue({ id: 1 }),
+        // ind1's ticker id is 1; the leverage=1 raw lookup gets id=2 so the
+        // two routes end up at distinct indicator rows below.
+        findOrCreate: vi.fn().mockImplementation(async (_sym: string, lev: number) => ({
+          id: lev === leverage ? 1 : 2,
+        })),
         upsert: vi.fn(),
       } as unknown as StorageProvider['tickers'],
       indicators: {
-        findOrCreate: vi.fn().mockResolvedValue({ id: 10 }),
+        // Raw Price SPY (lev=1 ticker, tickerId=2) → id 20; ind1 + everything
+        // else → id 10. `getSeries` then splits leveraged vs raw bars.
+        findOrCreate: vi.fn().mockImplementation(async (identity: { type: string; tickerId: number | null }) => {
+          if (identity.type === 'Price' && identity.tickerId === 2) return { id: 20 };
+          return { id: 10 };
+        }),
         upsert: vi.fn(),
         getSeries: vi.fn().mockImplementation(async (indicatorId: number) => {
-          // ind1 (id=10) returns historical leveraged price bars if provided, else basePriceBars up to yesterday
+          // ind1 (id=10): leveraged Price series when provided, else raw.
           if (indicatorId === 10) {
-            const bars = opts.historicalLeveragedBars ?? opts.basePriceBars.filter((b) => b.date <= yesterday);
-            return bars;
+            return opts.historicalLeveragedBars ?? opts.basePriceBars.filter((b) => b.date <= yesterday);
+          }
+          // Raw Price SPY (id=20): the storage-first preview lookup always gets
+          // the raw (unleveraged) history — `_applyLeverage` handles the rest.
+          if (indicatorId === 20) {
+            return opts.basePriceBars.filter((b) => b.date <= yesterday);
           }
           // ind2 (id=11) is Threshold — no stored bars
           return [];

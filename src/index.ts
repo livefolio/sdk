@@ -23,4 +23,13 @@ export { StrategyHandle } from './handles/strategy';
 export { PortfolioHandle } from './handles/portfolio';
 export type { StrategyRule, StrategyBar, StrategyOptions } from './handles/strategy';
 export { SimulationHandle } from './backtest/types';
-export type { SimulateOptions, Trade, PortfolioSnapshot } from './backtest/types';
+export type {
+  SimulateOptions,
+  Trade,
+  PortfolioSnapshot,
+  LivePreviewState,
+  StrategyLiveState,
+  LiveRuleState,
+  LiveSignalState,
+  LiveEvaluator,
+} from './backtest/types';

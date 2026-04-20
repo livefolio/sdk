@@ -31,6 +31,44 @@ export interface FinalState {
   leveragedPrices: Record<string, number>;
 }
 
+/** Per-signal slice of a live strategy snapshot. */
+export interface LiveSignalState {
+  indicator1: { value: number | null; date: string | null };
+  indicator2: { value: number | null; date: string | null };
+  isTrue: boolean;
+}
+
+/** Per-rule collection of live signal states, in the same order as the rule's `when` list. */
+export interface LiveRuleState {
+  signals: LiveSignalState[];
+}
+
+/** Full live strategy view for a single evaluation date — no portfolio info. */
+export interface StrategyLiveState {
+  allocation: AllocationHandle | null;
+  activeRuleIndex: number;
+  rules: LiveRuleState[];
+}
+
+/**
+ * Combined live state returned by `SimulationHandle.pushAndPreview`: both the
+ * portfolio snapshot from a `push` and the strategy evaluation at the target
+ * date under the accumulated live-quote overrides.
+ */
+export interface LivePreviewState extends StrategyLiveState {
+  snapshot: PortfolioSnapshot;
+}
+
+/**
+ * Callback shape that `SimulationHandle.pushAndPreview` delegates to. Exists
+ * purely to break the circular import between `SimulationHandle` (in this
+ * file) and `StrategyHandle` (which creates simulations) — a strategy passes
+ * a bound `(date, overrides) => previewLiveState(...)` into the handle.
+ */
+export interface LiveEvaluator {
+  previewLiveState(date: string, overrides: Record<string, number>): Promise<StrategyLiveState>;
+}
+
 export class SimulationHandle {
   readonly series: DailyBar[];
   readonly trades: Trade[];
@@ -42,8 +80,16 @@ export class SimulationHandle {
   private _lastLeveragedPrices: Map<string, number>;
   private _currentLeveragedPrices: Map<string, number>;
   private _lastDate: string;
+  private _pushedQuotes: Record<string, number>;
+  private _liveEvaluator: LiveEvaluator | null;
 
-  constructor(series: DailyBar[], trades: Trade[], startingPortfolio: PortfolioHandle, finalState?: FinalState) {
+  constructor(
+    series: DailyBar[],
+    trades: Trade[],
+    startingPortfolio: PortfolioHandle,
+    finalState?: FinalState,
+    liveEvaluator?: LiveEvaluator,
+  ) {
     this.series = series;
     this.trades = trades;
     this.startingPortfolio = startingPortfolio;
@@ -63,6 +109,9 @@ export class SimulationHandle {
       this._currentLeveragedPrices = new Map();
       this._lastDate = '';
     }
+
+    this._pushedQuotes = {};
+    this._liveEvaluator = liveEvaluator ?? null;
   }
 
   push(...prices: [TickerHandle, number][]): PortfolioSnapshot {
@@ -105,5 +154,54 @@ export class SimulationHandle {
       weights: this._portfolio.weights(priceArray),
       pendingTrades: this._portfolio.trades(this._currentAllocation, priceArray, this._lastDate),
     };
+  }
+
+  /**
+   * One-call live update. Feeds portfolio-relevant ticker prices into `push`
+   * (derived from `quotes` via the running portfolio's holdings), accumulates
+   * every symbol in `quotes` into an internal override map so macro symbols
+   * (e.g. `^VIX`) persist across ticks, then delegates to the simulation's
+   * strategy for rule / signal / indicator evaluation at `date`.
+   *
+   * Without a live evaluator attached, returns just the portfolio snapshot
+   * with allocation/rules/signals empty.
+   *
+   * @param quotes Symbol → raw live price. Portfolio tickers flow through
+   *   `push` for leveraged-equity math; non-portfolio symbols are still
+   *   layered into the overlay so indicators can see them.
+   * @param options.date Target trading day to evaluate against. Defaults to
+   *   the current UTC ISO date; callers with non-UTC semantics or after-hours
+   *   rollover should supply their own.
+   */
+  async pushAndPreview(quotes: Record<string, number>, options: { date?: string } = {}): Promise<LivePreviewState> {
+    const priceArgs: [TickerHandle, number][] = [];
+    if (this._portfolio) {
+      const seen = new Set<string>();
+      for (const [ticker] of this._portfolio.holdings) {
+        if (ticker.symbol === 'CASHX') continue;
+        if (seen.has(ticker.symbol)) continue;
+        const price = quotes[ticker.symbol];
+        if (price !== undefined) {
+          priceArgs.push([ticker, price]);
+          seen.add(ticker.symbol);
+        }
+      }
+    }
+    const snapshot = this.push(...priceArgs);
+
+    // Merge into the running overlay map (macro symbols etc. persist across ticks).
+    for (const [symbol, price] of Object.entries(quotes)) {
+      this._pushedQuotes[symbol] = price;
+    }
+
+    if (!this._liveEvaluator) {
+      return { snapshot, allocation: null, activeRuleIndex: -1, rules: [] };
+    }
+
+    const date = options.date ?? new Date().toISOString().slice(0, 10);
+    // Pass a snapshot copy so downstream callers can retain the object without
+    // seeing it mutate on later ticks.
+    const strategyState = await this._liveEvaluator.previewLiveState(date, { ...this._pushedQuotes });
+    return { snapshot, ...strategyState };
   }
 }
