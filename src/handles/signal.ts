@@ -4,6 +4,7 @@ import type { MarketProvider } from '../providers/market';
 import type { Comparison } from '../providers/types';
 import type { IndicatorHandle, DailyBar, DateRange } from './indicator';
 import { evaluateSignal } from '../computations/signal';
+import { createQuoteOverlay } from '../providers/quote-overlay';
 
 const ABSOLUTE_TOLERANCE_TYPES = new Set([
   'Return',
@@ -161,6 +162,73 @@ export class SignalHandle {
     return this._storage.signals.getSeries(id, range);
   }
 
+  withMarket(market: MarketProvider): SignalHandle {
+    if (market === this._market) return this;
+    return SignalHandle.fromResolved(this._storage, market, this.id, {
+      indicator1: this.indicator1.withMarket(market),
+      indicator2: this.indicator2.withMarket(market),
+      comparison: this.comparison,
+      tolerance: this.tolerance,
+    });
+  }
+
+  /**
+   * Compute the signal's boolean value at `date` using the given market
+   * (typically an overlay market for pre-close preview). Pure — no writes.
+   * Returns null if either indicator cannot produce a value at `date`.
+   *
+   * @param prevBool - The signal's boolean value at the bar immediately
+   *   preceding `date`, used for hysteresis when `tolerance > 0`. If not
+   *   provided, falls back to `storage.signals.getLastValue` (suitable for
+   *   standalone callers). On the preview path `_evaluate` passes this from
+   *   the in-memory `dateMap` so we never read stale storage.
+   */
+  async computeAt(market: MarketProvider, date: string, prevBool?: boolean | null): Promise<boolean | null> {
+    const [v1, v2] = await Promise.all([
+      this.indicator1.computeAt(market, date),
+      this.indicator2.computeAt(market, date),
+    ]);
+    if (v1 === null || v2 === null) return null;
+
+    const absolute = ABSOLUTE_TOLERANCE_TYPES.has(this.indicator1.type);
+
+    // Replicate the evaluateSignal single-bar logic inline (no hysteresis needed
+    // for a single-point preview; we use the last historical value as "prev").
+    if (this.tolerance === 0) {
+      switch (this.comparison) {
+        case '>':
+          return v1 > v2;
+        case '<':
+          return v1 < v2;
+        case '=':
+          return v1 === v2;
+      }
+    }
+
+    const tolerance = this.tolerance;
+    const upper = absolute ? v2 + tolerance : v2 * (1 + tolerance / 100);
+    const lower = absolute ? v2 - tolerance : v2 * (1 - tolerance / 100);
+
+    if (this.comparison === '=') {
+      return v1 >= lower && v1 <= upper;
+    }
+    // For '>' and '<' with tolerance, we need hysteresis (prev state).
+    // Use the in-memory prevBool if provided (preview path); otherwise fall
+    // back to storage (standalone callers / write path).
+    let resolvedPrevBool: boolean;
+    if (prevBool !== undefined && prevBool !== null) {
+      resolvedPrevBool = prevBool;
+    } else {
+      const prev = await this._storage.signals.getLastValue(this.id);
+      resolvedPrevBool = prev === 1;
+    }
+    if (this.comparison === '>') {
+      return resolvedPrevBool ? v1 >= lower : v1 > upper;
+    }
+    // '<'
+    return resolvedPrevBool ? v1 <= upper : v1 < lower;
+  }
+
   // ── Public data access ─────────────────────────────────────────────
 
   async series(range?: DateRange): Promise<DailyBar[]> {
@@ -179,5 +247,53 @@ export class SignalHandle {
     }
     const { id } = await this.resolve();
     return this._storage.signals.getLastValue(id);
+  }
+
+  /**
+   * Read-only preview of the signal series with an in-memory bar at `date`
+   * computed via `computeAt` against a quote-overlay market. Does NOT write
+   * to `signals_series`.
+   *
+   * @param date - Target trading day whose boolean is computed in-memory.
+   * @param quoteOverrides - Raw (unleveraged) quotes keyed by ticker symbol.
+   * @param range - Optional filter applied to the returned bars.
+   */
+  async previewSeries(date: string, quoteOverrides: Record<string, number>, range?: DateRange): Promise<DailyBar[]> {
+    const tradingDays = await this._storage.tradingDays.getRange();
+    if (!tradingDays.includes(date)) {
+      throw new Error(`previewSeries: ${date} is not a trading day`);
+    }
+
+    const overlay = createQuoteOverlay(this._market, { [date]: quoteOverrides }, { fallbackMissingQuotes: true });
+
+    let bars = await this._querySeriesFromDb();
+
+    // Derive yesterday's boolean from the in-memory dateMap for hysteresis,
+    // mirroring StrategyHandle._evaluate's preview path.
+    const dateMap = new Map<string, boolean>();
+    for (const bar of bars) dateMap.set(bar.date, bar.value === 1);
+
+    const limitIdx = tradingDays.indexOf(date);
+    const prevDate = limitIdx > 0 ? tradingDays[limitIdx - 1] : undefined;
+    const prevBool = prevDate !== undefined ? (dateMap.get(prevDate) ?? null) : null;
+
+    const todayBool = await this.computeAt(overlay, date, prevBool);
+    if (todayBool !== null) {
+      const numeric = todayBool ? 1 : 0;
+      const idx = bars.findIndex((b) => b.date === date);
+      if (idx >= 0) {
+        bars[idx] = { date, value: numeric };
+      } else {
+        bars = [...bars, { date, value: numeric }].sort((a, b) => a.date.localeCompare(b.date));
+      }
+    }
+
+    if (range) {
+      bars = bars.filter(
+        (b) => (range.from === undefined || b.date >= range.from) && (range.to === undefined || b.date <= range.to),
+      );
+    }
+
+    return bars;
   }
 }

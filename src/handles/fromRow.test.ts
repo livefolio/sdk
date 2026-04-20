@@ -29,6 +29,7 @@ function mockStorage(): StorageProvider {
       getSeries: vi.fn().mockResolvedValue([]),
       writeSeries: vi.fn().mockResolvedValue(undefined),
       getLatestSeriesDate: vi.fn().mockResolvedValue(null),
+      getLatestAllocationId: vi.fn().mockResolvedValue(null),
       resolveReference: vi.fn().mockResolvedValue({}),
     },
     tradingDays: {

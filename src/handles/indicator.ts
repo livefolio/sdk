@@ -6,6 +6,17 @@ import { getProviderInfo, isRateTickerSymbol } from '../providers/mappings';
 import { getComputation } from '../computations/index';
 import { computeReturns } from '../computations/returns';
 import { computeCalendar } from '../computations/calendar';
+import { createQuoteOverlay } from '../providers/quote-overlay';
+
+/**
+ * Subtract `days` calendar days from an ISO date string (YYYY-MM-DD).
+ * Used to compute a `from` cutoff for bounded bar fetches in `computeAt`.
+ */
+function _subtractCalendarDays(date: string, days: number): string {
+  const d = new Date(date);
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
 
 export interface DailyBar {
   date: string;
@@ -199,28 +210,8 @@ export class IndicatorHandle {
 
     // Apply leverage to daily returns only for fetched (non-computed) indicators.
     // Computed indicators (RSI, SMA, etc.) already read from the leveraged price series.
-    // Rate tickers (DTB3, DFF, etc.) skip leverage compounding: the stored series
-    // stays raw; the simulator applies the leverage multiplier at accrual time.
-    const leverage = this.ticker?.leverage ?? 1;
-    const isRate = isRateTickerSymbol(this.ticker?.symbol ?? null);
-    if (leverage !== 1 && info.provider !== 'computed' && !isRate && bars.length > 0) {
-      // For incremental syncs, anchor the leverage chain to the last stored
-      // leveraged price so we continue from where we left off rather than
-      // restarting from the raw Yahoo price.
-      let anchor: number;
-      if (fromDate) {
-        const lastStored = await this._storage.indicators.getValue(this._resolvedId!, fromDate);
-        anchor = lastStored ?? bars[0]!.value;
-      } else {
-        anchor = bars[0]!.value;
-      }
-      const leveraged: DailyBar[] = [{ date: bars[0]!.date, value: anchor }];
-      for (let i = 1; i < bars.length; i++) {
-        const dailyReturn = (bars[i]!.value - bars[i - 1]!.value) / bars[i - 1]!.value;
-        const prev = leveraged[i - 1]!.value;
-        leveraged.push({ date: bars[i]!.date, value: prev * (1 + leverage * dailyReturn) });
-      }
-      bars = leveraged;
+    if (info.provider !== 'computed') {
+      bars = await this._applyLeverage(bars, fromDate);
     }
 
     // Filter bars up to latestClosed
@@ -239,6 +230,135 @@ export class IndicatorHandle {
   private async _querySeriesFromDb(range?: DateRange): Promise<DailyBar[]> {
     const { id } = await this.resolve();
     return this._storage.indicators.getSeries(id, range);
+  }
+
+  withMarket(market: MarketProvider): IndicatorHandle {
+    if (market === this._market) return this;
+    return IndicatorHandle.fromResolved(this._storage, market, this.id, {
+      type: this.type,
+      ticker: this.ticker,
+      lookback: this.lookback,
+      delay: this.delay,
+      unit: this.unit,
+      threshold: this.threshold,
+    });
+  }
+
+  /**
+   * Apply leverage compounding to a raw bar series, anchored to a stored
+   * leveraged value. Used by both `_sync` and `computeAt` so they stay
+   * consistent.
+   *
+   * `anchorDate` is the date of the last *already-stored* leveraged bar
+   * (i.e., the bar just before `rawBars[0]`). The stored leveraged value
+   * at that date becomes `leveraged[0]`; raw returns are then compounded
+   * forward for each subsequent bar.
+   *
+   * If no stored anchor exists (first-ever sync), falls back to rawBars[0]
+   * as the starting raw value — identical to `_sync`'s behaviour.
+   */
+  private async _applyLeverage(rawBars: DailyBar[], anchorDate: string | undefined): Promise<DailyBar[]> {
+    const leverage = this.ticker?.leverage ?? 1;
+    if (leverage === 1 || rawBars.length === 0) return rawBars;
+    // Rate tickers (DTB3, DFF, etc.) skip leverage compounding: the stored series
+    // stays raw; the simulator applies the leverage multiplier at accrual time.
+    if (isRateTickerSymbol(this.ticker?.symbol ?? null)) return rawBars;
+
+    let anchor: number;
+    if (anchorDate) {
+      const lastStored = await this._storage.indicators.getValue(this._resolvedId!, anchorDate);
+      anchor = lastStored ?? rawBars[0]!.value;
+    } else {
+      anchor = rawBars[0]!.value;
+    }
+
+    const leveraged: DailyBar[] = [{ date: rawBars[0]!.date, value: anchor }];
+    for (let i = 1; i < rawBars.length; i++) {
+      const dailyReturn = (rawBars[i]!.value - rawBars[i - 1]!.value) / rawBars[i - 1]!.value;
+      const prev = leveraged[i - 1]!.value;
+      leveraged.push({ date: rawBars[i]!.date, value: prev * (1 + leverage * dailyReturn) });
+    }
+    return leveraged;
+  }
+
+  /**
+   * Compute the indicator's value at `date` using the given market (typically
+   * an overlay market for pre-close preview). Pure — no writes to storage.
+   *
+   * For fetched types (yahoo/fred): fetches a small window of bars from
+   * `market`, applies leverage compounding anchored to the stored leveraged
+   * value at the bar before `date`.
+   * For computed types (SMA, RSI, etc.): fetches enough raw price bars to
+   * cover the indicator's lookback from `market`, applies leverage anchored
+   * to the stored value just before the fetch window, runs the computation,
+   * and returns the value at `date`.
+   * For Threshold: returns the threshold constant.
+   * For calendar: computes calendar value from the trading days list.
+   * Returns null if the value cannot be computed.
+   */
+  async computeAt(market: MarketProvider, date: string): Promise<number | null> {
+    // Threshold is a special case: it has no market data, just a constant value.
+    if (this.type === 'Threshold') return this.threshold;
+
+    const tickerSymbol = this.ticker?.symbol ?? null;
+    const info = getProviderInfo(this.type, tickerSymbol);
+
+    if (info.provider === 'none') return null;
+
+    if (info.provider === 'calendar') {
+      const allDays = await this._storage.tradingDays.getRange();
+      const dayBars: DailyBar[] = allDays.map((d) => ({ date: d, value: 0 }));
+      const computed = computeCalendar(dayBars, this.type as 'Month' | 'Day of Week' | 'Day of Month' | 'Day of Year');
+      return computed.find((b) => b.date === date)?.value ?? null;
+    }
+
+    if (info.provider === 'computed') {
+      // Fetch enough raw price bars to cover lookback + buffer (weekends/holidays).
+      // We need `lookback` trading days before `date`, so we request a calendar
+      // window of (lookback + 10) days to comfortably cover non-trading days.
+      const from = _subtractCalendarDays(date, this.lookback + 10);
+      const rawBars = await market.fetchBars(info.symbol, from);
+
+      // Apply leverage anchored to the stored leveraged value at the date just
+      // before the first fetched raw bar. This mirrors _sync's anchor logic
+      // exactly: fromDate is the last stored bar, anchor is getValue(id, fromDate).
+      const anchorDate = rawBars.length > 0 ? rawBars[0]!.date : undefined;
+      const priceBars = await this._applyLeverage(rawBars, anchorDate);
+
+      const computeFn = getComputation(this.type);
+      if (!computeFn) throw new Error(`No computation found for type "${this.type}"`);
+      const computed = computeFn(priceBars, this.lookback);
+      return computed.find((b) => b.date === date)?.value ?? null;
+    }
+
+    // yahoo or fred: fetch a small window — just enough to get `date` and one
+    // prior bar (needed for leverage return calculation). 5 calendar days is
+    // enough to bridge a long weekend.
+    const symbol = info.provider === 'yahoo' ? info.symbol : info.seriesId;
+    const from = _subtractCalendarDays(date, 5);
+    const rawBars = await market.fetchBars(symbol, from);
+
+    const leverage = this.ticker?.leverage ?? 1;
+    if (leverage === 1) {
+      return rawBars.find((b) => b.date === date)?.value ?? null;
+    }
+
+    // Apply leverage compounding.
+    // Find the bar just before `date` in rawBars to use as anchor reference.
+    const dateIdx = rawBars.findIndex((b) => b.date === date);
+    if (dateIdx < 0) return null; // date not in bars at all
+
+    // We need the stored leveraged value at the previous day to anchor.
+    const prevBar = rawBars[dateIdx - 1];
+    if (!prevBar) {
+      // No previous bar in the window — can't compound. Return raw value as fallback.
+      return rawBars[dateIdx]!.value;
+    }
+
+    const storedPrev = await this._storage.indicators.getValue(this._resolvedId!, prevBar.date);
+    const leveragedPrev = storedPrev ?? prevBar.value;
+    const rawReturn = (rawBars[dateIdx]!.value - prevBar.value) / prevBar.value;
+    return leveragedPrev * (1 + leverage * rawReturn);
   }
 
   // ── Public data access ─────────────────────────────────────────────
@@ -264,5 +384,51 @@ export class IndicatorHandle {
     await this._ensureFresh();
     const { id } = await this.resolve();
     return this._storage.indicators.getValue(id, date);
+  }
+
+  /**
+   * Read-only preview of the indicator series that includes an in-memory bar
+   * at `date` computed via `computeAt` against a quote-overlay market. Does
+   * NOT write to `indicators_series`. Safe to call before market close.
+   *
+   * @param date - Target trading day whose value is computed in-memory from
+   *   the overridden quotes. Must be in `tradingDays.getRange()`.
+   * @param quoteOverrides - Raw (unleveraged) quotes keyed by ticker symbol.
+   *   Symbols omitted here fall back to yesterday's close via the overlay.
+   * @param range - Optional filter applied to the returned bars.
+   * @returns Stored historical bars plus (or with) today's in-memory value.
+   */
+  async previewSeries(date: string, quoteOverrides: Record<string, number>, range?: DateRange): Promise<DailyBar[]> {
+    const tradingDays = await this._storage.tradingDays.getRange();
+    if (!tradingDays.includes(date)) {
+      throw new Error(`previewSeries: ${date} is not a trading day`);
+    }
+
+    const overlay = createQuoteOverlay(this._market, { [date]: quoteOverrides }, { fallbackMissingQuotes: true });
+
+    let bars: DailyBar[];
+    if (this.type === 'Threshold') {
+      bars = await this._syntheticThresholdSeries();
+    } else {
+      bars = await this._querySeriesFromDb();
+    }
+
+    const todayValue = await this.computeAt(overlay, date);
+    if (todayValue !== null) {
+      const idx = bars.findIndex((b) => b.date === date);
+      if (idx >= 0) {
+        bars[idx] = { date, value: todayValue };
+      } else {
+        bars = [...bars, { date, value: todayValue }].sort((a, b) => a.date.localeCompare(b.date));
+      }
+    }
+
+    if (range) {
+      bars = bars.filter(
+        (b) => (range.from === undefined || b.date >= range.from) && (range.to === undefined || b.date <= range.to),
+      );
+    }
+
+    return bars;
   }
 }
