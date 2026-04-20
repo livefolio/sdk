@@ -252,9 +252,13 @@ export class StrategyHandle {
     }
 
     if (!this._syncing) {
-      this._syncing = this._sync(latestClosed).finally(() => {
-        this._syncing = null;
-      });
+      this._syncing = this._sync(latestClosed)
+        .catch((err) => {
+          console.warn('[sdk] strategy sync failed, using stored data:', err);
+        })
+        .finally(() => {
+          this._syncing = null;
+        });
     }
     await this._syncing;
 

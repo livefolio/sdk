@@ -147,11 +147,19 @@ export class IndicatorHandle {
       return;
     }
 
-    // Need to sync — deduplicate concurrent calls
+    // Need to sync — deduplicate concurrent calls. On sync failure (e.g.,
+    // browser has no market provider, or upstream feed hasn't published the
+    // new date yet), fall back to whatever storage already has and treat the
+    // cache as fresh so downstream callers don't retry the failing sync on
+    // every read.
     if (!this._syncing) {
-      this._syncing = this._sync(latestSeries ?? undefined, latestClosed).finally(() => {
-        this._syncing = null;
-      });
+      this._syncing = this._sync(latestSeries ?? undefined, latestClosed)
+        .catch((err) => {
+          console.warn('[sdk] indicator sync failed, using stored data:', err);
+        })
+        .finally(() => {
+          this._syncing = null;
+        });
     }
     await this._syncing;
 

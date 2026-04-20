@@ -125,9 +125,13 @@ export class SignalHandle {
     }
 
     if (!this._syncing) {
-      this._syncing = this._sync(latestSeries ?? undefined, latestClosed).finally(() => {
-        this._syncing = null;
-      });
+      this._syncing = this._sync(latestSeries ?? undefined, latestClosed)
+        .catch((err) => {
+          console.warn('[sdk] signal sync failed, using stored data:', err);
+        })
+        .finally(() => {
+          this._syncing = null;
+        });
     }
     await this._syncing;
 
