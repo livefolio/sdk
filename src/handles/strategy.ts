@@ -117,6 +117,23 @@ export class StrategyHandle {
     return this._rules;
   }
 
+  marketSymbols(): string[] {
+    const set = new Set<string>();
+    for (const rule of this._rules) {
+      for (const [ticker] of rule.hold.holdings) {
+        if (ticker.symbol !== 'CASHX') set.add(ticker.symbol);
+      }
+      for (const signal of rule.when ?? []) {
+        for (const ind of [signal.indicator1, signal.indicator2]) {
+          if (ind.ticker !== null && ind.ticker.symbol !== 'CASHX') set.add(ind.ticker.symbol);
+          if (ind.type === 'VIX') set.add('^VIX');
+          if (ind.type === 'VIX3M') set.add('^VIX3M');
+        }
+      }
+    }
+    return Array.from(set).sort();
+  }
+
   async resolve(): Promise<{ id: number }> {
     if (this._resolvedId != null) return { id: this._resolvedId };
     if (!this._resolving) {

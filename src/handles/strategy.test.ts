@@ -416,6 +416,88 @@ describe('StrategyHandle.resolve - reference mode', () => {
   });
 });
 
+describe('StrategyHandle.marketSymbols', () => {
+  it('returns sorted unique symbols from hold allocations, excluding CASHX', () => {
+    const cashx = new TickerHandle(storage, 'CASHX', 1);
+    const spy = new TickerHandle(storage, 'SPY', 1);
+    const allocCash = new AllocationHandle(storage, [[cashx, 1.0]]);
+    const allocSpy = new AllocationHandle(storage, [[spy, 1.0]]);
+    const handle = new StrategyHandle(storage, market, {
+      name: 'Test',
+      rules: [{ hold: allocSpy }, { hold: allocCash }],
+    });
+    // allocSpy contributes SPY; allocCash contributes CASHX which is skipped
+    expect(handle.marketSymbols()).toEqual(['SPY']);
+  });
+
+  it('includes VIX indicator type as ^VIX', () => {
+    const alloc = makeAllocation();
+    const signal = makeSignal(); // indicator1 is VIX type
+    const allocFallback = makeAllocation();
+    const handle = new StrategyHandle(storage, market, {
+      name: 'Test',
+      rules: [{ when: [signal], hold: alloc }, { hold: allocFallback }],
+    });
+    const symbols = handle.marketSymbols();
+    expect(symbols).toContain('^VIX');
+    expect(symbols).toContain('SPY');
+    expect(symbols).toEqual([...symbols].sort());
+  });
+
+  it('returns empty array when only CASHX holdings and no indicator tickers', () => {
+    const cashx = new TickerHandle(storage, 'CASHX', 1);
+    const alloc = new AllocationHandle(storage, [[cashx, 1.0]]);
+    const handle = new StrategyHandle(storage, market, { name: 'Test', rules: [{ hold: alloc }] });
+    expect(handle.marketSymbols()).toEqual([]);
+  });
+
+  it('deduplicates symbols appearing in multiple rules', () => {
+    const spy = new TickerHandle(storage, 'SPY', 1);
+    const alloc1 = new AllocationHandle(storage, [[spy, 1.0]]);
+    const alloc2 = new AllocationHandle(storage, [[spy, 1.0]]);
+    const handle = new StrategyHandle(storage, market, {
+      name: 'Test',
+      rules: [{ hold: alloc1 }, { hold: alloc2 }],
+    });
+    expect(handle.marketSymbols()).toEqual(['SPY']);
+  });
+
+  it('includes ticker symbols from signal indicators', () => {
+    const spyTicker = new TickerHandle(storage, 'SPY', 1);
+    const ind1 = new IndicatorHandle(storage, market, {
+      type: 'Price',
+      ticker: spyTicker,
+      lookback: 200,
+      delay: 0,
+      unit: null,
+      threshold: null,
+    });
+    const ind2 = new IndicatorHandle(storage, market, {
+      type: 'SMA',
+      ticker: spyTicker,
+      lookback: 200,
+      delay: 0,
+      unit: null,
+      threshold: null,
+    });
+    const signal = new SignalHandle(storage, market, {
+      indicator1: ind1,
+      indicator2: ind2,
+      comparison: '>',
+      tolerance: 0,
+    });
+    const cashx = new TickerHandle(storage, 'CASHX', 1);
+    const allocCash = new AllocationHandle(storage, [[cashx, 1.0]]);
+    const allocFallback = new AllocationHandle(storage, [[cashx, 1.0]]);
+    const handle = new StrategyHandle(storage, market, {
+      name: 'Test',
+      rules: [{ when: [signal], hold: allocCash }, { hold: allocFallback }],
+    });
+    // SPY appears via indicator tickers; CASHX skipped in holdings
+    expect(handle.marketSymbols()).toEqual(['SPY']);
+  });
+});
+
 describe('StrategyHandle.series', () => {
   it('syncs signals, evaluates strategy, and returns StrategyBar[]', async () => {
     const signalBars: DailyBar[] = [

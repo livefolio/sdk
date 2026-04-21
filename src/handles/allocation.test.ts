@@ -153,6 +153,47 @@ describe('AllocationHandle.resolve', () => {
   });
 });
 
+describe('AllocationHandle.toJSON', () => {
+  it('single holding returns [{symbol, leverage, weight}]', () => {
+    const storage = mockStorage();
+    const spy = new TickerHandle(storage, 'SPY', 1);
+    const handle = new AllocationHandle(storage, [[spy, 1.0]]);
+    expect(handle.toJSON()).toEqual([{ symbol: 'SPY', leverage: 1, weight: 1.0 }]);
+  });
+
+  it('multiple holdings are sorted by (symbol, leverage) ascending', () => {
+    const storage = mockStorage();
+    const tlt = new TickerHandle(storage, 'TLT', 1);
+    const spy1 = new TickerHandle(storage, 'SPY', 1);
+    const spy2 = new TickerHandle(storage, 'SPY', 2);
+    const handle = new AllocationHandle(storage, [
+      [tlt, 0.3],
+      [spy1, 0.3],
+      [spy2, 0.4],
+    ]);
+    expect(handle.toJSON()).toEqual([
+      { symbol: 'SPY', leverage: 1, weight: 0.3 },
+      { symbol: 'SPY', leverage: 2, weight: 0.4 },
+      { symbol: 'TLT', leverage: 1, weight: 0.3 },
+    ]);
+  });
+
+  it('JSON.stringify uses toJSON hook', () => {
+    const storage = mockStorage();
+    const spy = new TickerHandle(storage, 'SPY', 1);
+    const gld = new TickerHandle(storage, 'GLD', 1);
+    const handle = new AllocationHandle(storage, [
+      [spy, 0.6],
+      [gld, 0.4],
+    ]);
+    const parsed = JSON.parse(JSON.stringify(handle)) as unknown[];
+    expect(parsed).toEqual([
+      { symbol: 'GLD', leverage: 1, weight: 0.4 },
+      { symbol: 'SPY', leverage: 1, weight: 0.6 },
+    ]);
+  });
+});
+
 describe('AllocationHandle.fromResolved', () => {
   it('creates a pre-resolved handle with .id accessible immediately', () => {
     const storage = mockStorage();
