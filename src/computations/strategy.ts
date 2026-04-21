@@ -35,17 +35,17 @@ export function computeRebalanceDates(tradingDays: string[], freq: TradingFreq, 
 
   const groups = new Map<string, number[]>();
   for (let i = 0; i < tradingDays.length; i++) {
-    const key = getPeriodKey(tradingDays[i], freq);
+    const key = getPeriodKey(tradingDays[i]!, freq);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(i);
   }
 
   const result = new Set<string>();
   for (const indices of groups.values()) {
-    const lastIdx = indices[indices.length - 1];
+    const lastIdx = indices[indices.length - 1]!;
     const targetIdx = lastIdx - offset;
     if (targetIdx >= 0 && targetIdx < tradingDays.length) {
-      result.add(tradingDays[targetIdx]);
+      result.add(tradingDays[targetIdx]!);
     }
   }
 

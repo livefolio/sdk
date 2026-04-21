@@ -22,6 +22,7 @@ export { AllocationHandle } from './handles/allocation';
 export { StrategyHandle } from './handles/strategy';
 export { PortfolioHandle } from './handles/portfolio';
 export type { StrategyRule, StrategyBar, StrategyOptions } from './handles/strategy';
+export { computeRebalanceDates } from './computations/strategy';
 export { SimulationHandle } from './backtest/types';
 export type {
   SimulateOptions,
