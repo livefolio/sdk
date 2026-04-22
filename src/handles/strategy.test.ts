@@ -117,6 +117,7 @@ describe('StrategyHandle.resolve - create mode', () => {
         writeSeries: vi.fn(),
         getLatestSeriesDate: vi.fn(),
         getValue: vi.fn(),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
       signals: {
         findOrCreate: vi.fn().mockResolvedValue({ id: 100 }),
@@ -203,6 +204,7 @@ describe('StrategyHandle.resolve - create mode', () => {
         writeSeries: vi.fn(),
         getLatestSeriesDate: vi.fn(),
         getValue: vi.fn(),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
       signals: {
         findOrCreate: vi.fn(),
@@ -270,6 +272,7 @@ describe('StrategyHandle.resolve - reference mode', () => {
         writeSeries: vi.fn(),
         getLatestSeriesDate: vi.fn(),
         getValue: vi.fn(),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
       signals: {
         findOrCreate: vi.fn(),
@@ -336,6 +339,7 @@ describe('StrategyHandle.resolve - reference mode', () => {
         writeSeries: vi.fn(),
         getLatestSeriesDate: vi.fn(),
         getValue: vi.fn(),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
       signals: {
         findOrCreate: vi.fn(),
@@ -387,6 +391,7 @@ describe('StrategyHandle.resolve - reference mode', () => {
         writeSeries: vi.fn(),
         getLatestSeriesDate: vi.fn(),
         getValue: vi.fn(),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
       signals: {
         findOrCreate: vi.fn(),
@@ -673,6 +678,7 @@ describe('StrategyHandle.previewAllocation', () => {
           if (!date) return bars[bars.length - 1]?.value ?? null;
           return bars.find((b) => b.date === date)?.value ?? null;
         }),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
       signals: {
         findOrCreate: vi.fn().mockResolvedValue({ id: 100 }),
@@ -1000,6 +1006,7 @@ describe('StrategyHandle.previewSeries', () => {
           if (!date) return bars[bars.length - 1]?.value ?? null;
           return bars.find((b) => b.date === date)?.value ?? null;
         }),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
       signals: {
         findOrCreate: vi.fn().mockResolvedValue({ id: 100 }),

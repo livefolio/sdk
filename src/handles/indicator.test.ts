@@ -15,6 +15,7 @@ function mockStorage(overrides?: Partial<StorageProvider>): StorageProvider {
       writeSeries: vi.fn().mockResolvedValue(undefined),
       getLatestSeriesDate: vi.fn().mockResolvedValue(null),
       getValue: vi.fn().mockResolvedValue(null),
+      getLatestBar: vi.fn().mockResolvedValue(null),
     },
     signals: {
       findOrCreate: vi.fn().mockResolvedValue({ id: 1 }),
@@ -109,6 +110,7 @@ describe('IndicatorHandle.resolve', () => {
         writeSeries: vi.fn().mockResolvedValue(undefined),
         getLatestSeriesDate: vi.fn().mockResolvedValue(null),
         getValue: vi.fn().mockResolvedValue(null),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
     });
     const market = mockMarket();
@@ -146,6 +148,7 @@ describe('IndicatorHandle.resolve', () => {
         writeSeries: vi.fn().mockResolvedValue(undefined),
         getLatestSeriesDate: vi.fn().mockResolvedValue(null),
         getValue: vi.fn().mockResolvedValue(null),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
     });
     const market = mockMarket();
@@ -181,6 +184,7 @@ describe('IndicatorHandle.resolve', () => {
         writeSeries: vi.fn().mockResolvedValue(undefined),
         getLatestSeriesDate: vi.fn().mockResolvedValue(null),
         getValue: vi.fn().mockResolvedValue(null),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
     });
     const market = mockMarket();
@@ -208,6 +212,7 @@ describe('IndicatorHandle.resolve', () => {
         writeSeries: vi.fn().mockResolvedValue(undefined),
         getLatestSeriesDate: vi.fn().mockResolvedValue(null),
         getValue: vi.fn().mockResolvedValue(null),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
     });
     const market = mockMarket();
@@ -275,6 +280,7 @@ describe('IndicatorHandle.computeAt — leverage anchor for computed indicators'
           if (!date) return storedLeveraged['2026-04-16'] ?? null;
           return storedLeveraged[date] ?? null;
         }),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
       tradingDays: {
         getRange: vi.fn().mockResolvedValue([]),
@@ -324,6 +330,7 @@ describe('IndicatorHandle.computeAt — leverage anchor for computed indicators'
           if (!date) return storedLeveraged['2026-04-16'] ?? null;
           return storedLeveraged[date] ?? null;
         }),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
       tradingDays: {
         getRange: vi.fn().mockResolvedValue([]),
@@ -362,6 +369,7 @@ describe('IndicatorHandle.computeAt — bounded bar fetch from market (closed-da
         writeSeries: vi.fn().mockResolvedValue(undefined),
         getLatestSeriesDate: vi.fn().mockResolvedValue(null),
         getValue: vi.fn().mockResolvedValue(null),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
       tradingDays: {
         getRange: vi.fn().mockResolvedValue([]),
@@ -444,6 +452,7 @@ describe('IndicatorHandle.previewSeries', () => {
           if (!d) return 102;
           return historical.find((b) => b.date === d)?.value ?? null;
         }),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
       tradingDays: {
         getRange: vi.fn().mockResolvedValue(tradingDays),
@@ -489,6 +498,7 @@ describe('IndicatorHandle.previewSeries', () => {
         getValue: vi.fn().mockImplementation(async (_id: number, d?: string) => {
           return historical.find((b) => b.date === d)?.value ?? null;
         }),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
       tradingDays: {
         getRange: vi.fn().mockResolvedValue(tradingDays),

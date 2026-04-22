@@ -17,6 +17,7 @@ function mockStorage(overrides?: Partial<StorageProvider>): StorageProvider {
       writeSeries: vi.fn().mockResolvedValue(undefined),
       getLatestSeriesDate: vi.fn().mockResolvedValue(null),
       getValue: vi.fn().mockResolvedValue(null),
+      getLatestBar: vi.fn().mockResolvedValue(null),
     },
     signals: {
       findOrCreate: vi.fn().mockResolvedValue({ id: 100 }),
@@ -151,6 +152,7 @@ describe('SignalHandle.resolve', () => {
         writeSeries: vi.fn().mockResolvedValue(undefined),
         getLatestSeriesDate: vi.fn().mockResolvedValue(null),
         getValue: vi.fn().mockResolvedValue(null),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
       signals: {
         findOrCreate: vi.fn().mockResolvedValue({ id: 100 }),
