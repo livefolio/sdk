@@ -14,3 +14,20 @@ export function computeEma(bars: DailyBar[], lookback: number): DailyBar[] {
   }
   return result;
 }
+
+export interface EmaState {
+  ema: number;
+}
+
+export function emaInitialState(bars: DailyBar[], lookback: number): EmaState | null {
+  if (bars.length < lookback) return null;
+  const series = computeEma(bars, lookback);
+  if (series.length === 0) return null;
+  return { ema: series[series.length - 1]!.value };
+}
+
+export function emaNext(prev: EmaState, newRaw: number, lookback: number): { value: number; state: EmaState } {
+  const multiplier = 2 / (lookback + 1);
+  const ema = newRaw * multiplier + prev.ema * (1 - multiplier);
+  return { value: ema, state: { ema } };
+}
