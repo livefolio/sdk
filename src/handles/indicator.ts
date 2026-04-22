@@ -212,12 +212,7 @@ export class IndicatorHandle {
         if (raw.date > horizon) break;
         const step =
           this.type === 'Return' && info.provider === 'computed' && info.rateSeries
-            ? (await import('../computations/returns')).returnNext(
-                state as { tail: number[] },
-                raw.value,
-                this.lookback,
-                'abs',
-              )
+            ? returnNext(state as { tail: number[] }, raw.value, this.lookback, 'abs')
             : nextFn(state, raw.value, this.lookback);
         newBars.push({ date: raw.date, value: step.value });
         state = step.state;
