@@ -342,8 +342,20 @@ export class StrategyHandle {
     const lastAllocId = await this._storage.strategies.getLatestAllocationId(id);
 
     // Incremental window: (lastDate, limitDate], bounded by tradingDays.
-    const startIdx = tradingDays.indexOf(lastDate) + 1;
-    const newDays = tradingDays.slice(startIdx, limitIdx + 1);
+    const incrementalStartIdx = tradingDays.indexOf(lastDate) + 1;
+    const incrementalDays = tradingDays.slice(incrementalStartIdx, limitIdx + 1);
+
+    // Preview-only refresh: when overrides are provided but the stored series
+    // already covers limitDate (common case: `previewAllocation` called with
+    // `date = latestClosed` after post-close sync). Without this branch, the
+    // incremental path returns no entries and previewAllocation returns null
+    // for any day the strategy has already been evaluated. Guarded to
+    // `limitDate === lastDate` so we only re-evaluate today — re-evaluating
+    // a strictly-past day under overrides would mis-seed `current` from the
+    // latest stored allocation instead of the correct day-before allocation.
+    const isOverrideRefresh = incrementalDays.length === 0 && overrides !== undefined && limitDate === lastDate;
+    const newDays = isOverrideRefresh ? [limitDate] : incrementalDays;
+    const startIdx = isOverrideRefresh ? limitIdx : incrementalStartIdx;
     if (newDays.length === 0) return { allocations, entries: [] };
 
     // Build signal bar maps only for the new window.
