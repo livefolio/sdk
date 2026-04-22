@@ -22,6 +22,8 @@ vi.mock('../providers/mappings.js', () => ({
 
 vi.mock('../computations/index.js', () => ({
   getComputation: vi.fn().mockReturnValue(null),
+  getNextComputation: vi.fn().mockReturnValue(undefined),
+  getInitialStateFn: vi.fn().mockReturnValue(undefined),
 }));
 
 vi.mock('../computations/calendar.js', () => ({
