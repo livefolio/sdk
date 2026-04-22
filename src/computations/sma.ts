@@ -12,3 +12,18 @@ export function computeSma(bars: DailyBar[], lookback: number): DailyBar[] {
   }
   return result;
 }
+
+export interface SmaState {
+  tail: number[];
+}
+
+export function smaInitialState(bars: DailyBar[], lookback: number): SmaState | null {
+  if (bars.length < lookback) return null;
+  return { tail: bars.slice(-lookback).map((b) => b.value) };
+}
+
+export function smaNext(prev: SmaState, newRaw: number, lookback: number): { value: number; state: SmaState } {
+  const tail = [...prev.tail.slice(1), newRaw];
+  const sum = tail.reduce((a, b) => a + b, 0);
+  return { value: sum / lookback, state: { tail } };
+}
