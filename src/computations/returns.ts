@@ -13,3 +13,24 @@ export function computeReturns(bars: DailyBar[], lookback: number, mode: ReturnM
   }
   return result;
 }
+
+export interface ReturnState {
+  tail: number[];
+}
+
+export function returnInitialState(bars: DailyBar[], lookback: number): ReturnState | null {
+  if (bars.length < lookback + 1) return null;
+  return { tail: bars.slice(-(lookback + 1)).map((b) => b.value) };
+}
+
+export function returnNext(
+  prev: ReturnState,
+  newRaw: number,
+  lookback: number,
+  mode: ReturnMode = 'pct',
+): { value: number; state: ReturnState } {
+  const tail = [...prev.tail.slice(1), newRaw];
+  const old = tail[0]!;
+  const value = mode === 'abs' ? newRaw - old : (newRaw - old) / old;
+  return { value, state: { tail } };
+}
