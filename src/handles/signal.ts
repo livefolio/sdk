@@ -113,15 +113,21 @@ export class SignalHandle {
 
     if (this._cachedAsOf === latestClosed) return;
 
-    // Ensure both indicators are fresh first
-    await Promise.all([this.indicator1.series(), this.indicator2.series()]);
-
     const latestSeries = await this._getLatestSignalSeriesDate(id);
 
     if (latestSeries === latestClosed) {
       this._cachedSeries = null;
       this._cachedAsOf = latestClosed;
       return;
+    }
+
+    // Determine whether the single-bar fast path applies so we know whether to
+    // pre-sync the indicator series.  The fast path uses `computeAt` and handles
+    // its own freshness; the cold/multi-bar path requires indicators to be
+    // synced to storage first.
+    const isFastPath = await this._isSingleBarFastPath(latestSeries ?? undefined, latestClosed);
+    if (!isFastPath) {
+      await Promise.all([this.indicator1.series(), this.indicator2.series()]);
     }
 
     if (!this._syncing) {
@@ -139,22 +145,69 @@ export class SignalHandle {
     this._cachedAsOf = latestClosed;
   }
 
+  private async _isSingleBarFastPath(fromDate: string | undefined, latestClosed: string): Promise<boolean> {
+    if (!fromDate) return false;
+    const tradingDays = await this._storage.tradingDays.getRange();
+    const fromIdx = tradingDays.indexOf(fromDate);
+    const closedIdx = tradingDays.indexOf(latestClosed);
+    return fromIdx >= 0 && closedIdx === fromIdx + 1;
+  }
+
   private async _sync(fromDate: string | undefined, latestClosed: string): Promise<void> {
     const { id } = await this.resolve();
 
+    const absolute = ABSOLUTE_TOLERANCE_TYPES.has(this.indicator1.type);
+
+    // Single-bar fast path: we have a checkpoint (fromDate), and the next bar to
+    // produce is the trading day immediately after fromDate.
+    if (fromDate) {
+      const tradingDays = await this._storage.tradingDays.getRange();
+      const fromIdx = tradingDays.indexOf(fromDate);
+      const closedIdx = tradingDays.indexOf(latestClosed);
+      if (fromIdx >= 0 && closedIdx === fromIdx + 1) {
+        const newDate = tradingDays[closedIdx]!;
+        const [v1, v2] = await Promise.all([
+          this.indicator1.computeAt(newDate, undefined),
+          this.indicator2.computeAt(newDate, undefined),
+        ]);
+        if (v1 === null || v2 === null) return;
+        const prev = (await this._getLastSignalValue(id)) ?? undefined;
+        const value = this._evaluateOneBar(v1, v2, absolute, prev);
+        await this._upsertSeries([{ date: newDate, value }]);
+        return;
+      }
+    }
+
+    // Existing multi-bar / cold path.
     const range = fromDate ? { from: fromDate } : undefined;
     const [series1, series2] = await Promise.all([this.indicator1.series(range), this.indicator2.series(range)]);
-
     const previousValue = fromDate ? ((await this._getLastSignalValue(id)) ?? undefined) : undefined;
-
-    const absolute = ABSOLUTE_TOLERANCE_TYPES.has(this.indicator1.type);
     const signalBars = evaluateSignal(series1, series2, this.comparison, this.tolerance, absolute, previousValue);
-
     const bars = signalBars.filter((b) => b.date <= latestClosed);
+    if (bars.length > 0) await this._upsertSeries(bars);
+  }
 
-    if (bars.length > 0) {
-      await this._upsertSeries(bars);
+  private _evaluateOneBar(v1: number, v2: number, absolute: boolean, prev: number | undefined): number {
+    if (this.tolerance === 0) {
+      switch (this.comparison) {
+        case '>':
+          return v1 > v2 ? 1 : 0;
+        case '<':
+          return v1 < v2 ? 1 : 0;
+        case '=':
+          return v1 === v2 ? 1 : 0;
+      }
     }
+    const upper = absolute ? v2 + this.tolerance : v2 * (1 + this.tolerance / 100);
+    const lower = absolute ? v2 - this.tolerance : v2 * (1 - this.tolerance / 100);
+    if (this.comparison === '=') return v1 >= lower && v1 <= upper ? 1 : 0;
+    if (prev === undefined) {
+      return this.comparison === '>' ? (v1 > v2 ? 1 : 0) : v1 < v2 ? 1 : 0;
+    }
+    if (this.comparison === '>') {
+      return prev === 1 ? (v1 < lower ? 0 : 1) : v1 > upper ? 1 : 0;
+    }
+    return prev === 1 ? (v1 > upper ? 0 : 1) : v1 < lower ? 1 : 0;
   }
 
   private async _upsertSeries(bars: DailyBar[]): Promise<void> {
