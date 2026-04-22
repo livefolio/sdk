@@ -301,21 +301,112 @@ export class StrategyHandle {
    * map) we take the read-only preview path: historical signal bars come
    * straight from storage, today's bar is computed in-memory via
    * `signal.computeAt(date, overrides, prevBool)`, and nothing is written.
+   *
+   * Incremental path: when a strategy checkpoint exists (`getLatestSeriesDate`
+   * returns non-null), only the window (lastDate, limitDate] is processed.
+   * The current allocation is carried forward from `getLatestAllocationId`.
+   * Bootstrap: when no checkpoint exists, falls back to `_evaluateCold` which
+   * runs the full-history evaluation.
    */
   private async _evaluate(
     limitDate: string,
     overrides?: Record<string, number>,
   ): Promise<{ allocations: AllocationHandle[]; entries: StrategySeriesEntry[] }> {
-    const allSignals = new Set<SignalHandle>();
-    for (const rule of this._rules) {
-      if (rule.when) rule.when.forEach((s) => allSignals.add(s));
+    const { id } = await this.resolve();
+    const lastDate = await this._storage.strategies.getLatestSeriesDate(id);
+
+    const tradingDays = await this._storage.tradingDays.getRange();
+    const limitIdx = tradingDays.indexOf(limitDate);
+
+    // Build the allocation index map exactly once per call.
+    const allocations: AllocationHandle[] = [];
+    const allocIndexMap = new Map<number, number>();
+    const rulesInput = this._rules.map((rule) => {
+      let allocIdx = allocIndexMap.get(rule.hold.id);
+      if (allocIdx === undefined) {
+        allocIdx = allocations.length;
+        allocations.push(rule.hold);
+        allocIndexMap.set(rule.hold.id, allocIdx);
+      }
+      return {
+        signalIds: (rule.when ?? []).map((s) => s.id),
+        allocationIndex: allocIdx,
+      };
+    });
+
+    // Bootstrap: no checkpoint yet → fall back to full history compute.
+    if (lastDate === null) {
+      return this._evaluateCold(limitDate, overrides, rulesInput, allocations, tradingDays);
     }
 
-    const signalSeries = new Map<number, Map<string, boolean>>();
+    const lastAllocId = await this._storage.strategies.getLatestAllocationId(id);
 
-    // Collect the ordered list of trading days once so the preview path can
-    // look up the day immediately before limitDate without a second storage call.
-    const tradingDays = await this._storage.tradingDays.getRange();
+    // Incremental window: (lastDate, limitDate], bounded by tradingDays.
+    const startIdx = tradingDays.indexOf(lastDate) + 1;
+    const newDays = tradingDays.slice(startIdx, limitIdx + 1);
+    if (newDays.length === 0) return { allocations, entries: [] };
+
+    // Build signal bar maps only for the new window.
+    const allSignals = new Set<SignalHandle>();
+    for (const rule of this._rules) if (rule.when) rule.when.forEach((s) => allSignals.add(s));
+    const signalSeries = new Map<number, Map<string, boolean>>();
+    await Promise.all(
+      Array.from(allSignals).map(async (signal) => {
+        const bars =
+          overrides === undefined
+            ? await signal.series({ from: newDays[0]!, to: limitDate })
+            : await this._storage.signals.getSeries(signal.id, { from: newDays[0]!, to: limitDate });
+        const dateMap = new Map<string, boolean>();
+        for (const bar of bars) dateMap.set(bar.date, bar.value === 1);
+        if (overrides !== undefined) {
+          const prevDateIdx = startIdx - 1 >= 0 ? tradingDays[startIdx - 1] : undefined;
+          const prevBool = prevDateIdx !== undefined ? (await signal.value(prevDateIdx)) === 1 : null;
+          const todayValue = await signal.computeAt(limitDate, overrides, prevBool);
+          if (todayValue !== null) dateMap.set(limitDate, todayValue);
+        }
+        signalSeries.set(signal.id, dateMap);
+      }),
+    );
+
+    const rebalanceDates = computeRebalanceDates(tradingDays, this._freq, this._offset);
+
+    // Walk new days, carrying forward `current` from the checkpoint allocation.
+    const entries: StrategySeriesEntry[] = [];
+    let current: number | undefined = lastAllocId !== null ? (allocIndexMap.get(lastAllocId) ?? undefined) : undefined;
+
+    for (const date of newDays) {
+      if (rebalanceDates.has(date)) {
+        for (const rule of rulesInput) {
+          if (rule.signalIds.length === 0) {
+            current = rule.allocationIndex;
+            break;
+          }
+          const allTrue = rule.signalIds.every((sid) => signalSeries.get(sid)?.get(date) ?? false);
+          if (allTrue) {
+            current = rule.allocationIndex;
+            break;
+          }
+        }
+      }
+      if (current !== undefined) {
+        entries.push({ date, allocationId: allocations[current]!.id });
+      }
+    }
+
+    return { allocations, entries };
+  }
+
+  // Renamed body of the old _evaluate — used only for first-ever evaluate (bootstrap).
+  private async _evaluateCold(
+    limitDate: string,
+    overrides: Record<string, number> | undefined,
+    rulesInput: { signalIds: number[]; allocationIndex: number }[],
+    allocations: AllocationHandle[],
+    tradingDays: string[],
+  ): Promise<{ allocations: AllocationHandle[]; entries: StrategySeriesEntry[] }> {
+    const allSignals = new Set<SignalHandle>();
+    for (const rule of this._rules) if (rule.when) rule.when.forEach((s) => allSignals.add(s));
+    const signalSeries = new Map<number, Map<string, boolean>>();
 
     if (overrides === undefined) {
       // Normal (post-close) path: sync signals through storage, may write.
@@ -358,27 +449,10 @@ export class StrategyHandle {
     }
 
     const rebalanceDates = computeRebalanceDates(tradingDays, this._freq, this._offset);
-
-    const allocations: AllocationHandle[] = [];
-    const allocIndexMap = new Map<number, number>();
-    const rulesInput = this._rules.map((rule) => {
-      let allocIdx = allocIndexMap.get(rule.hold.id);
-      if (allocIdx === undefined) {
-        allocIdx = allocations.length;
-        allocations.push(rule.hold);
-        allocIndexMap.set(rule.hold.id, allocIdx);
-      }
-      return {
-        signalIds: (rule.when ?? []).map((s) => s.id),
-        allocationIndex: allocIdx,
-      };
-    });
-
     const evalResult = evaluateStrategy(signalSeries, rulesInput, rebalanceDates, tradingDays);
     const entries: StrategySeriesEntry[] = Array.from(evalResult.entries())
       .filter(([date]) => date <= limitDate)
       .map(([date, allocIdx]) => ({ date, allocationId: allocations[allocIdx]!.id }));
-
     return { allocations, entries };
   }
 
@@ -504,10 +578,36 @@ export class StrategyHandle {
     for (const a of allocations) allocById.set(a.id, a);
     for (const [id, a] of this._allocationMap) if (!allocById.has(id)) allocById.set(id, a);
 
-    let bars: StrategyBar[] = entries.map((e) => ({
+    // When _evaluate returned only incremental entries (checkpoint path), fetch
+    // stored history from the DB and prepend it so the caller gets the full series.
+    const { id } = await this.resolve();
+    const lastDate = await this._storage.strategies.getLatestSeriesDate(id);
+    let storedBars: StrategyBar[] = [];
+    if (lastDate !== null && entries.length > 0 && entries[0]!.date > (tradingDays[0] ?? '')) {
+      // There may be stored history before the first entry — fetch it.
+      const storedEntries = await this._storage.strategies.getSeries(id, { to: lastDate });
+      storedBars = storedEntries.map((e) => ({
+        date: e.date,
+        allocation: allocById.get(e.allocationId) ?? this._allocationMap.get(e.allocationId)!,
+      }));
+    } else if (lastDate !== null && entries.length === 0) {
+      // No new entries (e.g. limitDate === lastDate): return all stored history.
+      const storedEntries = await this._storage.strategies.getSeries(id);
+      storedBars = storedEntries.map((e) => ({
+        date: e.date,
+        allocation: allocById.get(e.allocationId) ?? this._allocationMap.get(e.allocationId)!,
+      }));
+    }
+
+    const newBars: StrategyBar[] = entries.map((e) => ({
       date: e.date,
       allocation: allocById.get(e.allocationId)!,
     }));
+
+    // Merge: stored history (excluding any dates already in newBars) + newBars.
+    const newDates = new Set(newBars.map((b) => b.date));
+    let bars: StrategyBar[] = [...storedBars.filter((b) => !newDates.has(b.date)), ...newBars];
+    bars.sort((a, b) => a.date.localeCompare(b.date));
 
     if (range) {
       bars = bars.filter(
