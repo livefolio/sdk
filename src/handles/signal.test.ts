@@ -100,7 +100,7 @@ describe('SignalHandle construction', () => {
     const ind2 = new IndicatorHandle(storage, market, {
       type: 'Threshold',
       ticker: null,
-      lookback: 0,
+      lookback: 1,
       delay: 0,
       unit: null,
       threshold: 20,
@@ -128,7 +128,7 @@ describe('SignalHandle construction', () => {
     const ind2 = new IndicatorHandle(storage, market, {
       type: 'Threshold',
       ticker: null,
-      lookback: 0,
+      lookback: 1,
       delay: 0,
       unit: null,
       threshold: 20,
@@ -215,7 +215,7 @@ describe('SignalHandle.resolve', () => {
     const ind2 = IndicatorHandle.fromResolved(storage, market, 11, {
       type: 'Threshold',
       ticker: null,
-      lookback: 0,
+      lookback: 1,
       delay: 0,
       unit: null,
       threshold: 20,
@@ -248,7 +248,7 @@ describe('SignalHandle.resolve', () => {
     const ind2 = IndicatorHandle.fromResolved(storage, market, 11, {
       type: 'Threshold',
       ticker: null,
-      lookback: 0,
+      lookback: 1,
       delay: 0,
       unit: null,
       threshold: 20,
@@ -301,7 +301,7 @@ describe('SignalHandle.computeAt — Issue 4: prevBool from dateMap avoids stora
     const ind2 = IndicatorHandle.fromResolved(storage, market, 11, {
       type: 'Threshold',
       ticker: null,
-      lookback: 0,
+      lookback: 1,
       delay: 0,
       unit: null,
       threshold: null,
@@ -354,7 +354,7 @@ describe('SignalHandle.computeAt — Issue 4: prevBool from dateMap avoids stora
     const ind2 = IndicatorHandle.fromResolved(storage, market, 11, {
       type: 'Threshold',
       ticker: null,
-      lookback: 0,
+      lookback: 1,
       delay: 0,
       unit: null,
       threshold: null,
@@ -416,7 +416,7 @@ describe('SignalHandle.previewSeries', () => {
     const ind2 = IndicatorHandle.fromResolved(storage, market, 11, {
       type: 'Threshold',
       ticker: null,
-      lookback: 0,
+      lookback: 1,
       delay: 0,
       unit: null,
       threshold: 100,
@@ -459,7 +459,7 @@ describe('SignalHandle.previewSeries', () => {
     const ind2 = IndicatorHandle.fromResolved(storage, market, 11, {
       type: 'Threshold',
       ticker: null,
-      lookback: 0,
+      lookback: 1,
       delay: 0,
       unit: null,
       threshold: 100,

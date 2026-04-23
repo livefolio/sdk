@@ -25,7 +25,7 @@ function makeSignal() {
   const ind2 = new IndicatorHandle(storage, market, {
     type: 'Threshold',
     ticker: null,
-    lookback: 0,
+    lookback: 1,
     delay: 0,
     unit: null,
     threshold: 30,
@@ -158,7 +158,7 @@ describe('StrategyHandle.resolve - create mode', () => {
       indicator2: new IndicatorHandle(mockStorage, mockMarket, {
         type: 'Threshold',
         ticker: null,
-        lookback: 0,
+        lookback: 1,
         delay: 0,
         unit: null,
         threshold: 30,
