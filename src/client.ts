@@ -119,7 +119,11 @@ export function createClient(options: LivefolioClientOptions): LivefolioClient {
       new IndicatorHandle(storage, market, {
         type: 'Threshold',
         ticker: null,
-        lookback: 0,
+        // Thresholds are constants — lookback/delay are semantically unused,
+        // but the DB's canonical form has (lookback=1, delay=0). Matching that
+        // lets `indicators.findOrCreate` reuse existing rows instead of creating
+        // duplicates at (lookback=0, delay=0) that the schema permits.
+        lookback: 1,
         delay: 0,
         unit: unit ?? null,
         threshold: value,
