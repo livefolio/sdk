@@ -427,10 +427,31 @@ export class IndicatorHandle {
           if (ckIdx >= 0 && tgtIdx === ckIdx + 1) {
             const rawBar = await this._resolveRawBarAt(info.symbol, date, overrides);
             if (rawBar === null) return null;
+
+            // For leveraged tickers the checkpoint state (`checkpoint.metadata`)
+            // was built on the leveraged price series, so its `prev` is a
+            // leveraged value. Scale the new raw bar up to the same leveraged
+            // scale before stepping the recursive computation — otherwise the
+            // one-step `change` mixes unleveraged with leveraged and produces
+            // a runaway delta (e.g. QQQ 3x RSI(10) spiking from 80 → 97 on a
+            // flat intraday day). Rate tickers (DTB3, DFF, …) skip this: their
+            // stored series is raw by convention, with leverage applied at
+            // accrual time by the simulator.
+            const leverage = this.ticker?.leverage ?? 1;
+            let nextValue = rawBar;
+            if (leverage !== 1 && !isRateTickerSymbol(this.ticker?.symbol ?? null)) {
+              const prevRaw = await this._resolveRawBarAt(info.symbol, checkpoint.date, overrides);
+              const prevLev = (checkpoint.metadata as { prev?: number }).prev;
+              if (prevRaw !== null && prevRaw !== 0 && typeof prevLev === 'number') {
+                const dailyReturn = (rawBar - prevRaw) / prevRaw;
+                nextValue = prevLev * (1 + leverage * dailyReturn);
+              }
+            }
+
             const step =
               this.type === 'Return' && info.rateSeries
-                ? returnNext(checkpoint.metadata as { tail: number[] }, rawBar, this.lookback, 'abs')
-                : nextFn(checkpoint.metadata, rawBar, this.lookback);
+                ? returnNext(checkpoint.metadata as { tail: number[] }, nextValue, this.lookback, 'abs')
+                : nextFn(checkpoint.metadata, nextValue, this.lookback);
             return step.value;
           }
         }
