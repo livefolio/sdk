@@ -249,25 +249,20 @@ export class StrategyHandle {
     return date;
   }
 
-  private async _getLatestStrategySeriesDate(): Promise<string | null> {
-    const { id } = await this.resolve();
-    return this._storage.strategies.getLatestSeriesDate(id);
-  }
-
   private async _ensureFresh(): Promise<void> {
     await this.resolve();
     const latestClosed = await this._getLatestClosedTradingDay();
 
+    // In-memory memoization: skip work if this handle already synced against
+    // the current latestClosed. Still runs once per handle per trading day.
     if (this._cachedAsOf === latestClosed) return;
 
-    const latestSeries = await this._getLatestStrategySeriesDate();
-
-    if (latestSeries === latestClosed) {
-      this._cache = null;
-      this._cachedAsOf = latestClosed;
-      return;
-    }
-
+    // Always run _sync — even when the stored series already covers
+    // latestClosed. _evaluate now re-derives [latestClosed, latestClosed] in
+    // that case so a previously-written row is re-checked against the current
+    // signals_series; if upstream signals have been recomputed since the
+    // original write, writeSeries upserts the correction. Without this, once
+    // a day is written the SDK never revisits it and drift accumulates.
     if (!this._syncing) {
       this._syncing = this._sync(latestClosed)
         .catch((err) => {
@@ -345,17 +340,19 @@ export class StrategyHandle {
     const incrementalStartIdx = tradingDays.indexOf(lastDate) + 1;
     const incrementalDays = tradingDays.slice(incrementalStartIdx, limitIdx + 1);
 
-    // Preview-only refresh: when overrides are provided but the stored series
-    // already covers limitDate (common case: `previewAllocation` called with
-    // `date = latestClosed` after post-close sync). Without this branch, the
-    // incremental path returns no entries and previewAllocation returns null
-    // for any day the strategy has already been evaluated. Guarded to
-    // `limitDate === lastDate` so we only re-evaluate today — re-evaluating
-    // a strictly-past day under overrides would mis-seed `current` from the
-    // latest stored allocation instead of the correct day-before allocation.
-    const isOverrideRefresh = incrementalDays.length === 0 && overrides !== undefined && limitDate === lastDate;
-    const newDays = isOverrideRefresh ? [limitDate] : incrementalDays;
-    const startIdx = isOverrideRefresh ? limitIdx : incrementalStartIdx;
+    // Latest-day refresh: when the stored series already covers limitDate,
+    // re-derive that one day from current signals and allow the caller to
+    // upsert if the rule-picked allocation has changed since the original
+    // write. Covers both the preview path (overrides provided — today's bar
+    // computed in-memory via signal.computeAt) and the post-close write path
+    // (overrides undefined — today's bar read from current signals_series).
+    // Guarded to `limitDate === lastDate` so we only re-evaluate the latest
+    // written day — re-evaluating a strictly-past day would mis-seed `current`
+    // from the latest stored allocation instead of the correct day-before
+    // allocation.
+    const isLatestRefresh = incrementalDays.length === 0 && limitDate === lastDate;
+    const newDays = isLatestRefresh ? [limitDate] : incrementalDays;
+    const startIdx = isLatestRefresh ? limitIdx : incrementalStartIdx;
     if (newDays.length === 0) return { allocations, entries: [] };
 
     // Build signal bar maps only for the new window.
