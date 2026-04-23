@@ -35,6 +35,12 @@ export class AllocationHandle {
     return handle;
   }
 
+  toJSON(): Array<{ symbol: string; leverage: number; weight: number }> {
+    return this.holdings
+      .map(([ticker, weight]) => ({ symbol: ticker.symbol, leverage: ticker.leverage, weight }))
+      .sort((a, b) => a.symbol.localeCompare(b.symbol) || a.leverage - b.leverage);
+  }
+
   private async _doResolve(): Promise<{ id: number }> {
     await Promise.all(this.holdings.map(([ticker]) => ticker.resolve()));
 

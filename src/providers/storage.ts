@@ -25,9 +25,10 @@ export interface StorageProvider {
       threshold: number | null;
     }): Promise<{ id: number }>;
     getSeries(indicatorId: number, range?: DateRange): Promise<DailyBar[]>;
-    writeSeries(indicatorId: number, bars: DailyBar[]): Promise<void>;
+    writeSeries(indicatorId: number, bars: DailyBar[], opts?: { metadata?: unknown }): Promise<void>;
     getLatestSeriesDate(indicatorId: number): Promise<string | null>;
     getValue(indicatorId: number, date?: string): Promise<number | null>;
+    getLatestBar(indicatorId: number): Promise<{ date: string; value: number; metadata: unknown } | null>;
   };
 
   signals: {

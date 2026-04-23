@@ -3,8 +3,8 @@ import type { MarketProvider } from '../providers/market';
 import type { IndicatorType, Unit } from '../providers/types';
 import { TickerHandle } from './ticker';
 import { getProviderInfo, isRateTickerSymbol } from '../providers/mappings';
-import { getComputation } from '../computations/index';
-import { computeReturns } from '../computations/returns';
+import { getComputation, getNextComputation, getInitialStateFn } from '../computations/index';
+import { computeReturns, returnNext } from '../computations/returns';
 import { computeCalendar } from '../computations/calendar';
 
 /**
@@ -182,9 +182,48 @@ export class IndicatorHandle {
   private async _sync(fromDate: string | undefined, latestClosed: string): Promise<void> {
     const tickerSymbol = this.ticker?.symbol ?? null;
     const info = getProviderInfo(this.type, tickerSymbol);
+    if (info.provider === 'none') return;
 
+    // Compute the horizon this indicator may publish up to.
+    let horizon = latestClosed;
+    if (this.delay > 0) {
+      const tradingDays = await this._storage.tradingDays.getRange();
+      const idx = tradingDays.indexOf(latestClosed);
+      if (idx < this.delay) return;
+      horizon = tradingDays[idx - this.delay]!;
+    }
+
+    // Fast path only applies when (a) we have a checkpoint, (b) the type is stateful
+    // (has a *Next in the dispatch table), and (c) the checkpoint's date is strictly
+    // less than horizon (i.e., there's at least one new bar to append).
+    const nextFn = getNextComputation(this.type);
+    const seedFn = getInitialStateFn(this.type);
+    const { id } = await this.resolve();
+    const checkpoint = nextFn ? await this._storage.indicators.getLatestBar(id) : null;
+
+    if (fromDate && nextFn && seedFn && checkpoint && checkpoint.metadata != null && checkpoint.date < horizon) {
+      // Fetch only the raw bars we need to step forward over.
+      const rawBars = await this._fetchRawBarsForIncremental(info, checkpoint.date, horizon);
+      if (rawBars.length === 0) return;
+      const newBars: { date: string; value: number }[] = [];
+      let state = checkpoint.metadata as unknown;
+      for (const raw of rawBars) {
+        if (raw.date <= checkpoint.date) continue;
+        if (raw.date > horizon) break;
+        const step =
+          this.type === 'Return' && info.provider === 'computed' && info.rateSeries
+            ? returnNext(state as { tail: number[] }, raw.value, this.lookback, 'abs')
+            : nextFn(state, raw.value, this.lookback);
+        newBars.push({ date: raw.date, value: step.value });
+        state = step.state;
+      }
+      if (newBars.length === 0) return;
+      await this._storage.indicators.writeSeries(id, newBars, { metadata: state });
+      return;
+    }
+
+    // Cold path (existing logic, now augmented to park initial-state metadata).
     let bars: DailyBar[];
-
     switch (info.provider) {
       case 'yahoo':
         bars = await this._market.fetchBars(info.symbol, fromDate);
@@ -195,7 +234,6 @@ export class IndicatorHandle {
         break;
 
       case 'computed': {
-        // Create an internal Price handle for the same ticker
         const priceHandle = new IndicatorHandle(this._storage, this._market, {
           type: 'Price',
           ticker: this.ticker,
@@ -204,13 +242,8 @@ export class IndicatorHandle {
           unit: null,
           threshold: null,
         });
-
-        // Recursively ensure Price data is fresh
         await priceHandle._ensureFresh();
-
-        // Read Price series from DB
         const priceBars = await priceHandle._querySeriesFromDb();
-
         if (this.type === 'Return') {
           // For rate/yield series (e.g. DTB3, DFF), percentage change is broken
           // near zero and semantically wrong; use absolute differences instead.
@@ -220,11 +253,7 @@ export class IndicatorHandle {
           if (!computeFn) throw new Error(`No computation found for type "${this.type}"`);
           bars = computeFn(priceBars, this.lookback);
         }
-
-        // If incremental, filter to only new bars
-        if (fromDate) {
-          bars = bars.filter((b) => b.date > fromDate);
-        }
+        if (fromDate) bars = bars.filter((b) => b.date > fromDate);
         break;
       }
 
@@ -233,16 +262,9 @@ export class IndicatorHandle {
         const allDays = await this._storage.tradingDays.getRange();
         const dayBars: DailyBar[] = allDays.map((date) => ({ date, value: 0 }));
         bars = computeCalendar(dayBars, this.type as 'Month' | 'Day of Week' | 'Day of Month' | 'Day of Year');
-
-        if (fromDate) {
-          bars = bars.filter((b) => b.date > fromDate);
-        }
+        if (fromDate) bars = bars.filter((b) => b.date > fromDate);
         break;
       }
-
-      case 'none':
-        // Threshold indicators have no series to sync
-        return;
     }
 
     // Apply leverage to daily returns only for fetched (non-computed) indicators.
@@ -251,29 +273,72 @@ export class IndicatorHandle {
       bars = await this._applyLeverage(bars, fromDate);
     }
 
-    // Filter bars up to the indicator's publishable horizon: `latestClosed`
-    // normally, or `latestClosed − delay` trading days when `delay > 0`. Each
-    // (type, ticker, lookback, delay) tuple is its own `indicators` row with
-    // its own `indicators_series`, so the stored series itself lags.
-    let horizon = latestClosed;
-    if (this.delay > 0) {
-      const tradingDays = await this._storage.tradingDays.getRange();
-      const idx = tradingDays.indexOf(latestClosed);
-      if (idx < this.delay) {
-        return; // not enough history yet for this delay
-      }
-      horizon = tradingDays[idx - this.delay]!;
-    }
     bars = bars.filter((b) => b.date <= horizon);
+    if (bars.length === 0) return;
 
-    if (bars.length > 0) {
-      await this._upsertSeries(bars);
+    // For stateful types, derive and park the terminal metadata so subsequent
+    // syncs take the fast path.
+    let metadata: unknown = undefined;
+    if (seedFn) {
+      // For stateful COMPUTED types, seed from the full price bars up to horizon;
+      // for stateful FETCHED types (none in current code, but future-safe) seed
+      // from the bars we're about to write.
+      if (info.provider === 'computed') {
+        const priceHandle = new IndicatorHandle(this._storage, this._market, {
+          type: 'Price',
+          ticker: this.ticker,
+          lookback: 0,
+          delay: 0,
+          unit: null,
+          threshold: null,
+        });
+        const priceBars = (await priceHandle._querySeriesFromDb()).filter((b) => b.date <= horizon);
+        metadata = seedFn(priceBars, this.lookback) ?? undefined;
+      } else {
+        metadata = seedFn(bars, this.lookback) ?? undefined;
+      }
     }
+
+    await this._upsertSeries(bars, metadata);
   }
 
-  private async _upsertSeries(bars: DailyBar[]): Promise<void> {
+  private async _fetchRawBarsForIncremental(
+    info: ReturnType<typeof getProviderInfo>,
+    sinceDate: string,
+    horizon: string,
+  ): Promise<DailyBar[]> {
+    if (info.provider === 'computed') {
+      const priceHandle = new IndicatorHandle(this._storage, this._market, {
+        type: 'Price',
+        ticker: this.ticker,
+        lookback: 0,
+        delay: 0,
+        unit: null,
+        threshold: null,
+      });
+      await priceHandle._ensureFresh();
+      return (await priceHandle._querySeriesFromDb({ from: sinceDate })).filter(
+        (b) => b.date > sinceDate && b.date <= horizon,
+      );
+    }
+    if (info.provider === 'yahoo' || info.provider === 'fred') {
+      const symbol = info.provider === 'yahoo' ? info.symbol : info.seriesId;
+      const bars = await this._market.fetchBars(symbol, sinceDate);
+      return bars.filter((b) => b.date > sinceDate && b.date <= horizon);
+    }
+    if (info.provider === 'calendar') {
+      const allDays = await this._storage.tradingDays.getRange();
+      const dayBars: DailyBar[] = allDays.map((date) => ({ date, value: 0 }));
+      return computeCalendar(dayBars, this.type as 'Month' | 'Day of Week' | 'Day of Month' | 'Day of Year').filter(
+        (b) => b.date > sinceDate && b.date <= horizon,
+      );
+    }
+    return [];
+  }
+
+  private async _upsertSeries(bars: DailyBar[], metadata?: unknown): Promise<void> {
     const { id } = await this.resolve();
-    await this._storage.indicators.writeSeries(id, bars);
+    await this._storage.indicators.writeSeries(id, bars, metadata !== undefined ? { metadata } : undefined);
   }
 
   private async _querySeriesFromDb(range?: DateRange): Promise<DailyBar[]> {
@@ -350,6 +415,27 @@ export class IndicatorHandle {
     }
 
     if (info.provider === 'computed') {
+      // Fast path: checkpoint is the trading day immediately before `date`.
+      const nextFn = getNextComputation(this.type);
+      if (nextFn) {
+        const { id } = await this.resolve();
+        const checkpoint = await this._storage.indicators.getLatestBar(id);
+        if (checkpoint && checkpoint.metadata != null) {
+          const tradingDays = await this._storage.tradingDays.getRange();
+          const ckIdx = tradingDays.indexOf(checkpoint.date);
+          const tgtIdx = tradingDays.indexOf(date);
+          if (ckIdx >= 0 && tgtIdx === ckIdx + 1) {
+            const rawBar = await this._resolveRawBarAt(info.symbol, date, overrides);
+            if (rawBar === null) return null;
+            const step =
+              this.type === 'Return' && info.rateSeries
+                ? returnNext(checkpoint.metadata as { tail: number[] }, rawBar, this.lookback, 'abs')
+                : nextFn(checkpoint.metadata, rawBar, this.lookback);
+            return step.value;
+          }
+        }
+      }
+
       // Size the bar window by the computation's actual needs, expressed in
       // calendar days. Three buckets:
       //
@@ -471,6 +557,23 @@ export class IndicatorHandle {
     }
 
     return bars;
+  }
+
+  /**
+   * Resolve the single raw (unleveraged) value for `symbol` at `date`.
+   * Returns the override directly when present; otherwise delegates to
+   * `_resolveRawBars` with a one-day window and picks the matching bar.
+   */
+  private async _resolveRawBarAt(
+    symbol: string,
+    date: string,
+    overrides?: Record<string, number>,
+  ): Promise<number | null> {
+    const override = overrides?.[symbol];
+    if (override !== undefined) return override;
+    const bars = await this._resolveRawBars(symbol, date, date, overrides);
+    const hit = bars.find((b) => b.date === date);
+    return hit?.value ?? null;
   }
 
   /**

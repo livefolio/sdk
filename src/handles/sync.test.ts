@@ -22,6 +22,8 @@ vi.mock('../providers/mappings.js', () => ({
 
 vi.mock('../computations/index.js', () => ({
   getComputation: vi.fn().mockReturnValue(null),
+  getNextComputation: vi.fn().mockReturnValue(undefined),
+  getInitialStateFn: vi.fn().mockReturnValue(undefined),
 }));
 
 vi.mock('../computations/calendar.js', () => ({
@@ -43,6 +45,7 @@ function mockStorage(overrides?: Partial<StorageProvider>): StorageProvider {
       writeSeries: vi.fn().mockResolvedValue(undefined),
       getLatestSeriesDate: vi.fn().mockResolvedValue(null),
       getValue: vi.fn().mockResolvedValue(null),
+      getLatestBar: vi.fn().mockResolvedValue(null),
     },
     signals: {
       findOrCreate: vi.fn().mockResolvedValue({ id: 1 }),
@@ -98,6 +101,7 @@ describe('IndicatorHandle sync', () => {
         writeSeries: vi.fn().mockResolvedValue(undefined),
         getLatestSeriesDate: vi.fn().mockResolvedValue(null), // no existing data
         getValue: vi.fn().mockResolvedValue(null),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
     });
     const market = mockMarket();
@@ -132,6 +136,7 @@ describe('IndicatorHandle sync', () => {
         }),
         getLatestSeriesDate: vi.fn().mockResolvedValue(null),
         getValue: vi.fn().mockResolvedValue(null),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
     });
     const market = mockMarket({
@@ -173,6 +178,7 @@ describe('IndicatorHandle sync', () => {
         }),
         getLatestSeriesDate: vi.fn().mockResolvedValue('2026-03-27'), // incremental
         getValue: vi.fn().mockResolvedValue(200), // last stored leveraged price
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
     });
     const market = mockMarket({
@@ -214,6 +220,7 @@ describe('IndicatorHandle sync', () => {
         }),
         getLatestSeriesDate: vi.fn().mockResolvedValue(null),
         getValue: vi.fn().mockResolvedValue(null),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
     });
     const market = mockMarket({
@@ -256,6 +263,7 @@ describe('IndicatorHandle sync', () => {
         writeSeries: vi.fn().mockResolvedValue(undefined),
         getLatestSeriesDate: vi.fn().mockResolvedValue(null),
         getValue: vi.fn().mockResolvedValue(null),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
     });
     const market = mockMarket({
@@ -292,6 +300,7 @@ describe('IndicatorHandle sync', () => {
         writeSeries: vi.fn().mockResolvedValue(undefined),
         getLatestSeriesDate: vi.fn().mockResolvedValue(LATEST_CLOSED_DATE), // already up to date
         getValue: vi.fn().mockResolvedValue(null),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
     });
     const market = mockMarket();
@@ -324,6 +333,7 @@ describe('IndicatorHandle sync', () => {
         writeSeries: vi.fn().mockResolvedValue(undefined),
         getLatestSeriesDate: vi.fn().mockResolvedValue(LATEST_CLOSED_DATE),
         getValue: vi.fn().mockResolvedValue(null),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
     });
     const market = mockMarket();
@@ -357,6 +367,7 @@ describe('IndicatorHandle sync', () => {
         }),
         getLatestSeriesDate: vi.fn().mockResolvedValue(null),
         getValue: vi.fn().mockResolvedValue(null),
+        getLatestBar: vi.fn().mockResolvedValue(null),
       },
     });
     const market = mockMarket({
