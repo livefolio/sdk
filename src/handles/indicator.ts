@@ -440,7 +440,11 @@ export class IndicatorHandle {
             const leverage = this.ticker?.leverage ?? 1;
             let nextValue = rawBar;
             if (leverage !== 1 && !isRateTickerSymbol(this.ticker?.symbol ?? null)) {
-              const prevRaw = await this._resolveRawBarAt(info.symbol, checkpoint.date, overrides);
+              // Overrides are scoped to `date`, not `checkpoint.date`; resolving
+              // the prior close *with* overrides in scope returns the override
+              // (same symbol, any date) and makes dailyReturn=0. Pass undefined
+              // so the prior close comes from storage.
+              const prevRaw = await this._resolveRawBarAt(info.symbol, checkpoint.date, undefined);
               const prevLev = (checkpoint.metadata as { prev?: number }).prev;
               if (prevRaw !== null && prevRaw !== 0 && typeof prevLev === 'number') {
                 const dailyReturn = (rawBar - prevRaw) / prevRaw;
