@@ -77,7 +77,7 @@ export function computeMetrics(series: DailyBar[], trades: Trade[], options: Met
     tables: {
       drawdowns: dds.slice(0, topN),
       monthly: buildMonthlyTable(monthly),
-      yearly: buildYearlyList(yearly),
+      yearly: buildYearlyList(monthly),
     },
   };
 }
