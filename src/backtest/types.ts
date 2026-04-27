@@ -2,6 +2,8 @@ import type { DailyBar } from '../handles/indicator';
 import type { AllocationHandle } from '../handles/allocation';
 import { PortfolioHandle } from '../handles/portfolio';
 import type { TickerHandle } from '../handles/ticker';
+import { computeMetrics } from '../metrics/compute';
+import type { MetricsOptions, MetricsResult } from '../metrics/types';
 
 export interface SimulateOptions {
   from: string;
@@ -173,6 +175,10 @@ export class SimulationHandle {
    *   the current UTC ISO date; callers with non-UTC semantics or after-hours
    *   rollover should supply their own.
    */
+  metrics(options: MetricsOptions = {}): MetricsResult {
+    return computeMetrics(this.series, this.trades, options);
+  }
+
   async pushAndPreview(quotes: Record<string, number>, options: { date?: string } = {}): Promise<LivePreviewState> {
     const priceArgs: [TickerHandle, number][] = [];
     if (this._portfolio) {

@@ -35,3 +35,19 @@ export type {
   LiveSignalState,
   LiveEvaluator,
 } from './backtest/types';
+export type {
+  MetricsOptions,
+  MetricsResult,
+  DrawdownEntry,
+  MonthlyReturnsTable,
+  MonthlyReturn,
+  YearlyReturn,
+} from './metrics';
+export {
+  computeMetrics,
+  computeSharpe,
+  computeSortino,
+  computeDrawdownTable,
+  computeMonthlyReturns,
+  computeYearlyReturns,
+} from './metrics';

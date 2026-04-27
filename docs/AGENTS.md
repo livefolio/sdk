@@ -26,6 +26,7 @@ Design specifications and implementation plans for SDK features. Each feature ha
 | `2026-03-31-portfolio-handle-design.md` | Portfolio handle for tracking positions |
 | `2026-03-31-simulation-design.md` | Backtesting simulation engine design |
 | `2026-04-01-simulate-portfolio-design.md` | Simulate with starting portfolio positions |
+| `2026-04-26-simulation-metrics-design.md` | Simulation metrics module (returns/risk/risk-adjusted/activity/tables) |
 
 ### plans/
 | File | Description |
@@ -37,6 +38,7 @@ Design specifications and implementation plans for SDK features. Each feature ha
 | `2026-03-31-strategy-handle.md` | Plan for strategy handle |
 | `2026-03-31-simulation.md` | Plan for simulation engine |
 | `2026-04-01-simulate-portfolio.md` | Plan for portfolio-based simulation |
+| `2026-04-26-simulation-metrics.md` | Plan for simulation metrics module |
 
 ## For AI Agents
 
