@@ -1,0 +1,88 @@
+{
+  "planPath": "docs/plans/2026-05-01-v0.4-phase-1-core-types.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Interfaces — shared primitive types",
+      "status": "pending",
+      "description": "**Goal:** Cross-module primitives (Asset, AssetId, Bar, DateRange, Frequency, Series).\n\n**Files:**\n- Create: src/interfaces/types.ts\n- Create: src/interfaces/index.ts\n\n**Verify:** `npx tsc --noEmit` → exit 0\n\n```json:metadata\n{\"files\":[\"src/interfaces/types.ts\",\"src/interfaces/index.ts\"],\"verifyCommand\":\"npx tsc --noEmit\",\"acceptanceCriteria\":[\"Asset is a discriminated union with one v0.4 variant (equity)\",\"Frequency enumerates 1m/5m/15m/1h/1d\",\"Bar has t/open/high/low/close/volume\",\"DateRange is {from,to}\",\"Series is array of {t,v}\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Orders — Order union and Fill",
+      "status": "pending",
+      "description": "**Goal:** Order envelope (Open/Close/Adjust/Rebalance) and Fill result type.\n\n**Files:**\n- Create: src/orders/types.ts\n- Create: src/orders/index.ts\n\n**Verify:** `npx tsc --noEmit` → exit 0\n\n```json:metadata\n{\"files\":[\"src/orders/types.ts\",\"src/orders/index.ts\"],\"verifyCommand\":\"npx tsc --noEmit\",\"acceptanceCriteria\":[\"Order is discriminated union keyed on kind\",\"Each order has id field\",\"Fill has orderRef/t/quantity/price/fees\",\"PositionId declared locally (moved in Task 3)\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Portfolio — Position, Portfolio types",
+      "status": "pending",
+      "blockedBy": [1, 2],
+      "description": "**Goal:** Lot-aware Position and Portfolio types. PositionId moves to portfolio module.\n\n**Files:**\n- Create: src/portfolio/types.ts\n- Create: src/portfolio/index.ts\n- Modify: src/orders/types.ts (re-import PositionId)\n\n**Verify:** `npx tsc --noEmit` → exit 0\n\n```json:metadata\n{\"files\":[\"src/portfolio/types.ts\",\"src/portfolio/index.ts\",\"src/orders/types.ts\"],\"verifyCommand\":\"npx tsc --noEmit\",\"acceptanceCriteria\":[\"Position has id/asset/side/quantity/entry/basis\",\"Portfolio has cash/positions/t\",\"PositionId canonical home is portfolio/types\",\"No circular imports\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Portfolio — applyFills and applyOrders",
+      "status": "pending",
+      "blockedBy": [3],
+      "description": "**Goal:** Pure functions for applying broker fills and projecting unfilled orders.\n\n**Files:**\n- Create: src/portfolio/apply.ts\n- Create: src/portfolio/apply.test.ts\n- Modify: src/portfolio/index.ts\n\n**Verify:** `npm test -- src/portfolio/apply.test.ts` → green\n\n```json:metadata\n{\"files\":[\"src/portfolio/apply.ts\",\"src/portfolio/apply.test.ts\",\"src/portfolio/index.ts\"],\"verifyCommand\":\"npm test -- src/portfolio/apply.test.ts\",\"acceptanceCriteria\":[\"Open fill creates position with basis\",\"Close fill removes/reduces position\",\"Rebalance positive/negative open/reduce long\",\"Adjust replaces quantity\",\"Cash and t advance correctly\",\"applyOrders is structural projection (cash unchanged)\",\"Pure: no input mutation\",\"Throws on mismatched orderRef\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Strategy — Strategy interface and Features",
+      "status": "pending",
+      "blockedBy": [3, 2],
+      "description": "**Goal:** Land Strategy<F> interface and Features placeholder type.\n\n**Files:**\n- Create: src/strategy/types.ts\n- Create: src/strategy/index.ts\n\n**Verify:** `npx tsc --noEmit` → exit 0\n\n```json:metadata\n{\"files\":[\"src/strategy/types.ts\",\"src/strategy/index.ts\"],\"verifyCommand\":\"npx tsc --noEmit\",\"acceptanceCriteria\":[\"Features is Readonly<Record<string,unknown>>\",\"Strategy<F extends Features = Features> with universe/features/build per spec\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: Strategy — reconcile helper",
+      "status": "pending",
+      "blockedBy": [5, 4],
+      "description": "**Goal:** Pure reconcile(targets, portfolio, prices) → RebalanceOrder[].\n\n**Files:**\n- Create: src/strategy/reconcile.ts\n- Create: src/strategy/reconcile.test.ts\n- Modify: src/strategy/index.ts\n\n**Verify:** `npm test -- src/strategy/reconcile.test.ts` → green\n\n```json:metadata\n{\"files\":[\"src/strategy/reconcile.ts\",\"src/strategy/reconcile.test.ts\",\"src/strategy/index.ts\"],\"verifyCommand\":\"npm test -- src/strategy/reconcile.test.ts\",\"acceptanceCriteria\":[\"Computes total value and per-asset target shares\",\"Emits sell-to-zero for held assets not in targets\",\"Throws on missing price\",\"Deterministic ids per call\",\"Tests cover empty/single/mixed/missing-price cases\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: Interfaces — DataFeed, Executor, Calendar, FeatureCache",
+      "status": "pending",
+      "blockedBy": [3, 2],
+      "description": "**Goal:** Land the four consumer-facing interface contracts (no impls).\n\n**Files:**\n- Create: src/interfaces/data-feed.ts\n- Create: src/interfaces/executor.ts\n- Create: src/interfaces/calendar.ts\n- Create: src/interfaces/feature-cache.ts\n- Modify: src/interfaces/index.ts\n\n**Verify:** `npx tsc --noEmit` → exit 0\n\n```json:metadata\n{\"files\":[\"src/interfaces/data-feed.ts\",\"src/interfaces/executor.ts\",\"src/interfaces/calendar.ts\",\"src/interfaces/feature-cache.ts\",\"src/interfaces/index.ts\"],\"verifyCommand\":\"npx tsc --noEmit\",\"acceptanceCriteria\":[\"DataFeed.bars + optional fundamentals/events\",\"Executor.submit per spec\",\"Calendar isOpen/next/previous/sessions\",\"FeatureKey with scope discriminator\",\"No implementations\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: Reference — USEquityCalendar",
+      "status": "pending",
+      "blockedBy": [7],
+      "description": "**Goal:** NYSE calendar excluding weekends + federal holidays (programmatic), 2020–2030.\n\n**Files:**\n- Create: src/reference/us-equity-calendar.ts\n- Create: src/reference/us-equity-calendar.test.ts\n\n**Verify:** `npm test -- src/reference/us-equity-calendar.test.ts` → green\n\n```json:metadata\n{\"files\":[\"src/reference/us-equity-calendar.ts\",\"src/reference/us-equity-calendar.test.ts\"],\"verifyCommand\":\"npm test -- src/reference/us-equity-calendar.test.ts\",\"acceptanceCriteria\":[\"Implements Calendar\",\"Excludes weekends and 10 federal holidays\",\"Holiday observed-on-weekday rules\",\"All Dates UTC midnight\",\"next/previous strictly later/earlier\",\"Half-days NOT modeled (documented limitation)\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: Reference — MemoryFeatureCache",
+      "status": "pending",
+      "blockedBy": [7],
+      "description": "**Goal:** In-process Map-backed FeatureCache with deterministic key serialization.\n\n**Files:**\n- Create: src/reference/memory-feature-cache.ts\n- Create: src/reference/memory-feature-cache.test.ts\n\n**Verify:** `npm test -- src/reference/memory-feature-cache.test.ts` → green\n\n```json:metadata\n{\"files\":[\"src/reference/memory-feature-cache.ts\",\"src/reference/memory-feature-cache.test.ts\"],\"verifyCommand\":\"npm test -- src/reference/memory-feature-cache.test.ts\",\"acceptanceCriteria\":[\"Implements FeatureCache\",\"Property-order-independent key equality\",\"Round-trip get-after-set\",\"invalidate(prefix) removes matching only\",\"No eviction (documented)\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 10: Reference — BacktestExecutor",
+      "status": "pending",
+      "blockedBy": [7, 8],
+      "description": "**Goal:** Executor that fills orders at next-session open with configurable slippage and fees.\n\n**Files:**\n- Create: src/reference/backtest-executor.ts\n- Create: src/reference/backtest-executor.test.ts\n- Create: src/reference/index.ts\n\n**Verify:** `npm test -- src/reference/backtest-executor.test.ts` → green\n\n```json:metadata\n{\"files\":[\"src/reference/backtest-executor.ts\",\"src/reference/backtest-executor.test.ts\",\"src/reference/index.ts\"],\"verifyCommand\":\"npm test -- src/reference/backtest-executor.test.ts\",\"acceptanceCriteria\":[\"Implements Executor\",\"nextOpen callback as runtime bridge\",\"Slippage in bps; per-share fees\",\"Resolves asset for close/adjust via portfolio lookup\",\"Throws when target position id not found\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 11: Strategy — runBacktest runtime loop",
+      "status": "pending",
+      "blockedBy": [5, 4, 7],
+      "description": "**Goal:** Orchestration helper pumping a Strategy through calendar sessions.\n\n**Files:**\n- Create: src/strategy/run-backtest.ts\n- Create: src/strategy/run-backtest.test.ts\n- Modify: src/strategy/index.ts\n\n**Verify:** `npm test -- src/strategy/run-backtest.test.ts` → green\n\n```json:metadata\n{\"files\":[\"src/strategy/run-backtest.ts\",\"src/strategy/run-backtest.test.ts\",\"src/strategy/index.ts\"],\"verifyCommand\":\"npm test -- src/strategy/run-backtest.test.ts\",\"acceptanceCriteria\":[\"Per session: universe/features/build/submit/applyFills/snapshot\",\"Snapshot taken post-fill\",\"Empty range → empty snapshots and unchanged portfolio\",\"BacktestResult shape: snapshots + finalPortfolio\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 12: End-to-end smoke test",
+      "status": "pending",
+      "blockedBy": [6, 8, 9, 10, 11],
+      "description": "**Goal:** Integration test exercising every phase 1 piece together (reconcile-driven 100% SPY backtest).\n\n**Files:**\n- Create: src/strategy/integration.test.ts\n\n**Verify:** `npm test` → all green (existing v0.3 tests + new v0.4 tests)\n\n```json:metadata\n{\"files\":[\"src/strategy/integration.test.ts\"],\"verifyCommand\":\"npm test\",\"acceptanceCriteria\":[\"Imports flow through module barrels only\",\"5 sessions in a holiday-free week\",\"Final portfolio holds SPY\",\"Cash decreased\",\"Full repo test sweep is green\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-01T15:58:00Z"
+}

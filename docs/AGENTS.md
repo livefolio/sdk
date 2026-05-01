@@ -41,6 +41,7 @@ Design specifications and implementation plans for SDK features. Each feature ha
 | `2026-03-31-simulation.md` | Plan for simulation engine |
 | `2026-04-01-simulate-portfolio.md` | Plan for portfolio-based simulation |
 | `2026-04-26-simulation-metrics.md` | Plan for simulation metrics module |
+| `2026-05-01-v0.4-phase-1-core-types.md` | v0.4 Phase 1 — core types, interfaces, and reference impls |
 
 ## For AI Agents
 
