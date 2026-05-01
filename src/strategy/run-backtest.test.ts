@@ -86,4 +86,27 @@ describe('runBacktest', () => {
     expect(result.snapshots).toHaveLength(0);
     expect(result.finalPortfolio).toEqual(initialPortfolio);
   });
+
+  it('awaits async features() and forwards them to build()', async () => {
+    let received: unknown = null;
+    const strategy: Strategy<{ price: number }> = {
+      universe: () => [SPY],
+      features: async () => ({ price: 123 }),
+      build: (f) => {
+        received = f;
+        return [];
+      },
+    };
+    const dataFeed: DataFeed = { bars: async function* () {} };
+    const executor: Executor = { submit: async () => [] };
+    await runBacktest({
+      strategy,
+      range: { from: new Date('2026-01-05T00:00:00Z'), to: new Date('2026-01-08T00:00:00Z') },
+      initialPortfolio,
+      dataFeed,
+      executor,
+      calendar: new USEquityCalendar(),
+    });
+    expect(received).toEqual({ price: 123 });
+  });
 });

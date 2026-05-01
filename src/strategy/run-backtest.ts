@@ -42,7 +42,7 @@ export async function runBacktest<F extends Features = Features>(opts: RunBackte
 
   for (const t of sessions) {
     const universe = opts.strategy.universe(t, portfolio);
-    const features = opts.strategy.features(universe, portfolio, t);
+    const features = await opts.strategy.features(universe, portfolio, t);
     const orders = opts.strategy.build(features, portfolio, t);
     const fills = await opts.executor.submit(orders, t, portfolio);
     portfolio = applyFills(portfolio, fills, orders);
