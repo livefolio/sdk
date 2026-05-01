@@ -38,6 +38,13 @@ describe('defineFeature / getFeatureCompute', () => {
     expect(actual).toEqual(expected);
   });
 
+  it.each<FeatureSpec['kind']>(['price', 'sma', 'ema', 'rsi', 'return', 'volatility', 'drawdown'])(
+    'built-in %s is registered',
+    (kind) => {
+      expect(() => getFeatureCompute(kind)).not.toThrow();
+    },
+  );
+
   it('throws on unknown kind', () => {
     expect(() => getFeatureCompute('not-a-feature' as never)).toThrow(/unknown/);
   });

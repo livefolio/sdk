@@ -37,6 +37,10 @@ export function getFeatureCompute(kind: FeatureKind): ComputeFn {
   return fn;
 }
 
+/**
+ * Recursive canonicalization: sort object keys, skip undefined values,
+ * preserve null + array order, recurse into nested objects.
+ */
 function canonicalize(value: unknown): unknown {
   if (value === null || typeof value !== 'object') return value;
   if (Array.isArray(value)) return value.map(canonicalize);
