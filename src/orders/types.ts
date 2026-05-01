@@ -1,6 +1,7 @@
 import type { Asset } from '../interfaces/types';
 
-export type PositionId = string;
+import type { PositionId } from '../portfolio/types';
+export type { PositionId };
 
 type OrderBase = { id: string };
 
