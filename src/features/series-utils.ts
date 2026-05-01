@@ -9,9 +9,7 @@ export async function collectBars(it: AsyncIterable<Bar>): Promise<Bar[]> {
 }
 
 export function barsToSeries(bars: ReadonlyArray<Bar>, field: BarField = 'close'): Series {
-  const out: { t: Date; v: number }[] = [];
-  for (const b of bars) out.push({ t: b.t, v: b[field] });
-  return out;
+  return bars.map((b) => ({ t: b.t, v: b[field] }));
 }
 
 export function seriesAt(series: Series, t: Date): number | undefined {
