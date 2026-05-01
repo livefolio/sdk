@@ -3,8 +3,7 @@ import { FeatureRuntime, seriesAt } from '.';
 import { runBacktest, reconcile, type Strategy } from '../strategy';
 import { USEquityCalendar, MemoryFeatureCache, BacktestExecutor } from '../reference';
 import type { Portfolio } from '../portfolio';
-import type { Asset, Bar } from '../interfaces';
-import type { DataFeed } from '../interfaces';
+import type { Asset, Bar, DataFeed } from '../interfaces';
 
 const utc = (s: string) => new Date(`${s}T00:00:00Z`);
 const SPY: Asset = { kind: 'equity', id: 'us:SPY', symbol: 'SPY' };
@@ -76,7 +75,7 @@ describe('phase 2 integration', () => {
     expect(result.snapshots.length).toBe(5);
     // bars fetched at most once per asset (the runtime memoizes; cache is irrelevant the first run because base-series memoization wins)
     expect(barsCalls).toHaveBeenCalledTimes(1);
-    // cache populated
+    // cache populated — paramsHash is canonical JSON; update if hash algo changes
     expect(
       await cache.get({
         feature: 'sma',
@@ -86,5 +85,13 @@ describe('phase 2 integration', () => {
         freq: '1d',
       }),
     ).toBeDefined();
+
+    // both branches reachable: early sessions held cash (price <= sma or sma undefined),
+    // later sessions held SPY (price > sma), and the final state holds SPY because the
+    // last signal was a buy (price=110 > sma=104.33).
+    const cashSessions = result.snapshots.filter((s) => s.portfolio.positions.length === 0);
+    expect(cashSessions.length).toBeGreaterThan(0);
+    expect(result.finalPortfolio.positions.length).toBeGreaterThan(0);
+    expect(result.finalPortfolio.positions[0]!.asset.id).toBe('us:SPY');
   });
 });
