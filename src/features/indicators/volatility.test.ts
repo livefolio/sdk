@@ -15,17 +15,14 @@ const series: Series = [
 
 describe('volatility', () => {
   it('computes period-2 volatility correctly', () => {
-    // daily returns: 0.1, -0.04545..., 0.09523...
-    // window [0.1, -0.04545...]: mean=(0.1 - 0.04545...)/2 = 0.02727...
-    //   variance = ((0.1-0.02727...)^2 + (-0.04545...-0.02727...)^2) / 2
+    // daily returns: 0.1, -1/22, 10/105
+    // population stdev of each 2-element window
     const out = volatility(series, 2);
     expect(out).toHaveLength(2);
-    // verify timestamps
     expect(out[0]!.t).toEqual(utc('2026-01-07'));
     expect(out[1]!.t).toEqual(utc('2026-01-08'));
-    // positive and less than 1
-    expect(out[0]!.v).toBeGreaterThan(0);
-    expect(out[0]!.v).toBeLessThan(1);
+    expect(out[0]!.v).toBeCloseTo(0.07272727272727272, 12);
+    expect(out[1]!.v).toBeCloseTo(0.07034632034632035, 12);
   });
 
   it('returns empty when series has fewer than period+1 points', () => {

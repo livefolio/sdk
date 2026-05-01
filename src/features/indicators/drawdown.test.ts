@@ -22,8 +22,8 @@ describe('drawdown', () => {
     // [90,80,110]: max=110, dd=(110-110)/110 = 0
     // [80,110,95]: max=110, dd=(95-110)/110 = -15/110
     expect(out).toHaveLength(3);
-    expect(out[0]!.v).toBeCloseTo(-0.2, 12);
-    expect(out[1]!.v).toBeCloseTo(0, 12);
+    expect(out[0]!.v).toBe(-0.2);
+    expect(out[1]!.v).toBe(0);
     expect(out[2]!.v).toBeCloseTo(-15 / 110, 12);
     expect(out[0]!.t).toEqual(utc('2026-01-07'));
   });

@@ -22,9 +22,9 @@ describe('ema', () => {
   it('computes period-3 EMA correctly', () => {
     const out = ema(series, 3);
     expect(out).toHaveLength(3);
-    expect(out[0]!.v).toBeCloseTo(2, 12);
-    expect(out[1]!.v).toBeCloseTo(3, 12);
-    expect(out[2]!.v).toBeCloseTo(4, 12);
+    expect(out[0]!.v).toBe(2);
+    expect(out[1]!.v).toBe(3);
+    expect(out[2]!.v).toBe(4);
     expect(out[0]!.t).toEqual(utc('2026-01-07'));
   });
 
