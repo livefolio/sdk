@@ -27,6 +27,8 @@ Design specifications and implementation plans for SDK features. Each feature ha
 | `2026-03-31-simulation-design.md` | Backtesting simulation engine design |
 | `2026-04-01-simulate-portfolio-design.md` | Simulate with starting portfolio positions |
 | `2026-04-26-simulation-metrics-design.md` | Simulation metrics module (returns/risk/risk-adjusted/activity/tables) |
+| `2026-04-28-generalized-strategy-architecture-design.md` | Forward-looking architecture: four-layer stack and generalized strategy shape covering all strategy families |
+| `2026-04-29-v0.4-multi-repo-interface-design.md` | v0.4 SDK overhaul: package layout, interface contracts (DataFeed/Executor/FeatureCache/Calendar), spec dialects, and migration plan |
 
 ### plans/
 | File | Description |
