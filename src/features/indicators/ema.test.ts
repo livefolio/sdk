@@ -1,0 +1,63 @@
+import { describe, it, expect } from 'vitest';
+import { ema } from './ema';
+import { computeEma } from '../../computations/ema';
+import type { Series } from '../../interfaces/types';
+import type { DailyBar } from '../../handles/indicator';
+
+const utc = (s: string) => new Date(`${s}T00:00:00Z`);
+
+const series: Series = [
+  { t: utc('2026-01-05'), v: 1 },
+  { t: utc('2026-01-06'), v: 2 },
+  { t: utc('2026-01-07'), v: 3 },
+  { t: utc('2026-01-08'), v: 4 },
+  { t: utc('2026-01-09'), v: 5 },
+];
+
+describe('ema', () => {
+  // k = 2/(3+1) = 0.5
+  // seed = (1+2+3)/3 = 2
+  // i=3: 4*0.5 + 2*0.5 = 3
+  // i=4: 5*0.5 + 3*0.5 = 4
+  it('computes period-3 EMA correctly', () => {
+    const out = ema(series, 3);
+    expect(out).toHaveLength(3);
+    expect(out[0]!.v).toBeCloseTo(2, 12);
+    expect(out[1]!.v).toBeCloseTo(3, 12);
+    expect(out[2]!.v).toBeCloseTo(4, 12);
+    expect(out[0]!.t).toEqual(utc('2026-01-07'));
+  });
+
+  it('returns empty when series is shorter than period', () => {
+    expect(ema(series.slice(0, 2), 3)).toEqual([]);
+  });
+
+  it('throws on non-positive period', () => {
+    expect(() => ema(series, 0)).toThrow();
+    expect(() => ema(series, -1)).toThrow();
+  });
+
+  it('handles empty series', () => {
+    expect(ema([], 3)).toEqual([]);
+  });
+
+  it('parity with v0.3 computeEma (tolerance 1e-12)', () => {
+    const bars: DailyBar[] = [
+      { date: '2026-01-05', value: 100 },
+      { date: '2026-01-06', value: 102 },
+      { date: '2026-01-07', value: 98 },
+      { date: '2026-01-08', value: 105 },
+      { date: '2026-01-09', value: 110 },
+      { date: '2026-01-12', value: 107 },
+      { date: '2026-01-13', value: 103 },
+      { date: '2026-01-14', value: 108 },
+    ];
+    const s: Series = bars.map((b) => ({ t: new Date(`${b.date}T00:00:00Z`), v: b.value }));
+    const v3 = computeEma(bars, 4);
+    const v4 = ema(s, 4);
+    expect(v4).toHaveLength(v3.length);
+    for (let i = 0; i < v3.length; i++) {
+      expect(Math.abs(v4[i]!.v - v3[i]!.value)).toBeLessThanOrEqual(1e-12);
+    }
+  });
+});
