@@ -14,7 +14,7 @@ import {
   fromSpec,
   runBacktest,
   FeatureRuntime,
-  USEquityCalendar,
+  NYSEExchangeCalendar,
   MemoryFeatureCache,
   BacktestExecutor,
 } from '@livefolio/sdk';
@@ -86,7 +86,7 @@ const spec: TacticalSpec = {
 // Run.
 // -----------------------------------------------------------------------
 
-const calendar = new USEquityCalendar();
+const calendar = new NYSEExchangeCalendar();
 const featureCache = new MemoryFeatureCache();
 const range: DateRange = { from: utc('2023-06-01'), to: utc('2024-12-01') };
 

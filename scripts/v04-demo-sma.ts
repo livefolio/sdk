@@ -20,7 +20,8 @@ import { fileURLToPath } from 'node:url';
 
 import { FeatureRuntime, seriesAt } from '../src/features';
 import { runBacktest, reconcile, type Strategy } from '../src/strategy';
-import { USEquityCalendar, MemoryFeatureCache, BacktestExecutor } from '../src/reference';
+import { NYSEExchangeCalendar } from '../src/calendars';
+import { MemoryFeatureCache, BacktestExecutor } from '../src/reference';
 import type { Asset, Bar, DataFeed } from '../src/interfaces';
 import type { Portfolio } from '../src/portfolio';
 
@@ -115,7 +116,7 @@ const strategy: Strategy<{ price?: number; sma?: number }> = {
 // Run
 // ---------------------------------------------------------------------------
 
-const calendar = new USEquityCalendar();
+const calendar = new NYSEExchangeCalendar();
 const executor = new BacktestExecutor({
   calendar,
   nextOpen,

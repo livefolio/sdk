@@ -9,7 +9,6 @@ Reference implementations of the runtime interfaces declared in `src/interfaces/
 
 | File | Description |
 |------|-------------|
-| `us-equity-calendar.ts` | `USEquityCalendar implements Calendar` — NYSE-ish trading days, computes holidays per year. **Known bugs:** Juneteenth treated as holiday from year zero; 2021-12-31 incorrectly closed. Pending replacement (see `docs/plans/2026-05-02-nyse-calendar.md`) |
 | `memory-feature-cache.ts` | `MemoryFeatureCache implements FeatureCache` — in-process Map, no persistence |
 | `backtest-executor.ts` | `BacktestExecutor implements Executor` — fills orders at next-open price, tracks cash/positions, no slippage or fees |
 | `index.ts` | Barrel |
@@ -23,7 +22,6 @@ Reference implementations of the runtime interfaces declared in `src/interfaces/
 
 ### Testing Requirements
 - Each reference impl has a co-located test exercising the interface contract
-- The `USEquityCalendar` bugs are not fixed here yet — they're masked at the parity-gate layer via `CALENDAR_IGNORE`. Don't add workarounds; the proper fix is the pending NYSE port
 
 ### Common Patterns
 - **In-process, single-tenant** — reference impls assume one process, no concurrency, no persistence

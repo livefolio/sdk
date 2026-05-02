@@ -5,7 +5,7 @@
 //
 // Wire-up:
 //   - DataFeed       : CSV-backed, reads scripts/data/{SPY,AGG}.csv
-//   - Calendar       : USEquityCalendar (NYSE business days)
+//   - Calendar       : NYSEExchangeCalendar (NYSE business days)
 //   - Executor       : BacktestExecutor with 5 bps slippage, $0.005/share
 //   - Strategy       : reconcile() to a fixed 60/40 target every session
 //
@@ -17,7 +17,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { runBacktest, reconcile, type Strategy } from '../src/strategy';
-import { USEquityCalendar, MemoryFeatureCache, BacktestExecutor } from '../src/reference';
+import { NYSEExchangeCalendar } from '../src/calendars';
+import { MemoryFeatureCache, BacktestExecutor } from '../src/reference';
 import type { Asset, Bar, DataFeed } from '../src/interfaces';
 import type { Portfolio } from '../src/portfolio';
 
@@ -117,7 +118,7 @@ const strategy: Strategy = {
 // Run
 // ---------------------------------------------------------------------------
 
-const calendar = new USEquityCalendar();
+const calendar = new NYSEExchangeCalendar();
 const executor = new BacktestExecutor({
   calendar,
   nextOpen,

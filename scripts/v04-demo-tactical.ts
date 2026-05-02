@@ -10,7 +10,7 @@
 //   - Hysteresis: a tolerance band on the price/SMA comparison stops the strategy
 //     from flip-flopping when price hovers near the SMA. The same spec without
 //     tolerance would emit twice as many rebalances on this fixture.
-//   - Rebalance cadence: Weekly. fromSpec consults USEquityCalendar to decide
+//   - Rebalance cadence: Weekly. fromSpec consults NYSEExchangeCalendar to decide
 //     whether each session is the last session of its ISO week (Friday under
 //     normal conditions). Non-rebalance days emit zero orders.
 //   - Multi-asset universe: SPY + AGG. The rule allocates between regimes:
@@ -27,7 +27,8 @@ import { fileURLToPath } from 'node:url';
 import { fromSpec, type TacticalSpec } from '../src/tactical';
 import { FeatureRuntime } from '../src/features';
 import { runBacktest } from '../src/strategy';
-import { USEquityCalendar, MemoryFeatureCache, BacktestExecutor } from '../src/reference';
+import { NYSEExchangeCalendar } from '../src/calendars';
+import { MemoryFeatureCache, BacktestExecutor } from '../src/reference';
 import type { Asset, Bar, DataFeed } from '../src/interfaces';
 import type { Portfolio } from '../src/portfolio';
 
@@ -115,7 +116,7 @@ const spec: TacticalSpec = {
 // ---------------------------------------------------------------------------
 
 const range = { from: new Date('2025-01-02T00:00:00Z'), to: new Date('2025-03-31T00:00:00Z') };
-const calendar = new USEquityCalendar();
+const calendar = new NYSEExchangeCalendar();
 const cache = new MemoryFeatureCache();
 const runtime = new FeatureRuntime({ dataFeed: csvDataFeed, featureCache: cache, range, freq: '1d' });
 
