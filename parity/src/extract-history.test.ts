@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { FeatureRuntime, USEquityCalendar, MemoryFeatureCache } from '@livefolio/sdk';
+import { FeatureRuntime, NYSEExchangeCalendar, MemoryFeatureCache } from '@livefolio/sdk';
 import type { Bar, DateRange, Frequency, TacticalSpec } from '@livefolio/sdk';
 import { YfinanceDataFeed } from '@livefolio/datafeed-yfinance';
 import { extractV3History, extractV4History, extractV4TargetHistory } from './extract-history';
@@ -181,7 +181,7 @@ describe('extractV4TargetHistory', () => {
       result,
       spec: SPEC,
       runtime,
-      calendar: new USEquityCalendar(),
+      calendar: new NYSEExchangeCalendar(),
     });
 
     expect(hist).toHaveLength(7);
@@ -222,7 +222,7 @@ describe('extractV4TargetHistory', () => {
       result,
       spec: weeklySpec,
       runtime,
-      calendar: new USEquityCalendar(),
+      calendar: new NYSEExchangeCalendar(),
     });
 
     // Tue/Wed/Thu Jan 2-4: not rebalance days, no prior target → empty

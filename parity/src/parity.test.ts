@@ -8,7 +8,7 @@ import {
   fromSpec,
   runBacktest,
   FeatureRuntime,
-  USEquityCalendar,
+  NYSEExchangeCalendar,
   MemoryFeatureCache,
   BacktestExecutor,
 } from '@livefolio/sdk';
@@ -85,7 +85,7 @@ describe('parity gate: v0.3 fluent API ↔ tactical/v0 spec', () => {
       ['QQQ', qqqBars4],
       ['IEF', iefBars4],
     ]);
-    const calendar = new USEquityCalendar();
+    const calendar = new NYSEExchangeCalendar();
     const cache = new MemoryFeatureCache();
     const dataFeed = new YfinanceDataFeed({
       fetcher: async (
@@ -145,7 +145,7 @@ describe('parity gate: v0.3 fluent API ↔ tactical/v0 spec', () => {
     //
     // 1. Calendar drift (3 dates): v0.3 fixture-derived calendar treats
     //    Juneteenth (2020-06-19, 2021-06-18) and observed-NYE Friday
-    //    (2021-12-31) as trading days; USEquityCalendar excludes them. Real
+    //    (2021-12-31) as trading days; NYSEExchangeCalendar excludes them. Real
     //    NYSE was OPEN on all three — but v0.3's strategy still rebalances on
     //    those days using fixture data, so the v0.3 history has rows v0.4
     //    legitimately doesn't. Ignored as a structural calendar divergence.

@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fromSpec } from './from-spec';
 import { _resetTacticalDeprecationWarningForTesting } from './from-spec';
 import { FeatureRuntime } from '../features/runtime';
-import { MemoryFeatureCache, USEquityCalendar } from '../reference';
+import { MemoryFeatureCache } from '../reference';
+import { NYSEExchangeCalendar } from '../calendars';
 import type { Bar } from '../interfaces/types';
 import type { DataFeed } from '../interfaces/data-feed';
 import type { Portfolio } from '../portfolio/types';
@@ -11,7 +12,7 @@ import type { TacticalSpec } from './types';
 const utc = (s: string) => new Date(`${s}T00:00:00Z`);
 const SPY_REF = { id: 'us:SPY', symbol: 'SPY' };
 const range = { from: utc('2026-01-05'), to: utc('2026-01-15') };
-const calendar = new USEquityCalendar();
+const calendar = new NYSEExchangeCalendar();
 
 function feedFor(closes: number[]) {
   const bars: Bar[] = closes.map((c, i) => ({

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { BacktestExecutor } from './backtest-executor';
-import { USEquityCalendar } from './us-equity-calendar';
+import { NYSEExchangeCalendar } from '../calendars';
 import type { Asset } from '../interfaces/types';
 import type { Order } from '../orders/types';
 import type { Portfolio, Position } from '../portfolio/types';
@@ -15,7 +15,7 @@ describe('BacktestExecutor', () => {
   it('fills an OpenOrder at the next open with slippage and fees', async () => {
     const nextOpen = vi.fn(async () => ({ t: NEXT, price: 400 }));
     const exec = new BacktestExecutor({
-      calendar: new USEquityCalendar(),
+      calendar: new NYSEExchangeCalendar(),
       nextOpen,
       slippageBps: 5,
       perShareFee: 0.01,
@@ -42,7 +42,7 @@ describe('BacktestExecutor', () => {
     const held: Portfolio = { ...portfolio, positions: [pos] };
     const nextOpen = vi.fn(async () => ({ t: NEXT, price: 400 }));
     const exec = new BacktestExecutor({
-      calendar: new USEquityCalendar(),
+      calendar: new NYSEExchangeCalendar(),
       nextOpen,
       slippageBps: 10,
     });
@@ -53,7 +53,7 @@ describe('BacktestExecutor', () => {
 
   it('throws when CloseOrder references an unknown position', async () => {
     const exec = new BacktestExecutor({
-      calendar: new USEquityCalendar(),
+      calendar: new NYSEExchangeCalendar(),
       nextOpen: async () => ({ t: NEXT, price: 1 }),
     });
     const order: Order = { id: 'c1', kind: 'close', positionId: 'missing' };

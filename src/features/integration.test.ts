@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { FeatureRuntime, seriesAt } from '.';
 import { runBacktest, reconcile, type Strategy } from '../strategy';
-import { USEquityCalendar, MemoryFeatureCache, BacktestExecutor } from '../reference';
+import { MemoryFeatureCache, BacktestExecutor } from '../reference';
+import { NYSEExchangeCalendar } from '../calendars';
 import type { Portfolio } from '../portfolio';
 import type { Asset, Bar, DataFeed } from '../interfaces';
 
@@ -19,7 +20,7 @@ const fixtureBars: Bar[] = [
 
 describe('phase 2 integration', () => {
   it('drives a price>SMA(3) strategy through runBacktest with cache hits', async () => {
-    const calendar = new USEquityCalendar();
+    const calendar = new NYSEExchangeCalendar();
     const cache = new MemoryFeatureCache();
     const range = { from: utc('2026-01-05'), to: utc('2026-01-10') };
 

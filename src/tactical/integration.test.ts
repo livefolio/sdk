@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { fromSpec, withSynthetics, type TacticalSpec, type SyntheticAsset } from '.';
 import { FeatureRuntime, seriesAt } from '../features';
 import { runBacktest, reconcile, type Strategy } from '../strategy';
-import { USEquityCalendar, MemoryFeatureCache, BacktestExecutor } from '../reference';
+import { MemoryFeatureCache, BacktestExecutor } from '../reference';
+import { NYSEExchangeCalendar } from '../calendars';
 import type { Asset, Bar } from '../interfaces/types';
 import type { DataFeed } from '../interfaces/data-feed';
 import type { Portfolio } from '../portfolio/types';
@@ -30,7 +31,7 @@ function feedFor(closes: number[]) {
   return { feed: { bars: calls } as DataFeed, calls, fixture };
 }
 
-function makeExecutor(calendar: USEquityCalendar, fixture: Bar[]) {
+function makeExecutor(calendar: NYSEExchangeCalendar, fixture: Bar[]) {
   return new BacktestExecutor({
     calendar,
     nextOpen: async (_a, t) => {
@@ -47,7 +48,7 @@ describe('phase 3 integration', () => {
   it('TacticalSpec via fromSpec matches the equivalent code-form strategy bar-for-bar', async () => {
     const closes = [100, 99, 98, 105, 110];
     const range = { from: utc('2026-01-05'), to: utc('2026-01-10') };
-    const calendar = new USEquityCalendar();
+    const calendar = new NYSEExchangeCalendar();
 
     const spec: TacticalSpec = {
       kind: 'tactical/v1',
@@ -124,7 +125,7 @@ describe('phase 3 integration', () => {
   it('hysteresis reduces signal flips on an oscillating fixture', async () => {
     const closes = [106, 99, 102, 99, 102, 99, 102];
     const range = { from: utc('2026-01-05'), to: utc('2026-01-12') };
-    const calendar = new USEquityCalendar();
+    const calendar = new NYSEExchangeCalendar();
 
     const baseRule = (tolerant: boolean): TacticalSpec => ({
       kind: 'tactical/v1',
@@ -164,7 +165,7 @@ describe('phase 3 integration', () => {
   it('per-feature delay shifts the rule input by one session', async () => {
     const closes = [100, 100, 110, 90, 110, 90];
     const range = { from: utc('2026-01-05'), to: utc('2026-01-12') };
-    const calendar = new USEquityCalendar();
+    const calendar = new NYSEExchangeCalendar();
 
     function spec(delay: number): TacticalSpec {
       return {
@@ -208,7 +209,7 @@ describe('phase 3 integration', () => {
   it('a 3x leveraged synthetic compounds daily reset returns vs underlying', async () => {
     const closes = [100, 110, 99, 108.9];
     const range = { from: utc('2026-01-05'), to: utc('2026-01-09') };
-    const calendar = new USEquityCalendar();
+    const calendar = new NYSEExchangeCalendar();
 
     const SPY3X: SyntheticAsset = { id: 'us:SPY_3X', symbol: 'SPY_3X', underlying: SPY_REF, leverage: 3 };
     const spec: TacticalSpec = {
@@ -270,7 +271,7 @@ describe('phase 3 integration', () => {
   it('Weekly rebalance only emits orders on Friday in the snapshot stream', async () => {
     const closes = [100, 105, 102, 107, 110];
     const range = { from: utc('2026-01-05'), to: utc('2026-01-10') };
-    const calendar = new USEquityCalendar();
+    const calendar = new NYSEExchangeCalendar();
 
     const spec: TacticalSpec = {
       kind: 'tactical/v1',

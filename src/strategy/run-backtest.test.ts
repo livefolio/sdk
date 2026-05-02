@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { runBacktest } from './run-backtest';
-import { USEquityCalendar } from '../reference/us-equity-calendar';
+import { NYSEExchangeCalendar } from '../calendars';
 import type { Strategy } from './types';
 import type { Asset } from '../interfaces/types';
 import type { DataFeed } from '../interfaces/data-feed';
@@ -58,7 +58,7 @@ describe('runBacktest', () => {
       initialPortfolio,
       dataFeed,
       executor,
-      calendar: new USEquityCalendar(),
+      calendar: new NYSEExchangeCalendar(),
     });
 
     expect(result.snapshots).toHaveLength(5);
@@ -81,7 +81,7 @@ describe('runBacktest', () => {
       initialPortfolio,
       dataFeed,
       executor,
-      calendar: new USEquityCalendar(),
+      calendar: new NYSEExchangeCalendar(),
     });
     expect(result.snapshots).toHaveLength(0);
     expect(result.finalPortfolio).toEqual(initialPortfolio);
@@ -105,7 +105,7 @@ describe('runBacktest', () => {
       initialPortfolio,
       dataFeed,
       executor,
-      calendar: new USEquityCalendar(),
+      calendar: new NYSEExchangeCalendar(),
     });
     expect(received).toEqual({ price: 123 });
   });

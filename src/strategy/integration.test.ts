@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { runBacktest, reconcile, type Strategy } from '.';
-import { USEquityCalendar, MemoryFeatureCache, BacktestExecutor } from '../reference';
+import { MemoryFeatureCache, BacktestExecutor } from '../reference';
+import { NYSEExchangeCalendar } from '../calendars';
 import type { Portfolio } from '../portfolio';
 import type { Asset, DataFeed } from '../interfaces';
 
@@ -8,7 +9,7 @@ const SPY: Asset = { kind: 'equity', id: 'us:SPY', symbol: 'SPY' };
 
 describe('phase 1 smoke', () => {
   it('reconciles to 100% SPY across a week', async () => {
-    const calendar = new USEquityCalendar();
+    const calendar = new NYSEExchangeCalendar();
     const dataFeed: DataFeed = { bars: async function* () {} };
     const cache = new MemoryFeatureCache();
 
