@@ -115,4 +115,12 @@ export class USEquityCalendar implements Calendar {
     }
     return out;
   }
+
+  schedule(_range: DateRange): ReadonlyArray<import('../interfaces/calendar').Session> {
+    throw new Error('USEquityCalendar.schedule() not implemented — use NYSEExchangeCalendar from src/calendars');
+  }
+
+  isEarlyClose(_t: Date): boolean {
+    throw new Error('USEquityCalendar.isEarlyClose() not implemented — use NYSEExchangeCalendar from src/calendars');
+  }
 }
