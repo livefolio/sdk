@@ -14,7 +14,7 @@
     "format:check": "prettier --check 'src/**/*.ts'"
   },
   "dependencies": {
-    "@livefolio/sdk": "*",
+    "@livefolio/sdk": "file:..",
     "@livefolio/datafeed-yfinance": "file:../../yfinance"
   },
   "devDependencies": {
