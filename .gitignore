@@ -9,3 +9,8 @@ coverage
 .omc
 .railguard
 .vscode
+
+# VitePress + TypeDoc generated output
+docs-site/.vitepress/cache
+docs-site/.vitepress/dist
+docs-site/api

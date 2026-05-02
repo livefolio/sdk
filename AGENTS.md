@@ -22,8 +22,10 @@ TypeScript SDK for building tactical allocation strategies. Strategies are decla
 |-----------|---------|
 | `src/` | v0.4 SDK source (see `src/AGENTS.md`) |
 | `docs/` | Design specs and implementation plans (see `docs/AGENTS.md`) |
+| `docs-site/` | VitePress + TypeDoc documentation site published to GitHub Pages |
 | `parity/` | Regression workspace: hosts v0.3 source under `parity/src/v3/` and the v0.4↔v0.3 parity gate |
-| `scripts/` | Standalone demo and verification scripts (e.g. `v04-readme-example.ts`) |
+| `scripts/` | Standalone demo and verification scripts; `scripts/docs/` holds runnable code samples embedded in the docs site |
+| `.claude/skills/` | Claude Code skills for SDK authoring (`livefolio-tactical-author`, `livefolio-custom-adapter`, `livefolio-debug-strategy`) |
 
 ## For AI Agents
 
@@ -55,5 +57,6 @@ TypeScript SDK for building tactical allocation strategies. Strategies are decla
 - `eslint` + `typescript-eslint` — Linting
 - `prettier` — Formatting
 - `husky` + `lint-staged` — Pre-commit hooks
+- `vitepress` + `typedoc` + `typedoc-plugin-markdown` + `typedoc-vitepress-theme` — Docs site generation
 
 <!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->

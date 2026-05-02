@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "baseUrl": "../..",
+    "paths": {
+      "@livefolio/sdk": ["src/index.ts"],
+      "@livefolio/sdk/*": ["src/*"]
+    }
+  },
+  "include": ["./**/*.ts"]
+}

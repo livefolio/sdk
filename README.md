@@ -5,6 +5,8 @@ Define a strategy declaratively as a `TacticalSpec`, plug in a `DataFeed`, run
 a backtest. The same spec is portable across runtimes — pass it to a
 backtester today, a paper-trader tomorrow.
 
+> **Full documentation, guides, and API reference:** [livefolio.github.io/sdk](https://livefolio.github.io/sdk/) — VitePress site auto-generated from source TSDoc, with runnable code samples for every guide.
+
 ## Install
 
 ```bash
