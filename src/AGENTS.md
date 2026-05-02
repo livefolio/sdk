@@ -20,6 +20,7 @@ v0.4 SDK source: type interfaces, the `runBacktest` runtime loop, the feature li
 | `strategy/` | `runBacktest` runtime loop and `reconcile` helper (see `strategy/AGENTS.md`) |
 | `features/` | Indicator math, `FeatureSpec` registry, `FeatureRuntime` orchestrator (see `features/AGENTS.md`) |
 | `tactical/` | `tactical/v1` dialect, `fromSpec`, rule-tree evaluator, synthetic-asset wrapper (see `tactical/AGENTS.md`) |
+| `calendars/` | `ExchangeCalendar` base + `NYSEExchangeCalendar` / `LSEExchangeCalendar` + holiday-rule helpers + `getCalendar` registry (see `calendars/AGENTS.md`) |
 | `reference/` | `USEquityCalendar`, `MemoryFeatureCache`, `BacktestExecutor` (see `reference/AGENTS.md`) |
 | `orders/` | `Order` union and `Fill` types (see `orders/AGENTS.md`) |
 | `portfolio/` | `Position`/`Portfolio` types and `applyFills`/`applyOrders` (see `portfolio/AGENTS.md`) |
