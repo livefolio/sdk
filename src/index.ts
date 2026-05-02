@@ -24,14 +24,20 @@ export type {
   DataEvent,
   Executor,
   Calendar,
+  Session,
+  TimeOfDay,
   FeatureCache,
   FeatureKey,
   FeatureScope,
 } from './interfaces';
 
 // Reference implementations
-export { USEquityCalendar, MemoryFeatureCache, BacktestExecutor } from './reference';
+export { MemoryFeatureCache, BacktestExecutor } from './reference';
 export type { BacktestExecutorOptions, NextOpenFn } from './reference';
+
+// Calendars (exchange calendar framework)
+export { ExchangeCalendar, NYSEExchangeCalendar, LSEExchangeCalendar, getCalendar } from './calendars';
+export type { ExchangeName, HolidayRule, SpecialClose, SpecialOpen, AdhocTimeOverrides } from './calendars';
 
 // Tactical dialect — flat exports (canonical) and namespace alias.
 export {
