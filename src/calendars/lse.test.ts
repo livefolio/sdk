@@ -79,11 +79,11 @@ describe('LSE — Christmas / Boxing Day weekend substitutions', () => {
     expect(cal.isOpen(utc('2022-12-27'))).toBe(false);
   });
 
-  // 2016: Dec 25 is Sunday, Dec 26 (Mon) substitute Christmas + Dec 27 (Tue) substitute Boxing
-  it('2016-12-26 (Mon) — substitute Christmas closed', () => {
+  // 2016: Dec 25 is Sunday → Mon Dec 26 is Boxing Day (regular) + Tue Dec 27 is substitute Christmas
+  it('2016-12-26 (Mon) — Boxing Day closed', () => {
     expect(cal.isOpen(utc('2016-12-26'))).toBe(false);
   });
-  it('2016-12-27 (Tue) — substitute Boxing closed', () => {
+  it('2016-12-27 (Tue) — substitute Christmas closed', () => {
     expect(cal.isOpen(utc('2016-12-27'))).toBe(false);
   });
 });
@@ -213,6 +213,14 @@ describe('LSE — early closes (12:30 London)', () => {
     if (!session) return;
     expect(cal.isEarlyClose(utc('2022-12-23'))).toBe(true);
     expect(localTime(session.close, 'Europe/London')).toEqual({ h: 12, m: 30 });
+  });
+  // previous_friday observance: 2023-12-31 was Sunday → early close moves to Fri Dec 29.
+  it('2023-12-29 (Fri) closes 12:30 London — previous_friday for Dec 31 Sunday', () => {
+    expect(cal.isEarlyClose(utc('2023-12-29'))).toBe(true);
+    const sched = cal.schedule({ from: utc('2023-12-29'), to: utc('2023-12-30') });
+    expect(sched).toHaveLength(1);
+    // Dec 29 12:30 London = 12:30 UTC (GMT in winter)
+    expect(sched[0]!.close.toISOString()).toBe('2023-12-29T12:30:00.000Z');
   });
 });
 
