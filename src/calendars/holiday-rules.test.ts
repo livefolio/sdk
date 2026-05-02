@@ -111,4 +111,30 @@ describe('resolveSpecialOpens / resolveSpecialCloses', () => {
     const map = resolveSpecialOpens(rules, 2024);
     expect(map.get(utc('2024-01-15').getTime())).toEqual({ h: 11, m: 0 });
   });
+
+  it('SpecialClose: returns Map<dayMs, TimeOfDay>', async () => {
+    const { resolveSpecialCloses } = await import('./holiday-rules');
+    const rules = [
+      { name: 'Early close', resolve: (y: number) => new Date(Date.UTC(y, 6, 3)), closeAt: { h: 13, m: 0 } },
+    ];
+    const map = resolveSpecialCloses(rules, 2024);
+    expect(map.get(utc('2024-07-03').getTime())).toEqual({ h: 13, m: 0 });
+  });
+
+  it('SpecialClose: honors validFrom/validUntil', async () => {
+    const { resolveSpecialCloses } = await import('./holiday-rules');
+    const rules = [
+      {
+        name: 'Bounded',
+        resolve: (y: number) => new Date(Date.UTC(y, 0, 15)),
+        closeAt: { h: 13, m: 0 },
+        validFrom: 2020,
+        validUntil: 2022,
+      },
+    ];
+    expect(resolveSpecialCloses(rules, 2019).size).toBe(0);
+    expect(resolveSpecialCloses(rules, 2020).size).toBe(1);
+    expect(resolveSpecialCloses(rules, 2022).size).toBe(1);
+    expect(resolveSpecialCloses(rules, 2023).size).toBe(0);
+  });
 });
