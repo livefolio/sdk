@@ -1,9 +1,6 @@
 import type { StrategyBar } from './v3/handles/strategy';
-import type { BacktestResult } from '@livefolio/sdk/strategy';
-import type { FeatureRuntime } from '@livefolio/sdk/features';
-import type { Calendar } from '@livefolio/sdk/interfaces';
-import type { RuleTreeState, TacticalSpec } from '@livefolio/sdk/tactical';
-import { evaluateFeatureSpecs, evaluateRuleTree, isRebalanceDay } from '@livefolio/sdk/tactical';
+import type { BacktestResult, FeatureRuntime, Calendar, RuleTreeState, TacticalSpec } from '@livefolio/sdk';
+import { evaluateFeatureSpecs, evaluateRuleTree, isRebalanceDay } from '@livefolio/sdk';
 
 export type AllocationDay = {
   readonly date: string; // 'YYYY-MM-DD' (UTC)

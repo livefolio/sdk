@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { ema } from '@livefolio/sdk/features';
-import type { Series } from '@livefolio/sdk/interfaces';
+import { ema } from '@livefolio/sdk';
+import type { Series } from '@livefolio/sdk';
 import { computeEma } from '../v3/computations/ema';
 import type { DailyBar } from '../v3/handles/indicator';
 

@@ -1,8 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { FeatureRuntime } from '@livefolio/sdk/features';
-import { USEquityCalendar, MemoryFeatureCache } from '@livefolio/sdk/reference';
-import type { Bar, DateRange, Frequency } from '@livefolio/sdk/interfaces';
-import type { TacticalSpec } from '@livefolio/sdk/tactical';
+import { FeatureRuntime, USEquityCalendar, MemoryFeatureCache } from '@livefolio/sdk';
+import type { Bar, DateRange, Frequency, TacticalSpec } from '@livefolio/sdk';
 import { YfinanceDataFeed } from '@livefolio/datafeed-yfinance';
 import { extractV3History, extractV4History, extractV4TargetHistory } from './extract-history';
 

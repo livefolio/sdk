@@ -4,11 +4,15 @@ import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
 
 import { createClient } from './v3/client';
-import { fromSpec } from '@livefolio/sdk/tactical';
-import { runBacktest } from '@livefolio/sdk/strategy';
-import { FeatureRuntime } from '@livefolio/sdk/features';
-import { USEquityCalendar, MemoryFeatureCache, BacktestExecutor } from '@livefolio/sdk/reference';
-import type { Asset, Bar, DateRange, Frequency } from '@livefolio/sdk/interfaces';
+import {
+  fromSpec,
+  runBacktest,
+  FeatureRuntime,
+  USEquityCalendar,
+  MemoryFeatureCache,
+  BacktestExecutor,
+} from '@livefolio/sdk';
+import type { Asset, Bar, DateRange, Frequency } from '@livefolio/sdk';
 import { YfinanceDataFeed } from '@livefolio/datafeed-yfinance';
 
 import { buildV3Strategy, PARITY_SPEC, PARITY_RANGE, PARITY_RANGE_V3 } from './strategy';

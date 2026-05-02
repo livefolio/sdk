@@ -33,13 +33,23 @@ export type {
 export { USEquityCalendar, MemoryFeatureCache, BacktestExecutor } from './reference';
 export type { BacktestExecutorOptions, NextOpenFn } from './reference';
 
-// Tactical dialect (namespace re-export + commonly-used types)
-export * as tactical from './tactical';
+// Tactical dialect — flat exports (canonical) and namespace alias.
+export {
+  fromSpec,
+  evaluateRuleTree,
+  evaluateFeatureSpecs,
+  withSynthetics,
+  isRebalanceDay,
+  periodKey,
+} from './tactical';
 export type {
   TacticalSpec,
   TacticalFeatureSpec,
   TacticalFeatureKind,
+  TacticalFeatures,
+  FromSpecOptions,
   RuleNode,
+  RuleTreeState,
   AllocateNode,
   IfNode,
   Comparison,
@@ -51,11 +61,26 @@ export type {
   SyntheticAsset,
   AssetRef,
 } from './tactical';
+export * as tactical from './tactical';
 
-// Feature library (namespace re-export + commonly-used class)
+// Feature library — flat exports (canonical) and namespace alias.
+export {
+  sma,
+  ema,
+  rsi,
+  returnSeries,
+  volatility,
+  drawdown,
+  FeatureRuntime,
+  defineFeature,
+  getFeatureCompute,
+  paramsHash,
+  collectBars,
+  barsToSeries,
+  seriesAt,
+} from './features';
+export type { FeatureSpec, FeatureKind, FeatureRuntimeOptions, BarField, ReturnMode } from './features';
 export * as features from './features';
-export { FeatureRuntime } from './features';
-export type { FeatureRuntimeOptions } from './features';
 
 // Orders
 export type { Order, OpenOrder, CloseOrder, AdjustOrder, RebalanceOrder, Fill } from './orders';

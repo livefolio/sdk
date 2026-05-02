@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { sma } from '@livefolio/sdk/features';
-import type { Series } from '@livefolio/sdk/interfaces';
+import { sma } from '@livefolio/sdk';
+import type { Series } from '@livefolio/sdk';
 import { computeSma } from '../v3/computations/sma';
 import type { DailyBar } from '../v3/handles/indicator';
 

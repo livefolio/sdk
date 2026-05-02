@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { drawdown } from '@livefolio/sdk/features';
-import type { Series } from '@livefolio/sdk/interfaces';
+import { drawdown } from '@livefolio/sdk';
+import type { Series } from '@livefolio/sdk';
 import { computeDrawdown } from '../v3/computations/drawdown';
 import type { DailyBar } from '../v3/handles/indicator';
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { volatility } from '@livefolio/sdk/features';
-import type { Series } from '@livefolio/sdk/interfaces';
+import { volatility } from '@livefolio/sdk';
+import type { Series } from '@livefolio/sdk';
 import { computeVolatility } from '../v3/computations/volatility';
 import type { DailyBar } from '../v3/handles/indicator';
 

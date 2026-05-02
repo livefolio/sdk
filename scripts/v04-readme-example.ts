@@ -11,15 +11,14 @@
 // separately by extracting and tsc-compiling the block.
 
 import {
-  tactical,
-  features,
+  fromSpec,
   runBacktest,
+  FeatureRuntime,
   USEquityCalendar,
   MemoryFeatureCache,
   BacktestExecutor,
 } from '@livefolio/sdk';
-import type { TacticalSpec } from '@livefolio/sdk/tactical';
-import type { Asset, Bar, DataFeed, DateRange, Frequency } from '@livefolio/sdk/interfaces';
+import type { TacticalSpec, Asset, Bar, DataFeed, DateRange, Frequency } from '@livefolio/sdk';
 
 // -----------------------------------------------------------------------
 // In-memory DataFeed: synthetic price series for SPY, QQQ, IEF.
@@ -91,7 +90,7 @@ const calendar = new USEquityCalendar();
 const featureCache = new MemoryFeatureCache();
 const range: DateRange = { from: utc('2023-06-01'), to: utc('2024-12-01') };
 
-const runtime = new features.FeatureRuntime({
+const runtime = new FeatureRuntime({
   dataFeed: memoryDataFeed,
   featureCache,
   range,
@@ -107,7 +106,7 @@ async function nextOpen(asset: Asset, t: Date): Promise<{ t: Date; price: number
 }
 
 const executor = new BacktestExecutor({ calendar, nextOpen });
-const strategy = tactical.fromSpec(spec, { runtime, calendar });
+const strategy = fromSpec(spec, { runtime, calendar });
 
 const result = await runBacktest({
   strategy,

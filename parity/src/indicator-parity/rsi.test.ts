@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { rsi } from '@livefolio/sdk/features';
-import type { Series } from '@livefolio/sdk/interfaces';
+import { rsi } from '@livefolio/sdk';
+import type { Series } from '@livefolio/sdk';
 import { computeRsi } from '../v3/computations/rsi';
 import type { DailyBar } from '../v3/handles/indicator';
 

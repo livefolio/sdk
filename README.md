@@ -18,15 +18,14 @@ your own `DataFeed` for proprietary feeds.
 
 ```ts
 import {
-  tactical,
-  features,
+  fromSpec,
   runBacktest,
+  FeatureRuntime,
   USEquityCalendar,
   MemoryFeatureCache,
   BacktestExecutor,
 } from '@livefolio/sdk';
-import type { TacticalSpec } from '@livefolio/sdk/tactical';
-import type { Asset, DateRange } from '@livefolio/sdk/interfaces';
+import type { TacticalSpec, Asset, DateRange } from '@livefolio/sdk';
 import { YfinanceDataFeed } from '@livefolio/datafeed-yfinance';
 
 // 1. Declare the strategy as data.
@@ -59,7 +58,7 @@ const range: DateRange = {
   to: new Date('2024-12-31T00:00:00Z'),
 };
 
-const runtime = new features.FeatureRuntime({ dataFeed, featureCache, range, freq: '1d' });
+const runtime = new FeatureRuntime({ dataFeed, featureCache, range, freq: '1d' });
 
 async function nextOpen(asset: Asset, t: Date) {
   // Look up the next session's open price for this asset.
@@ -68,7 +67,7 @@ async function nextOpen(asset: Asset, t: Date) {
 }
 
 const executor = new BacktestExecutor({ calendar, nextOpen });
-const strategy = tactical.fromSpec(spec, { runtime, calendar });
+const strategy = fromSpec(spec, { runtime, calendar });
 
 // 3. Run.
 const result = await runBacktest({
@@ -96,8 +95,8 @@ is plain data — serialize it, store it, version it, send it across a wire.
 
 The data-layer seam: anything that can answer "give me OHLCV bars for asset
 X over date range Y." `@livefolio/datafeed-yfinance` is one implementation;
-implement your own for proprietary feeds. The interface lives at
-`@livefolio/sdk/interfaces`.
+implement your own for proprietary feeds. The interface lives in the root
+barrel — `import type { DataFeed } from '@livefolio/sdk'`.
 
 ### `Calendar`
 
@@ -125,22 +124,36 @@ portfolio, records snapshots. Returns `{ snapshots, finalPortfolio }`.
 
 ## Imports
 
-The package supports both root and subpath imports:
+Everything is at the root. There is no subpath surface — `@livefolio/sdk` is the only import path you need.
 
 ```ts
-// Root — common runtime surface
 import {
+  // Runtime
   runBacktest, reconcile,
+  // Tactical dialect
+  fromSpec, evaluateRuleTree, evaluateFeatureSpecs, withSynthetics, isRebalanceDay,
+  // Indicator math
+  sma, ema, rsi, returnSeries, volatility, drawdown,
+  // Feature runtime
+  FeatureRuntime, defineFeature,
+  // Reference impls
   USEquityCalendar, MemoryFeatureCache, BacktestExecutor,
+  // Portfolio helpers
   applyFills, applyOrders,
-  tactical, features,
 } from '@livefolio/sdk';
 
-// Subpath — types and namespace-scoped utilities
-import type { TacticalSpec, RuleNode, AssetRef } from '@livefolio/sdk/tactical';
-import type { Calendar, DataFeed, Executor, FeatureCache, Asset, Bar, DateRange } from '@livefolio/sdk/interfaces';
-import type { Strategy, BacktestResult, BacktestSnapshot } from '@livefolio/sdk/strategy';
-import type { Order, Fill, Position, Portfolio } from '@livefolio/sdk';
+import type {
+  // Strategy / runtime
+  Strategy, BacktestResult, BacktestSnapshot, RunBacktestOptions,
+  // Tactical dialect
+  TacticalSpec, RuleNode, AssetRef, RebalanceConfig,
+  // Interfaces
+  Calendar, DataFeed, Executor, FeatureCache,
+  // Primitives
+  Asset, Bar, DateRange, Frequency, Series,
+  // Orders / portfolio
+  Order, Fill, Position, Portfolio,
+} from '@livefolio/sdk';
 ```
 
 ## Design
