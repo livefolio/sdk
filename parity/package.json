@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "@livefolio/sdk": "file:..",
-    "@livefolio/datafeed-yfinance": "file:../../yfinance"
+    "@livefolio/datafeed-yfinance": "file:../../yfinance",
+    "nanoid": "^5.1.7"
   },
   "devDependencies": {
     "@types/node": "^22",

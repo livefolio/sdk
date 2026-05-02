@@ -52,7 +52,6 @@
     "vitest": "^3"
   },
   "dependencies": {
-    "luxon": "^3.7.2",
-    "nanoid": "^5.1.7"
+    "luxon": "^3.7.2"
   }
 }

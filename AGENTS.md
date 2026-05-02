@@ -45,7 +45,7 @@ TypeScript SDK for building tactical allocation strategies. Strategies are decla
 ## Dependencies
 
 ### External
-- `nanoid` — Short unique IDs (legacy dep from v0.3 strategy link URLs; pending removal verification)
+- `luxon` — TZ-aware datetime arithmetic for `ExchangeCalendar` (NYSE/LSE schedule resolution)
 
 ### Dev
 - `tsup` — Bundler
