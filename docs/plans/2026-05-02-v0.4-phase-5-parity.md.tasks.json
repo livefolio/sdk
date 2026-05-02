@@ -1,0 +1,75 @@
+{
+  "planPath": "docs/plans/2026-05-02-v0.4-phase-5-parity.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Workspace scaffolding",
+      "status": "completed",
+      "description": "**Goal:** Turn sdk/ into npm workspace root with empty @livefolio/parity workspace.\n\n**Files:** sdk/package.json (modify: add workspaces field), parity/package.json, parity/tsconfig.json, parity/vitest.config.ts, parity/eslint.config.js, parity/.gitignore, parity/src/index.ts.\n\n**Verify:** `npm install && cd parity && npx tsc --noEmit` → exit 0.\n\n```json:metadata\n{\"files\":[\"package.json\",\"parity/package.json\",\"parity/tsconfig.json\",\"parity/vitest.config.ts\",\"parity/eslint.config.js\",\"parity/.gitignore\",\"parity/src/index.ts\"],\"verifyCommand\":\"cd parity && npx tsc --noEmit\",\"acceptanceCriteria\":[\"sdk/package.json has workspaces:[parity]\",\"@livefolio/parity is private:true with deps on @livefolio/sdk (workspace) and @livefolio/datafeed-yfinance (file:../../yfinance)\",\"npm install succeeds with symlinks to both deps\",\"tsc --noEmit succeeds\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Vendor yfinance fixtures into parity/fixtures/",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** Copy SPY/QQQ/IEF 2020-2024 yfinance fixture JSONs into parity/fixtures/ so the workspace is self-contained for CI.\n\n**Files:** parity/fixtures/{SPY,QQQ,IEF}-2020-2024.json, parity/fixtures/README.md.\n\n**Verify:** `cmp parity/fixtures/SPY-2020-2024.json ../yfinance/test/fixtures/SPY-2020-2024.json` (and QQQ, IEF) → exit 0.\n\n```json:metadata\n{\"files\":[\"parity/fixtures/SPY-2020-2024.json\",\"parity/fixtures/QQQ-2020-2024.json\",\"parity/fixtures/IEF-2020-2024.json\",\"parity/fixtures/README.md\"],\"verifyCommand\":\"cmp parity/fixtures/SPY-2020-2024.json ../yfinance/test/fixtures/SPY-2020-2024.json\",\"acceptanceCriteria\":[\"All 3 JSONs byte-identical to yfinance source\",\"README documents source path and refresh procedure\",\"Fixtures are git-tracked\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Canonical parity strategy + matching TacticalSpec",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** Author SPY/QQQ/IEF weekly trend strategy as both v0.3 fluent code and TacticalSpec in one file. Ships PARITY_SPEC, buildV3Strategy, PARITY_RANGE/_V3.\n\n**Strategy:** weekly rebalance, 2 rules. Rule 1: Price(SPY) > SMA(SPY,200) → 60%SPY/40%QQQ. Rule 2 (fallback): 100%IEF.\n\n**Files:** parity/src/strategy.ts, parity/src/strategy.test.ts.\n\n**Verify:** `npm test -- src/strategy.test.ts` → green.\n\n```json:metadata\n{\"files\":[\"parity/src/strategy.ts\",\"parity/src/strategy.test.ts\"],\"verifyCommand\":\"cd parity && npx vitest run src/strategy.test.ts\",\"acceptanceCriteria\":[\"buildV3Strategy(client) returns StrategyHandle\",\"PARITY_SPEC has kind tactical/v0 (becomes v1 in Task 9), 3 universe entries, 2 features, if/else rule\",\"≥3 tickers, ≥1 signal-driven branch — meets spec parity-case requirements\",\"Round-trip test: feature refs declared, weights in universe\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Fixture-backed v0.3 providers",
+      "status": "completed",
+      "blockedBy": [2],
+      "description": "**Goal:** FixtureMarketProvider (reads yfinance JSON, returns DailyBar[]) and InMemoryStorageProvider (adapt makeInMemoryStorage from src/handles/__fixtures__/in-memory-storage.ts).\n\n**Files:** parity/src/v3-fixture-providers.ts, parity/src/v3-fixture-providers.test.ts.\n\n**Verify:** `npx vitest run src/v3-fixture-providers.test.ts` → green.\n\n```json:metadata\n{\"files\":[\"parity/src/v3-fixture-providers.ts\",\"parity/src/v3-fixture-providers.test.ts\"],\"verifyCommand\":\"cd parity && npx vitest run src/v3-fixture-providers.test.ts\",\"acceptanceCriteria\":[\"FixtureMarketProvider implements MarketProvider, caches per-symbol\",\"fetchBars honors `from` cutoff, throws on missing fixture\",\"makeInMemoryStorage exported (copied/adapted verbatim from sdk fixture)\",\"tradingDaysFromBars produces sorted union\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Allocation-history extractors (v0.3 + v0.4)",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** extractV3History(simulation) and extractV4History(result, priceAt) → AllocationHistory = ReadonlyArray<{date, weights}>.\n\n**Files:** parity/src/extract-history.ts, parity/src/extract-history.test.ts.\n\n**Verify:** `npx vitest run src/extract-history.test.ts` → green.\n\n```json:metadata\n{\"files\":[\"parity/src/extract-history.ts\",\"parity/src/extract-history.test.ts\"],\"verifyCommand\":\"cd parity && npx vitest run src/extract-history.test.ts\",\"acceptanceCriteria\":[\"AllocationHistory shape: {date:'YYYY-MM-DD', weights:Record<assetId,number>}\",\"v0.3 extractor reads simulation.series[].allocation.holdings, drops CASHX, normalizes to 1\",\"v0.4 extractor reads snapshots, computes weights from positions × priceAt(assetId,date), normalized\",\"Symbol→assetId mapper customizable; default prepends 'us:'\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: Allocation diff harness",
+      "status": "completed",
+      "blockedBy": [5],
+      "description": "**Goal:** compareAllocationHistories(a, b, opts?) → DiffReport. Pure outer-join on (date, assetId), tolerance, ignoreDates/ignoreAssets.\n\n**Files:** parity/src/diff.ts, parity/src/diff.test.ts.\n\n**Verify:** `npx vitest run src/diff.test.ts` → green.\n\n```json:metadata\n{\"files\":[\"parity/src/diff.ts\",\"parity/src/diff.test.ts\"],\"verifyCommand\":\"cd parity && npx vitest run src/diff.test.ts\",\"acceptanceCriteria\":[\"DiffReport: {matched, diffs, onlyInA, onlyInB}\",\"Cell mismatch when |b−a| > weightTolerance (default 1e-9)\",\"ignoreDates/ignoreAssets honored\",\"diffs sorted by (date, assetId); dates lists sorted\",\"Never throws\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: Parity test (the gate)",
+      "status": "completed",
+      "blockedBy": [3, 4, 5, 6],
+      "description": "**Goal:** Wire v0.3 (FixtureMarketProvider + InMemoryStorageProvider + buildV3Strategy + simulate) and v0.4 (YfinanceDataFeed + fromSpec(PARITY_SPEC) + runBacktest) over SPY/QQQ/IEF 2020-06→2024-12, extract both histories, diff, assert empty.\n\nLikely fails on first run — that's expected. Capture diff output as input for Task 8.\n\n**Files:** parity/src/parity.test.ts.\n\n**Verify:** `cd parity && npx vitest run src/parity.test.ts` → green is the gate.\n\n```json:metadata\n{\"files\":[\"parity/src/parity.test.ts\"],\"verifyCommand\":\"cd parity && npx vitest run src/parity.test.ts\",\"acceptanceCriteria\":[\"Loads SPY/QQQ/IEF fixtures once, shares across both sides\",\"v0.3 simulate runs without network (storage + market are fixture-backed)\",\"v0.4 runBacktest runs against YfinanceDataFeed wrapping the same fixtures\",\"Logs first 10 diffs + onlyIn lists + matched count on failure (informative)\",\"Asserts diffs empty, onlyIn lists empty, matched > 0\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8 (CONDITIONAL): Document divergences and fix bugs",
+      "status": "completed",
+      "blockedBy": [7],
+      "description": "**Skip if Task 7 passes outright.** Otherwise: classify each diff entry as (a) real bug → fix in source, (b) structural difference → document in docs/specs/2026-05-02-v0.4-parity-divergences.md and codify allowance in parity test, (c) wiring mistake → fix.\n\nDo NOT widen tolerance to make the test pass without root-cause analysis.\n\n**Files:** docs/specs/2026-05-02-v0.4-parity-divergences.md (NEW, conditional), parity/src/divergences.ts (NEW, conditional), parity/src/parity.test.ts (modify to import allowances), plus any source fixes.\n\n**Verify:** `cd parity && npm test && cd .. && npm test && cd ../yfinance && npm test` → all green, no regressions.\n\n```json:metadata\n{\"files\":[\"docs/specs/2026-05-02-v0.4-parity-divergences.md\",\"parity/src/divergences.ts\",\"parity/src/parity.test.ts\"],\"verifyCommand\":\"cd parity && npm test\",\"acceptanceCriteria\":[\"Each diff entry classified: bug-fixed | structural-allowance | wiring-fixed\",\"Divergence spec has reproduction, root-cause, justification, future-work for each allowance\",\"DiffOptions in parity.test.ts correspond 1:1 to spec entries (not hand-tuned)\",\"sdk + parity + yfinance suites all green\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: Promote tactical/v0 → tactical/v1",
+      "status": "completed",
+      "blockedBy": [7],
+      "description": "**Goal:** Widen TacticalSpec.kind to 'tactical/v0' | 'tactical/v1'. fromSpec accepts both; v0 emits one-time console.warn deprecation. Update all in-tree spec literals to v1; update yfinance integration test in separate sibling-repo commit.\n\n**Files:** src/tactical/types.ts, src/tactical/from-spec.ts, src/tactical/from-spec.test.ts, src/tactical/integration.test.ts, parity/src/strategy.ts, parity/src/strategy.test.ts, scripts/v04-demo-tactical.ts. Plus separate commit in ../yfinance/src/integration.test.ts.\n\n**Verify:** `npm test && cd parity && npm test && cd ../yfinance && npm test` → all green.\n\n```json:metadata\n{\"files\":[\"src/tactical/types.ts\",\"src/tactical/from-spec.ts\",\"src/tactical/from-spec.test.ts\",\"src/tactical/integration.test.ts\",\"parity/src/strategy.ts\",\"parity/src/strategy.test.ts\",\"scripts/v04-demo-tactical.ts\"],\"verifyCommand\":\"npm test\",\"acceptanceCriteria\":[\"TacticalSpec kind union accepts v0 and v1\",\"v0 path warns once per process; v1 silent\",\"Test for: v0 accepted+warns, v1 accepted+silent\",\"All 3 suites green\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 10: Phase-state docs update",
+      "status": "completed",
+      "blockedBy": [9],
+      "description": "**Goal:** Phase-4 stub's 'Next phase' paragraph rewritten in past tense; this plan gets a top-of-doc Status: Complete line.\n\n**Files:** docs/plans/2026-05-01-v0.4-phase-4-yfinance-datafeed.md (modify), docs/plans/2026-05-02-v0.4-phase-5-parity.md (modify — add Status header).\n\n**Verify:** `git diff` shows targeted paragraph rewritten; phase 5 has Status line.\n\n```json:metadata\n{\"files\":[\"docs/plans/2026-05-01-v0.4-phase-4-yfinance-datafeed.md\",\"docs/plans/2026-05-02-v0.4-phase-5-parity.md\"],\"verifyCommand\":\"git diff docs/plans/\",\"acceptanceCriteria\":[\"Phase-4 'Next phase' paragraph past-tense, points at phase 5 outcome and phase 6 as next\",\"Phase 5 plan gains 'Status: Complete (date)' header\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-02T04:38:00Z"
+}
