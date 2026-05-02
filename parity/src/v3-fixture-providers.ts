@@ -43,7 +43,7 @@ export class FixtureMarketProvider implements MarketProvider {
   }
 
   private loadSymbol(symbol: string): DailyBar[] {
-    const path = join(this.fixtureDir, `${symbol}-2020-2024.json`);
+    const path = join(this.fixtureDir, `${symbol}-2020-2026.json`);
     let raw: string;
     try {
       raw = readFileSync(path, 'utf-8');

@@ -39,7 +39,7 @@ interface YfinanceFixtureFile {
 }
 
 function loadYfinanceBars(symbol: string): Bar[] {
-  const path = resolve(FIXTURE_DIR, `${symbol}-2020-2024.json`);
+  const path = resolve(FIXTURE_DIR, `${symbol}-2020-2026.json`);
   const parsed = JSON.parse(readFileSync(path, 'utf-8')) as YfinanceFixtureFile;
   return parsed.bars.map((b) => ({
     t: new Date(b.t),
@@ -52,7 +52,7 @@ function loadYfinanceBars(symbol: string): Bar[] {
 }
 
 describe('parity gate: v0.3 fluent API ↔ tactical/v0 spec', () => {
-  it('produces identical allocation histories on SPY/QQQ/IEF 2020-06 → 2024-12', async () => {
+  it('produces identical allocation histories on SPY/QQQ/IEF 2020-06 → 2026-05', async () => {
     // ---- v0.3 wiring -----------------------------------------------------
     const market = new FixtureMarketProvider({ fixtureDir: FIXTURE_DIR });
     const spyBars3 = await market.fetchBars('SPY');
@@ -155,9 +155,10 @@ describe('parity gate: v0.3 fluent API ↔ tactical/v0 spec', () => {
     //       one rebalance day) — that's the regime both engines genuinely
     //       agree on. This excludes the ~92 warmup days where v0.3 emits a
     //       defensive IEF=1 and v0.4 emits nothing.
-    //    b. Boundary clip: the v0.4 calendar generates sessions past the
-    //       fixture's last bar (2024-12-30 is a Monday session, but fixture
-    //       data ends 2024-12-27). Clip the upper bound to v0.3's last date.
+    //    b. Boundary clip: the v0.4 calendar can generate sessions past the
+    //       fixture's last bar when PARITY_RANGE.to falls on a non-session
+    //       day. Clip the upper bound to min(v3Last, v4Last) so we only
+    //       compare dates both engines actually produced.
     const v4FirstWithTarget = histBFull.find((d) => Object.keys(d.weights).length > 0)?.date;
     if (!v4FirstWithTarget) throw new Error('parity: v0.4 produced no target weights');
     const v3First = histA[0]?.date ?? '';

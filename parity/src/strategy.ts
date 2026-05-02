@@ -4,8 +4,8 @@ import type { TacticalSpec, AssetRef } from '@livefolio/sdk';
 
 const utc = (s: string) => new Date(`${s}T00:00:00Z`);
 
-export const PARITY_RANGE_V3 = { from: '2020-06-01', to: '2024-12-31' } as const;
-export const PARITY_RANGE = { from: utc('2020-06-01'), to: utc('2024-12-31') };
+export const PARITY_RANGE_V3 = { from: '2020-06-01', to: '2026-05-02' } as const;
+export const PARITY_RANGE = { from: utc('2020-06-01'), to: utc('2026-05-02') };
 
 export const SPY_REF: AssetRef = { id: 'us:SPY', symbol: 'SPY' };
 export const QQQ_REF: AssetRef = { id: 'us:QQQ', symbol: 'QQQ' };

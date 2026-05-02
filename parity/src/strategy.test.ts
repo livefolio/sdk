@@ -44,8 +44,8 @@ describe('PARITY_SPEC', () => {
 
   it('range bounds match across v0.3 and v0.4 forms', () => {
     expect(PARITY_RANGE_V3.from).toBe('2020-06-01');
-    expect(PARITY_RANGE_V3.to).toBe('2024-12-31');
+    expect(PARITY_RANGE_V3.to).toBe('2026-05-02');
     expect(PARITY_RANGE.from.toISOString().slice(0, 10)).toBe('2020-06-01');
-    expect(PARITY_RANGE.to.toISOString().slice(0, 10)).toBe('2024-12-31');
+    expect(PARITY_RANGE.to.toISOString().slice(0, 10)).toBe('2026-05-02');
   });
 });
