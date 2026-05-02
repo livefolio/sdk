@@ -47,7 +47,7 @@ function validateSynthetics(spec: TacticalSpec): void {
   }
 }
 
-function periodKey(t: Date, freq: RebalanceFrequency): string {
+export function periodKey(t: Date, freq: RebalanceFrequency): string {
   const y = t.getUTCFullYear();
   const m = t.getUTCMonth();
   switch (freq) {
@@ -69,7 +69,7 @@ function periodKey(t: Date, freq: RebalanceFrequency): string {
   }
 }
 
-function isRebalanceDay(t: Date, freq: RebalanceFrequency, calendar: Calendar): boolean {
+export function isRebalanceDay(t: Date, freq: RebalanceFrequency, calendar: Calendar): boolean {
   if (freq === 'Daily') return true;
   const next = calendar.next(t);
   return periodKey(t, freq) !== periodKey(next, freq);
