@@ -10,7 +10,8 @@ function dayOfYear(d: Date): number {
 
 export function computeCalendar(bars: DailyBar[], period: CalendarPeriod): DailyBar[] {
   return bars.map((bar) => {
-    const [y, m, d] = bar.date.split('-').map(Number);
+    const parts = bar.date.split('-').map(Number);
+    const [y, m, d] = [parts[0]!, parts[1]!, parts[2]!];
     const date = new Date(y, m - 1, d);
     let value: number;
     switch (period) {
