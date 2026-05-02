@@ -114,6 +114,44 @@ export function resolveSpecialOpens(rules: ReadonlyArray<SpecialOpen>, year: num
   return out;
 }
 
+// ─── pandas-equivalent date helpers ─────────────────────────────────────────
+// These are general-purpose calendar utilities modelled on pandas_market_calendars
+// helpers. They are exchange-agnostic and reused across NYSE, LSE, and future ports.
+
+/** pandas `sunday_to_monday`: only Sunday observation; Saturday stays Saturday. */
+export function sundayToMonday(d: Date): Date {
+  return d.getUTCDay() === 0 ? new Date(d.getTime() + MS_PER_DAY) : d;
+}
+
+/** pandas `nearest_workday`: Sat → Friday, Sun → Monday, weekday → unchanged. */
+export function nearestWorkday(d: Date): Date {
+  const dow = d.getUTCDay();
+  if (dow === 6) return new Date(d.getTime() - MS_PER_DAY);
+  if (dow === 0) return new Date(d.getTime() + MS_PER_DAY);
+  return d;
+}
+
+/**
+ * First Monday on/after the given day of the month (mimics pandas `weekday=MO(n)` offset).
+ * Pass `nth > 1` to skip forward that many additional weeks.
+ */
+export function firstMondayOnOrAfter(year: number, month: number, day: number, nth = 1): Date {
+  const start = new Date(Date.UTC(year, month - 1, day));
+  const offset = (1 - start.getUTCDay() + 7) % 7; // MON = 1
+  return new Date(start.getTime() + (offset + 7 * (nth - 1)) * MS_PER_DAY);
+}
+
+/** Easter offset by `dayDelta` days (e.g. Good Friday = easterPlus(y, -2)). */
+export function easterPlus(year: number, dayDelta: number): Date {
+  return new Date(easter(year).getTime() + dayDelta * MS_PER_DAY);
+}
+
+/** Helper to drop a holiday if its observed date falls outside an allowed weekday set. */
+export function dropIfNotInDays(d: Date | null, allowed: ReadonlySet<number>): Date | null {
+  if (d === null) return null;
+  return allowed.has(d.getUTCDay()) ? d : null;
+}
+
 /**
  * Pick the rule with the latest `effectiveFrom ≤ date.toISOString().slice(0,10)`.
  * Rules without `effectiveFrom` are treated as the default (since inception).

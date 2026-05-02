@@ -1,8 +1,12 @@
 import { ExchangeCalendar } from './exchange-calendar';
 import {
-  easter,
+  dropIfNotInDays,
+  easterPlus,
+  firstMondayOnOrAfter,
   lastWeekdayOfMonth,
+  nearestWorkday,
   nthWeekdayOfMonth,
+  sundayToMonday,
   type AdhocTimeOverrides,
   type HolidayRule,
   type SpecialClose,
@@ -29,37 +33,6 @@ function utcDate(y: number, m: number, d: number): Date {
 
 function ymd(date: Date): string {
   return date.toISOString().slice(0, 10);
-}
-
-/** pandas `sunday_to_monday`: only Sunday observation; Saturday stays Saturday. */
-function sundayToMonday(d: Date): Date {
-  return d.getUTCDay() === SUN ? new Date(d.getTime() + MS_PER_DAY) : d;
-}
-
-/** pandas `nearest_workday`: Sat → Friday, Sun → Monday, weekday → unchanged. */
-function nearestWorkday(d: Date): Date {
-  const dow = d.getUTCDay();
-  if (dow === SAT) return new Date(d.getTime() - MS_PER_DAY);
-  if (dow === SUN) return new Date(d.getTime() + MS_PER_DAY);
-  return d;
-}
-
-/** First Monday on/after the n-th day of the given month (mimics pandas `weekday=MO(n)` offset). */
-function firstMondayOnOrAfter(year: number, month: number, day: number, nth = 1): Date {
-  const start = utcDate(year, month, day);
-  const offset = (MON - start.getUTCDay() + 7) % 7;
-  return new Date(start.getTime() + (offset + 7 * (nth - 1)) * MS_PER_DAY);
-}
-
-/** Easter offset by `dayDelta` days (Good Friday = easter() - 2). */
-function easterPlus(year: number, dayDelta: number): Date {
-  return new Date(easter(year).getTime() + dayDelta * MS_PER_DAY);
-}
-
-/** Helper to drop a holiday if its observed date falls outside an allowed weekday set. */
-function dropIfNotInDays(d: Date | null, allowed: ReadonlySet<number>): Date | null {
-  if (d === null) return null;
-  return allowed.has(d.getUTCDay()) ? d : null;
 }
 
 const WEEKDAYS_MON_FRI: ReadonlySet<number> = new Set([MON, TUE, WED, THU, FRI]);
@@ -626,6 +599,8 @@ function* generateSummerSaturdays(): IterableIterator<string> {
 }
 
 // WWI shutdown 1914-07-31 → 1914-12-11 (every Mon-Sat).
+// Upstream: OnsetOfWWI1914 uses CustomBusinessDay(weekmask="Mon Tue Wed Thu Fri Sat"),
+// confirming that Saturdays are included — consistent with the pre-1952 Mon-Sat trading week.
 function* generateWWIShutdown(): IterableIterator<string> {
   let d = new Date('1914-07-31T00:00:00.000Z');
   const end = new Date('1914-12-11T00:00:00.000Z');

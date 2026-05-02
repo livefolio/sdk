@@ -78,6 +78,10 @@ describe('NYSE — WWI shutdown 1914', () => {
   it('1914-12-14 (Mon, after reopen) is OPEN', () => {
     expect(cal.isOpen(utc('1914-12-14'))).toBe(true);
   });
+  it('1914-08-01 (Sat during WWI shutdown) is CLOSED — upstream weekmask includes Sat', () => {
+    // Upstream OnsetOfWWI1914 uses CustomBusinessDay(weekmask="Mon Tue Wed Thu Fri Sat").
+    expect(cal.isOpen(utc('1914-08-01'))).toBe(false);
+  });
 });
 
 describe('NYSE — holiday onset/sunset', () => {

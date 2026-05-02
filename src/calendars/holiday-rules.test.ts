@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
-  nthWeekdayOfMonth,
+  dropIfNotInDays,
+  easterPlus,
+  firstMondayOnOrAfter,
   lastWeekdayOfMonth,
+  nearestWorkday,
+  nthWeekdayOfMonth,
+  sundayToMonday,
   easter,
   observed,
   resolveHolidays,
@@ -134,5 +139,75 @@ describe('resolveSpecialOpens / resolveSpecialCloses', () => {
     expect(resolveSpecialCloses(rules, 2020).size).toBe(1);
     expect(resolveSpecialCloses(rules, 2022).size).toBe(1);
     expect(resolveSpecialCloses(rules, 2023).size).toBe(0);
+  });
+});
+
+describe('nearestWorkday', () => {
+  it('Saturday → Friday', () => {
+    // 2022-01-01 is a Saturday
+    expect(nearestWorkday(utc('2022-01-01')).toISOString()).toBe(utc('2021-12-31').toISOString());
+  });
+  it('Sunday → Monday', () => {
+    // 2023-01-01 is a Sunday
+    expect(nearestWorkday(utc('2023-01-01')).toISOString()).toBe(utc('2023-01-02').toISOString());
+  });
+  it('weekday → unchanged', () => {
+    // 2024-01-01 is a Monday
+    expect(nearestWorkday(utc('2024-01-01')).toISOString()).toBe(utc('2024-01-01').toISOString());
+  });
+});
+
+describe('sundayToMonday', () => {
+  it('Sunday → Monday', () => {
+    // 2023-01-01 is a Sunday
+    expect(sundayToMonday(utc('2023-01-01')).toISOString()).toBe(utc('2023-01-02').toISOString());
+  });
+  it('Saturday → unchanged (stays Saturday)', () => {
+    // 2022-01-01 is a Saturday
+    expect(sundayToMonday(utc('2022-01-01')).toISOString()).toBe(utc('2022-01-01').toISOString());
+  });
+  it('weekday → unchanged', () => {
+    expect(sundayToMonday(utc('2024-01-01')).toISOString()).toBe(utc('2024-01-01').toISOString());
+  });
+});
+
+describe('firstMondayOnOrAfter', () => {
+  it('returns Memorial Day 2024 — last Monday of May (Mon May 27)', () => {
+    // firstMondayOnOrAfter(2024, 5, 25) should return 2024-05-27
+    expect(firstMondayOnOrAfter(2024, 5, 25).toISOString()).toBe(utc('2024-05-27').toISOString());
+  });
+  it('returns the same day when the anchor is already a Monday', () => {
+    // 2024-01-01 is a Monday
+    expect(firstMondayOnOrAfter(2024, 1, 1).toISOString()).toBe(utc('2024-01-01').toISOString());
+  });
+  it('nth=2 skips forward one additional week', () => {
+    // 2024-05-25 → first Monday on/after = 2024-05-27; nth=2 → 2024-06-03
+    expect(firstMondayOnOrAfter(2024, 5, 25, 2).toISOString()).toBe(utc('2024-06-03').toISOString());
+  });
+});
+
+describe('easterPlus', () => {
+  it('Good Friday 2024 = Easter - 2 (March 29)', () => {
+    expect(easterPlus(2024, -2).toISOString()).toBe(utc('2024-03-29').toISOString());
+  });
+  it('Easter Monday 2025 = Easter + 1 (April 21)', () => {
+    expect(easterPlus(2025, 1).toISOString()).toBe(utc('2025-04-21').toISOString());
+  });
+});
+
+describe('dropIfNotInDays', () => {
+  const MON_FRI = new Set([1, 2, 3, 4, 5]);
+
+  it('returns the date when it falls in the allowed set', () => {
+    // 2024-01-01 is a Monday (dow=1)
+    const d = utc('2024-01-01');
+    expect(dropIfNotInDays(d, MON_FRI)).toBe(d);
+  });
+  it('returns null when the date falls outside the allowed set', () => {
+    // 2022-01-01 is a Saturday (dow=6)
+    expect(dropIfNotInDays(utc('2022-01-01'), MON_FRI)).toBeNull();
+  });
+  it('passes null through as null', () => {
+    expect(dropIfNotInDays(null, MON_FRI)).toBeNull();
   });
 });
