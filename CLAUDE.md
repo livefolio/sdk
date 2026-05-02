@@ -21,6 +21,5 @@
 
 ## Do Not
 
-- Re-export v0.3 surfaces from `src/index.ts` — v0.3 lives in `parity/src/v3/` as the regression target and is not part of the public API
-- Edit files under `parity/src/v3/` casually — that's frozen v0.3 source. Changes there must keep `parity/src/parity.test.ts` (the v0.4↔v0.3 allocation-history gate) passing
+- Re-export v0.3 surfaces from `src/index.ts` — v0.3 ships only on npm as `@livefolio/sdk@0.3.7`. The parity workspace consumes it via the `@livefolio/sdk-v3` alias for the v0.4↔v0.3 regression gate (`parity/src/parity.test.ts`)
 - Add network calls in unit tests — mock `DataFeed` / `Executor` with `vi.fn()` or use the in-memory reference impls (`MemoryFeatureCache`, `BacktestExecutor`)

@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@livefolio/sdk": "file:..",
+    "@livefolio/sdk-v3": "npm:@livefolio/sdk@0.3.7",
     "nanoid": "^5.1.7"
   },
   "devDependencies": {

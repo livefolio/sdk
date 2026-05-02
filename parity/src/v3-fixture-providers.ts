@@ -1,9 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { MarketProvider } from './v3/providers/market';
-import type { StorageProvider } from './v3/providers/storage';
-import type { StrategySeriesEntry } from './v3/providers/types';
-import type { DailyBar } from './v3/handles/indicator';
+import type { MarketProvider, StorageProvider, StrategySeriesEntry, DailyBar } from '@livefolio/sdk-v3';
 
 interface YfinanceBar {
   t: string;

@@ -23,7 +23,7 @@ TypeScript SDK for building tactical allocation strategies. Strategies are decla
 | `src/` | v0.4 SDK source (see `src/AGENTS.md`) |
 | `docs/` | Design specs and implementation plans (see `docs/AGENTS.md`) |
 | `docs-site/` | VitePress + TypeDoc documentation site published to GitHub Pages |
-| `parity/` | Regression workspace: hosts v0.3 source under `parity/src/v3/` and the v0.4↔v0.3 parity gate |
+| `parity/` | Regression workspace: consumes the published `@livefolio/sdk@0.3.7` (aliased as `@livefolio/sdk-v3`) and runs the v0.4↔v0.3 parity gate against it |
 | `scripts/` | Standalone demo and verification scripts; `scripts/docs/` holds runnable code samples embedded in the docs site |
 | `.claude/skills/` | Claude Code skills for SDK authoring (`livefolio-tactical-author`, `livefolio-custom-adapter`, `livefolio-debug-strategy`) |
 
@@ -32,7 +32,7 @@ TypeScript SDK for building tactical allocation strategies. Strategies are decla
 ### Working In This Directory
 - This is an ES module project (`"type": "module"`) — extensionless imports, bundled with tsup
 - The SDK exports `runBacktest`, `tactical.fromSpec`, `Strategy`/`DataFeed`/`Calendar`/`FeatureCache`/`Executor` types, plus reference impls
-- Public API is v0.4 only. v0.3 (`createClient`, fluent handles) lives in `parity/src/v3/` as the regression target — do not re-export from `src/index.ts`
+- Public API is v0.4 only. v0.3 (`createClient`, fluent handles) ships on npm as `@livefolio/sdk@0.3.7` and is consumed by the parity workspace via the `@livefolio/sdk-v3` alias — do not re-export from `src/index.ts`
 
 ### Testing Requirements
 - Run `npm test` to execute all Vitest tests (sdk + parity workspaces via aliases)

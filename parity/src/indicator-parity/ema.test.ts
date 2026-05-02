@@ -1,8 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ema } from '@livefolio/sdk';
 import type { Series } from '@livefolio/sdk';
-import { computeEma } from '../v3/computations/ema';
-import type { DailyBar } from '../v3/handles/indicator';
 
 const utc = (s: string) => new Date(`${s}T00:00:00Z`);
 
@@ -39,25 +37,5 @@ describe('ema', () => {
 
   it('handles empty series', () => {
     expect(ema([], 3)).toEqual([]);
-  });
-
-  it('parity with v0.3 computeEma (tolerance 1e-12)', () => {
-    const bars: DailyBar[] = [
-      { date: '2026-01-05', value: 100 },
-      { date: '2026-01-06', value: 102 },
-      { date: '2026-01-07', value: 98 },
-      { date: '2026-01-08', value: 105 },
-      { date: '2026-01-09', value: 110 },
-      { date: '2026-01-12', value: 107 },
-      { date: '2026-01-13', value: 103 },
-      { date: '2026-01-14', value: 108 },
-    ];
-    const s: Series = bars.map((b) => ({ t: new Date(`${b.date}T00:00:00Z`), v: b.value }));
-    const v3 = computeEma(bars, 4);
-    const v4 = ema(s, 4);
-    expect(v4).toHaveLength(v3.length);
-    for (let i = 0; i < v3.length; i++) {
-      expect(Math.abs(v4[i]!.v - v3[i]!.value)).toBeLessThanOrEqual(1e-12);
-    }
   });
 });

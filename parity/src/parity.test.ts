@@ -3,7 +3,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
 
-import { createClient } from './v3/client';
+import { createClient } from '@livefolio/sdk-v3';
 import {
   fromSpec,
   runBacktest,

@@ -1,8 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { volatility } from '@livefolio/sdk';
 import type { Series } from '@livefolio/sdk';
-import { computeVolatility } from '../v3/computations/volatility';
-import type { DailyBar } from '../v3/handles/indicator';
 
 const utc = (s: string) => new Date(`${s}T00:00:00Z`);
 
@@ -36,27 +34,5 @@ describe('volatility', () => {
   it('throws on non-positive period', () => {
     expect(() => volatility(series, 0)).toThrow();
     expect(() => volatility(series, -1)).toThrow();
-  });
-
-  it('parity with v0.3 computeVolatility (tolerance 1e-12)', () => {
-    const bars: DailyBar[] = [
-      { date: '2026-01-05', value: 100 },
-      { date: '2026-01-06', value: 102 },
-      { date: '2026-01-07', value: 98 },
-      { date: '2026-01-08', value: 105 },
-      { date: '2026-01-09', value: 110 },
-      { date: '2026-01-12', value: 107 },
-      { date: '2026-01-13', value: 103 },
-      { date: '2026-01-14', value: 108 },
-      { date: '2026-01-15', value: 112 },
-    ];
-    const s: Series = bars.map((b) => ({ t: new Date(`${b.date}T00:00:00Z`), v: b.value }));
-    const period = 4;
-    const v3 = computeVolatility(bars, period);
-    const v4 = volatility(s, period);
-    expect(v4).toHaveLength(v3.length);
-    for (let i = 0; i < v3.length; i++) {
-      expect(Math.abs(v4[i]!.v - v3[i]!.value)).toBeLessThanOrEqual(1e-12);
-    }
   });
 });

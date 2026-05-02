@@ -30,7 +30,7 @@ v0.4 SDK source: type interfaces, the `runBacktest` runtime loop, the feature li
 ### Working In This Directory
 - ESM with extensionless imports (bundler module resolution)
 - Public exports go through `index.ts` — update it when adding a new public type or function
-- Do not import from `parity/src/v3/` (that's frozen v0.3); v0.4 modules are self-contained
+- Do not import from `@livefolio/sdk-v3` (that's the published v0.3.7, only consumed by the parity workspace); v0.4 modules are self-contained
 
 ### Architecture Flow
 ```
