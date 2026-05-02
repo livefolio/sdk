@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { ema } from './ema';
-import { computeEma } from '../../computations/ema';
-import type { Series } from '../../interfaces/types';
-import type { DailyBar } from '../../handles/indicator';
+import { ema } from '@livefolio/sdk/features';
+import type { Series } from '@livefolio/sdk/interfaces';
+import { computeEma } from '../v3/computations/ema';
+import type { DailyBar } from '../v3/handles/indicator';
 
 const utc = (s: string) => new Date(`${s}T00:00:00Z`);
 

@@ -1,4 +1,4 @@
-import type { StrategyBar } from '@livefolio/sdk';
+import type { StrategyBar } from './v3/handles/strategy';
 import type { BacktestResult } from '@livefolio/sdk/strategy';
 import type { FeatureRuntime } from '@livefolio/sdk/features';
 import type { Calendar } from '@livefolio/sdk/interfaces';

@@ -1,4 +1,5 @@
-import type { LivefolioClient, StrategyHandle } from '@livefolio/sdk';
+import type { LivefolioClient } from './v3/client';
+import type { StrategyHandle } from './v3/handles/strategy';
 import type { TacticalSpec, AssetRef } from '@livefolio/sdk/tactical';
 
 const utc = (s: string) => new Date(`${s}T00:00:00Z`);

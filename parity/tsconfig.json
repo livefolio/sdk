@@ -22,5 +22,6 @@
       "@livefolio/sdk/orders": ["../src/orders/index.ts"]
     }
   },
-  "include": ["src/**/*", "fixtures/**/*.json"]
+  "include": ["src/**/*", "fixtures/**/*.json"],
+  "exclude": ["src/v3/**/*.test.ts"]
 }

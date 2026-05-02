@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { rsi } from './rsi';
-import { computeRsi } from '../../computations/rsi';
-import type { Series } from '../../interfaces/types';
-import type { DailyBar } from '../../handles/indicator';
+import { rsi } from '@livefolio/sdk/features';
+import type { Series } from '@livefolio/sdk/interfaces';
+import { computeRsi } from '../v3/computations/rsi';
+import type { DailyBar } from '../v3/handles/indicator';
 
 const utc = (s: string) => new Date(`${s}T00:00:00Z`);
 

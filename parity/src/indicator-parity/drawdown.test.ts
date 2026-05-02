@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { drawdown } from './drawdown';
-import { computeDrawdown } from '../../computations/drawdown';
-import type { Series } from '../../interfaces/types';
-import type { DailyBar } from '../../handles/indicator';
+import { drawdown } from '@livefolio/sdk/features';
+import type { Series } from '@livefolio/sdk/interfaces';
+import { computeDrawdown } from '../v3/computations/drawdown';
+import type { DailyBar } from '../v3/handles/indicator';
 
 const utc = (s: string) => new Date(`${s}T00:00:00Z`);
 
