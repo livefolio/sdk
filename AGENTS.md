@@ -1,18 +1,18 @@
-<!-- Generated: 2026-04-01 | Updated: 2026-04-01 -->
+<!-- Generated: 2026-04-01 | Updated: 2026-05-02 -->
 
 # @livefolio/sdk
 
 ## Purpose
-TypeScript SDK for building tactical allocation strategies. Provides a fluent API to define tickers, technical indicators, comparison signals, allocation rules, and complete strategies — backed by a Supabase database for persistence and time-series storage. Includes a backtesting simulation engine.
+TypeScript SDK for building tactical allocation strategies. Strategies are declared as `TacticalSpec` (universe, features, rebalance schedule, rule tree) and executed by `runBacktest` against pluggable runtime layers — `DataFeed` for market data, `Calendar` for trading-day arithmetic, `FeatureCache` for indicator memoization, `Executor` for order routing. Reference implementations (`USEquityCalendar`, `MemoryFeatureCache`, `BacktestExecutor`) ship in the box.
 
 ## Key Files
 
 | File | Description |
 |------|-------------|
-| `package.json` | Project manifest — `@livefolio/sdk`, ES module, Node >=20 |
+| `package.json` | Project manifest — `@livefolio/sdk@0.4.0`, ES module, Node >=20 |
 | `tsconfig.json` | TypeScript strict mode, ES2022 target, bundler module resolution |
 | `tsup.config.ts` | tsup bundler configuration |
-| `vitest.config.ts` | Vitest test runner configuration |
+| `vitest.config.ts` | Vitest test runner configuration with `@livefolio/sdk/*` subpath aliases |
 | `eslint.config.js` | ESLint flat config with typescript-eslint and Prettier |
 | `.prettierrc` | Prettier formatting rules |
 
@@ -20,31 +20,37 @@ TypeScript SDK for building tactical allocation strategies. Provides a fluent AP
 
 | Directory | Purpose |
 |-----------|---------|
-| `src/` | All TypeScript source code (see `src/AGENTS.md`) |
+| `src/` | v0.4 SDK source (see `src/AGENTS.md`) |
 | `docs/` | Design specs and implementation plans (see `docs/AGENTS.md`) |
+| `parity/` | Regression workspace: hosts v0.3 source under `parity/src/v3/` and the v0.4↔v0.3 parity gate |
+| `scripts/` | Standalone demo and verification scripts (e.g. `v04-readme-example.ts`) |
 
 ## For AI Agents
 
 ### Working In This Directory
 - This is an ES module project (`"type": "module"`) — extensionless imports, bundled with tsup
-- The SDK exports a `createClient(options)` factory that returns a `LivefolioClient` interface
+- The SDK exports `runBacktest`, `tactical.fromSpec`, `Strategy`/`DataFeed`/`Calendar`/`FeatureCache`/`Executor` types, plus reference impls
+- Public API is v0.4 only. v0.3 (`createClient`, fluent handles) lives in `parity/src/v3/` as the regression target — do not re-export from `src/index.ts`
+
 ### Testing Requirements
-- Run `npm test` to execute all Vitest tests
-- Tests use Vitest's `vi.fn()` for mocking — no real database connection needed
+- Run `npm test` to execute all Vitest tests (sdk + parity workspaces via aliases)
+- Tests use Vitest's `vi.fn()` for mocking external boundaries
+- Reference impls (`MemoryFeatureCache`, `BacktestExecutor`) work as in-memory test fixtures — no external services needed
 
 ### Common Patterns
-- **Handle pattern**: Core abstractions (`TickerHandle`, `IndicatorHandle`, etc.) are lazy — they defer database resolution until `.resolve()` is called
-- **Fluent builder API**: `createClient` returns methods like `.ticker()`, `.sma()`, `.gt()`, `.strategy()` that compose handles together
-- **Upsert-on-resolve**: Handles upsert their identity rows on first resolve, returning existing rows if they match
+- **Spec-driven strategies**: `TacticalSpec` is plain data. `tactical.fromSpec(spec, { runtime, calendar })` hydrates it into a `Strategy<F>` that `runBacktest` can drive
+- **Pluggable runtime layers**: `DataFeed`, `Executor`, `Calendar`, `FeatureCache` are interfaces. Reference impls ship; consumers swap any layer (e.g. `LiveBrokerExecutor`) without touching strategy code
+- **Content-addressed feature cache**: indicator results are keyed by `(feature spec, asset, date)`. `MemoryFeatureCache` is the in-process default; cross-process caches plug in by implementing the interface
 
 ## Dependencies
 
 ### External
-- `nanoid` — Short unique IDs for strategy link URLs
+- `nanoid` — Short unique IDs (legacy dep from v0.3 strategy link URLs; pending removal verification)
 
 ### Dev
 - `tsup` — Bundler
 - `vitest` — Test runner
+- `tsx` — Dev script runner
 - `typescript` — Compiler
 - `eslint` + `typescript-eslint` — Linting
 - `prettier` — Formatting

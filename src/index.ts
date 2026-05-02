@@ -52,8 +52,10 @@ export type {
   AssetRef,
 } from './tactical';
 
-// Feature library (namespace re-export)
+// Feature library (namespace re-export + commonly-used class)
 export * as features from './features';
+export { FeatureRuntime } from './features';
+export type { FeatureRuntimeOptions } from './features';
 
 // Orders
 export type { Order, OpenOrder, CloseOrder, AdjustOrder, RebalanceOrder, Fill } from './orders';

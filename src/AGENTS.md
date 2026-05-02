@@ -1,52 +1,54 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-04-01 | Updated: 2026-04-01 -->
+<!-- Generated: 2026-04-01 | Updated: 2026-05-02 -->
 
 # src
 
 ## Purpose
-All TypeScript source code for the SDK. Organized into handle classes (lazy abstractions backed by a `StorageProvider`), computation functions (technical indicators), provider interfaces (storage and market data), and a backtesting engine.
+v0.4 SDK source: type interfaces, the `runBacktest` runtime loop, the feature library, the tactical/v1 dialect, and reference implementations of `Calendar` / `FeatureCache` / `Executor`. Public API surface is the `index.ts` barrel.
 
 ## Key Files
 
 | File | Description |
 |------|-------------|
-| `index.ts` | Public API barrel export — all handles, types, and `createClient` |
-| `client.ts` | `createClient()` factory and `LivefolioClient` interface definition |
+| `index.ts` | Public API barrel — `runBacktest`, `tactical`, `features`, reference impls, type exports |
 
 ## Subdirectories
 
 | Directory | Purpose |
 |-----------|---------|
-| `handles/` | Lazy database-backed handle classes (see `handles/AGENTS.md`) |
-| `computations/` | Pure computation functions for technical indicators (see `computations/AGENTS.md`) |
-| `providers/` | Provider interfaces and mappings (see `providers/AGENTS.md`) |
-| `backtest/` | Portfolio simulation engine (see `backtest/AGENTS.md`) |
+| `interfaces/` | v0.4 type surface: `Strategy`, `Calendar`, `DataFeed`, `Executor`, `FeatureCache`, primitives (see `interfaces/AGENTS.md`) |
+| `strategy/` | `runBacktest` runtime loop and `reconcile` helper (see `strategy/AGENTS.md`) |
+| `features/` | Indicator math, `FeatureSpec` registry, `FeatureRuntime` orchestrator (see `features/AGENTS.md`) |
+| `tactical/` | `tactical/v1` dialect, `fromSpec`, rule-tree evaluator, synthetic-asset wrapper (see `tactical/AGENTS.md`) |
+| `reference/` | `USEquityCalendar`, `MemoryFeatureCache`, `BacktestExecutor` (see `reference/AGENTS.md`) |
+| `orders/` | `Order` union and `Fill` types (see `orders/AGENTS.md`) |
+| `portfolio/` | `Position`/`Portfolio` types and `applyFills`/`applyOrders` (see `portfolio/AGENTS.md`) |
 
 ## For AI Agents
 
 ### Working In This Directory
-- All imports use `.js` extensions (ESM with nodenext resolution)
-- Public exports go through `index.ts` — update it when adding new public types or classes
-- `client.ts` is the user-facing API surface — it wires handles together via factory methods
-- All database interaction goes through `StorageProvider`; market data through `MarketProvider`
+- ESM with extensionless imports (bundler module resolution)
+- Public exports go through `index.ts` — update it when adding a new public type or function
+- Do not import from `parity/src/v3/` (that's frozen v0.3); v0.4 modules are self-contained
 
 ### Architecture Flow
 ```
-User code → createClient() → LivefolioClient methods
-  → TickerHandle / IndicatorHandle / SignalHandle (lazy, resolve on demand)
-  → AllocationHandle (weighted holdings)
-  → StrategyHandle (rule engine: signals → allocations)
-  → StrategyHandle.simulate() → runSimulation() → SimulationHandle
+User code → tactical.fromSpec(spec, { runtime, calendar }) → Strategy<F>
+  → runBacktest({ strategy, dataFeed, calendar, executor, featureCache, range, initialPortfolio })
+  → BacktestResult { snapshots, finalPortfolio }
 ```
+
+Per session: `strategy.universe(t)` → `strategy.features(universe, portfolio, t)` (calls `FeatureRuntime` against `DataFeed` + `FeatureCache`) → `strategy.build(features, portfolio, t)` produces `Order[]` → `Executor.submit(orders)` produces `Fill[]` → `applyFills(portfolio, fills)`.
 
 ### Testing Requirements
 - Tests are co-located (`*.test.ts` next to implementation)
-- Run `npm test` from project root
-- Mock `StorageProvider` and `MarketProvider` with `vi.fn()` — no live database needed
+- Mock `DataFeed` and `Executor` with `vi.fn()` or use the in-memory reference impls
+- The sdk root tsconfig excludes `**/*.test.ts` from tsc; vitest type-checks at runtime
 
 ### Common Patterns
-- **Lazy resolution**: Handles store identity params in constructor, defer DB upsert to `.resolve()`
-- **`fromResolved()` static**: Every handle has a `fromResolved()` to reconstruct from known IDs without re-resolving
-- **Provider abstraction**: `StorageProvider` handles all persistence; `MarketProvider` handles all market data fetching
+- **Spec-driven strategies**: strategies are declarative `TacticalSpec` objects, hydrated by `tactical.fromSpec` into a runnable `Strategy<F>`
+- **Pluggable runtime layers**: `DataFeed`, `Executor`, `Calendar`, `FeatureCache` are interfaces — swap independently
+- **Content-addressed feature cache**: `(feature spec, asset, date)` is the cache key. `MemoryFeatureCache` is in-process; cross-process caches implement `FeatureCache`
+- **Reconcile helper**: `reconcile(currentPositions, targetWeights, totalValue, prices)` produces orders that move from current to target — used by `tactical.fromSpec` internally and available for hand-written strategies
 
 <!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
