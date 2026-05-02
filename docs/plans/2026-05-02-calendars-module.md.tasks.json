@@ -4,92 +4,92 @@
     {
       "id": 1,
       "subject": "Task 1: Widen Calendar interface + add Session/TimeOfDay types",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Land the contract change in isolation. Add `schedule(range): ReadonlyArray<Session>` and `isEarlyClose(t: Date): boolean` to `Calendar`, plus `Session` and `TimeOfDay` types. Keep build green by adding throwing stubs to `USEquityCalendar` (deleted in Task 11).\n\n**Files:** src/interfaces/calendar.ts, src/interfaces/index.ts, src/reference/us-equity-calendar.ts\n\n**Verify:** `npx tsc --noEmit && npm test -- src/interfaces` → exit 0\n\n```json:metadata\n{\"files\":[\"src/interfaces/calendar.ts\",\"src/interfaces/index.ts\",\"src/reference/us-equity-calendar.ts\"],\"verifyCommand\":\"npx tsc --noEmit && npm test\",\"acceptanceCriteria\":[\"Calendar has schedule() and isEarlyClose() methods\",\"Session and TimeOfDay exported from interfaces\",\"USEquityCalendar still implements Calendar (throwing stubs)\",\"build and tests pass\"]}\n```"
     },
     {
       "id": 2,
       "subject": "Task 2: Add luxon dependency",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Add `luxon` (runtime) and `@types/luxon` (dev) for TZ-aware open/close timestamps in `ExchangeCalendar`.\n\n**Files:** package.json, package-lock.json\n\n**Verify:** Install succeeds; `import { DateTime } from 'luxon'` resolves and typechecks.\n\n```json:metadata\n{\"files\":[\"package.json\",\"package-lock.json\"],\"verifyCommand\":\"npm install\",\"acceptanceCriteria\":[\"luxon ^3.x in dependencies\",\"@types/luxon ^3.x in devDependencies\",\"import resolves and typechecks\"]}\n```"
     },
     {
       "id": 3,
       "subject": "Task 3: Scaffold src/calendars/ module",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1, 2],
       "description": "**Goal:** Empty module with AGENTS.md and empty barrel. Add row to `src/AGENTS.md` Subdirectories table.\n\n**Files:** src/calendars/index.ts, src/calendars/AGENTS.md, src/AGENTS.md\n\n**Verify:** `npx tsc --noEmit` → exit 0\n\n```json:metadata\n{\"files\":[\"src/calendars/index.ts\",\"src/calendars/AGENTS.md\",\"src/AGENTS.md\"],\"verifyCommand\":\"npx tsc --noEmit\",\"acceptanceCriteria\":[\"src/calendars/index.ts exists with empty export\",\"src/calendars/AGENTS.md describes module\",\"src/AGENTS.md Subdirectories table lists calendars/\"]}\n```"
     },
     {
       "id": 4,
       "subject": "Task 4: Implement holiday-rules.ts (TDD)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [3],
       "description": "**Goal:** Promote `nthWeekdayOfMonth`/`lastWeekdayOfMonth`/`easter`/`observed` from us-equity-calendar.ts into shared module. Add full type set: `HolidayRule`, `SpecialClose`, `SpecialOpen`, `AdhocTimeOverrides`, `SessionTimeRule`, `TimeOfDay`. Add evaluators: `resolveHolidays`, `resolveSpecialCloses`, `resolveSpecialOpens`, `resolveSessionTime` (date-aware era-rule lookup).\n\n**Files:** src/calendars/holiday-rules.ts, src/calendars/holiday-rules.test.ts\n\n**Verify:** `npx vitest run src/calendars/holiday-rules.test.ts` → green\n\n```json:metadata\n{\"files\":[\"src/calendars/holiday-rules.ts\",\"src/calendars/holiday-rules.test.ts\"],\"verifyCommand\":\"npx vitest run src/calendars/holiday-rules.test.ts\",\"acceptanceCriteria\":[\"Helpers return UTC-midnight Dates\",\"Types: HolidayRule, SpecialClose, SpecialOpen, AdhocTimeOverrides, SessionTimeRule, TimeOfDay\",\"Evaluators: resolveHolidays, resolveSpecialCloses, resolveSpecialOpens, resolveSessionTime\",\"resolveSessionTime picks rule with latest effectiveFrom <= date; falls back to default rule\",\"tests pass\"]}\n```"
     },
     {
       "id": 5,
       "subject": "Task 5: Implement ExchangeCalendar abstract base (TDD)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [4],
       "description": "**Goal:** `ExchangeCalendar` abstract base with date-aware hooks for era-varying exchanges. 9 hooks: `regularHolidays`/`adhocHolidays`/`specialCloses`/`specialClosesAdhoc`/`specialOpens`/`specialOpensAdhoc`/`regularOpen(date)`/`regularClose(date)`/`weekmask(date)`. TZ-aware `schedule()` via luxon. Per-year caches for holidays/specialCloses/specialOpens. Adhoc time-overrides win over rule-driven; both win over `regular*(date)`.\n\n**Files:** src/calendars/exchange-calendar.ts, src/calendars/exchange-calendar.test.ts\n\n**Verify:** `npx vitest run src/calendars/exchange-calendar.test.ts` → green\n\n```json:metadata\n{\"files\":[\"src/calendars/exchange-calendar.ts\",\"src/calendars/exchange-calendar.test.ts\"],\"verifyCommand\":\"npx vitest run src/calendars/exchange-calendar.test.ts\",\"acceptanceCriteria\":[\"abstract class with name/tz\",\"9 hooks: regularHolidays, adhocHolidays, specialCloses, specialClosesAdhoc, specialOpens, specialOpensAdhoc, regularOpen(date), regularClose(date), weekmask(date)\",\"schedule() resolution order: adhoc > rule > regular\",\"isEarlyClose checks both rule and adhoc\",\"Per-year caches\",\"TestCalendar exercises era-varying weekmask, era-varying close, special-open and special-close adhoc\"]}\n```"
     },
     {
       "id": 6,
       "subject": "Task 6: NYSEExchangeCalendar — full faithful port (1885+)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [5],
       "description": "**Goal:** Faithful port of `pandas_market_calendars` NYSE calendar covering full historical range from 1885. Era-varying session times (10:00→09:30 in 1985; close 15:00→15:30→16:00); variable weekmask (Mon-Sat through 1952-09-29); all regular holidays with onset/sunset; all adhoc closures (presidential funerals back to Garfield 1881, weather closures, 1914 WWI, 1968 paperwork-crisis Wednesdays, 9/11, Sandy, etc.); rule-driven and adhoc special closes; adhoc special opens (1933 bank-holiday late-open). Custom NYD-Saturday rule (NO Friday closure).\n\n**Upstream source:** pandas_market_calendars/holidays/nyse.py and calendars/nyse.py\n\n**Files:** src/calendars/nyse.ts, src/calendars/nyse.test.ts\n\n**Verify:** `npx vitest run src/calendars/nyse.test.ts` → green; parity gate green for all dates 2020-06+ (CALENDAR_IGNORE removal is Task 12).\n\n```json:metadata\n{\"files\":[\"src/calendars/nyse.ts\",\"src/calendars/nyse.test.ts\"],\"verifyCommand\":\"npx vitest run src/calendars/nyse.test.ts\",\"acceptanceCriteria\":[\"name=NYSE, tz=America/New_York\",\"2020-06-19/2021-06-18/2021-12-31 OPEN (parity bug fixes)\",\"Era-varying open: 10:00 default, 09:30 from 1985-09-30\",\"Era-varying close: 15:00 → 15:30 (1952-09-29) → 16:00 (1974-01-02)\",\"Variable weekmask: Mon-Sat through 1952-09-29\",\"All regular holidays from upstream incl onset/sunset (MLK 1998+, Juneteenth 2022+, Lincoln <=1953, Washington fixed <=1970 + 3rd Mon Feb 1971+, Memorial fixed <=1970 + last Mon May 1971+, Columbus <=1953, Election Day, Veterans/Armistice)\",\"All adhoc closures from upstream back to 1881 (presidential funerals, 1888 blizzard, WWI 1914, 1933 bank holidays, JFK 1963, MLK/RFK 1968, paperwork-crisis Wednesdays, 9/11, Sandy, GHWB, Carter)\",\"Rule-driven special closes (DAT 13:00 from 1992, Christmas Eve 1996+, July 3)\",\"Adhoc special closes (1929 crash week, 1973-1975 oil crisis, etc)\",\"Adhoc special opens (1933-03-15 12:00)\"]}\n```"
     },
     {
       "id": 7,
       "subject": "Task 7: LSEExchangeCalendar — full faithful port (1801+)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [5],
       "description": "**Goal:** Faithful port of `pandas_market_calendars` LSE/UK calendar covering full historical range. Era boundaries (Banking and Financial Dealings Act 1971, Early May from 1978, NYD substitute from 1974). All royal events as adhoc closures: weddings (Charles+Diana 1981, William+Kate 2011), coronations (Elizabeth II 1953, Charles III 2023), jubilees (Silver/Golden/Diamond/Platinum), state funerals (Churchill 1965, Queen 2022), Millennium Eve. Pre-1971 era: Whit Monday, August Bank Holiday (1st Mon Aug). Post-1971: Spring Bank Holiday, Summer Bank Holiday.\n\n**Upstream source:** pandas_market_calendars/holidays/uk.py and calendars/lse.py\n\n**Files:** src/calendars/lse.ts, src/calendars/lse.test.ts\n\n**Verify:** `npx vitest run src/calendars/lse.test.ts` → green\n\n```json:metadata\n{\"files\":[\"src/calendars/lse.ts\",\"src/calendars/lse.test.ts\"],\"verifyCommand\":\"npx vitest run src/calendars/lse.test.ts\",\"acceptanceCriteria\":[\"name=LSE, tz=Europe/London\",\"Modern bank holidays (NYD, Good Fri, Easter Mon, Early May, Spring, Summer, Christmas, Boxing)\",\"Era boundaries: Early May validFrom: 1978, Spring/Summer Bank Holiday validFrom: 1971, Whit Monday/August Bank Holiday validUntil: 1970\",\"Christmas/Boxing substitution rules (Sat→Mon+Tue, Sun→Mon+Tue)\",\"Royal weddings: 1981-07-29 + 2011-04-29 closed\",\"Coronations: 1953-06-02 + 2023-05-08 closed\",\"Jubilees: 1977-06-07, 2002-06-03, 2012-06-05, 2022-06-03 closed\",\"State funerals: 1965-01-30 + 2022-09-19 closed\",\"Millennium Eve 1999-12-31 closed\",\"Early closes 12:30 London on Christmas Eve and NYE (weekday only)\",\"Regular session 08:00-16:30 London\"]}\n```"
     },
     {
       "id": 8,
       "subject": "Task 8: Implement getCalendar registry",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [6, 7],
       "description": "**Goal:** String-keyed factory mirroring `pandas_market_calendars.get_calendar`. Returns fresh instance each call.\n\n**Files:** src/calendars/get-calendar.ts, src/calendars/get-calendar.test.ts\n\n**Verify:** `npx vitest run src/calendars/get-calendar.test.ts` → green\n\n```json:metadata\n{\"files\":[\"src/calendars/get-calendar.ts\",\"src/calendars/get-calendar.test.ts\"],\"verifyCommand\":\"npx vitest run src/calendars/get-calendar.test.ts\",\"acceptanceCriteria\":[\"getCalendar('NYSE') returns NYSEExchangeCalendar\",\"getCalendar('LSE') returns LSEExchangeCalendar\",\"ExchangeName type is exhaustive 'NYSE' | 'LSE'\",\"fresh instance per call\"]}\n```"
     },
     {
       "id": 9,
       "subject": "Task 9: Wire barrels (calendars/index.ts and root src/index.ts)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [8],
       "description": "**Goal:** Export new module surface from both `src/calendars/index.ts` and `src/index.ts`. Drop `USEquityCalendar` from root barrel; add `Session`/`TimeOfDay` re-exports from interfaces.\n\n**Files:** src/calendars/index.ts, src/index.ts\n\n**Verify:** `npx tsc --noEmit && npm test` → exit 0\n\n```json:metadata\n{\"files\":[\"src/calendars/index.ts\",\"src/index.ts\"],\"verifyCommand\":\"npx tsc --noEmit && npm test\",\"acceptanceCriteria\":[\"calendars/index.ts exports ExchangeCalendar, NYSEExchangeCalendar, LSEExchangeCalendar, getCalendar, types\",\"src/index.ts exports those + Session, TimeOfDay\",\"src/index.ts no longer exports USEquityCalendar\",\"tsc clean\"]}\n```"
     },
     {
       "id": 10,
       "subject": "Task 10: Codemod USEquityCalendar → NYSEExchangeCalendar",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [9],
       "description": "**Goal:** Update 6 call sites (5 src tests + 1 parity test). After this task, NYSEExchangeCalendar runs everywhere USEquityCalendar did. Parity test still has CALENDAR_IGNORE (removed in Task 12).\n\n**Files:** src/features/integration.test.ts, src/tactical/from-spec.test.ts, src/tactical/integration.test.ts, src/strategy/run-backtest.test.ts, src/reference/backtest-executor.test.ts, parity/src/parity.test.ts\n\n**Verify:** `npm test` → green; grep returns nothing.\n\n```json:metadata\n{\"files\":[\"src/features/integration.test.ts\",\"src/tactical/from-spec.test.ts\",\"src/tactical/integration.test.ts\",\"src/strategy/run-backtest.test.ts\",\"src/reference/backtest-executor.test.ts\",\"parity/src/parity.test.ts\"],\"verifyCommand\":\"npm test\",\"acceptanceCriteria\":[\"All call sites import NYSEExchangeCalendar\",\"All `new USEquityCalendar()` → `new NYSEExchangeCalendar()`\",\"npm test green (parity still has CALENDAR_IGNORE)\",\"grep -rn USEquityCalendar src/ parity/src/ excluding us-equity-calendar files returns empty\"]}\n```"
     },
     {
       "id": 11,
       "subject": "Task 11: Delete USEquityCalendar; refresh reference module docs",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [10],
       "description": "**Goal:** Delete dead files. Clean reference module barrel and AGENTS.md.\n\n**Files:** delete src/reference/us-equity-calendar.ts + .test.ts; modify src/reference/index.ts and src/reference/AGENTS.md\n\n**Verify:** `npm test && grep -rn 'USEquityCalendar\\|us-equity-calendar' src/ parity/ scripts/ docs/ --exclude=2026-05-02-nyse-calendar.md` → tests green AND grep empty\n\n```json:metadata\n{\"files\":[\"src/reference/us-equity-calendar.ts\",\"src/reference/us-equity-calendar.test.ts\",\"src/reference/index.ts\",\"src/reference/AGENTS.md\"],\"verifyCommand\":\"npm test\",\"acceptanceCriteria\":[\"Both us-equity-calendar files deleted\",\"src/reference/index.ts no longer exports USEquityCalendar\",\"src/reference/AGENTS.md has only MemoryFeatureCache and BacktestExecutor\",\"grep returns empty (excluding old plan)\"]}\n```"
     },
     {
       "id": 12,
       "subject": "Task 12: Drop CALENDAR_IGNORE from parity test and Allowance 2 from divergences spec",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [11],
       "description": "**Goal:** With NYSEExchangeCalendar correct, parity gate no longer needs to mask 2020-06-19/2021-06-18/2021-12-31. Remove from test and spec.\n\n**Files:** parity/src/parity.test.ts, docs/specs/2026-05-02-v0.4-parity-divergences.md\n\n**Verify:** `cd parity && npx vitest run src/parity.test.ts` → green\n\n```json:metadata\n{\"files\":[\"parity/src/parity.test.ts\",\"docs/specs/2026-05-02-v0.4-parity-divergences.md\"],\"verifyCommand\":\"cd parity && npx vitest run src/parity.test.ts\",\"acceptanceCriteria\":[\"CALENDAR_IGNORE constant and filter logic removed\",\"Allowance 2 section removed from divergences spec\",\"Renumber Allowance 3 → Allowance 2\",\"'three allowances' → 'two allowances' in summary\",\"parity gate green\"]}\n```"
     },
     {
       "id": 13,
       "subject": "Task 13: Mark old plan superseded; update docs/AGENTS.md",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [12],
       "description": "**Goal:** Breadcrumb so readers of the old brainstorm get pointed at the implemented plan/spec.\n\n**Files:** docs/plans/2026-05-02-nyse-calendar.md, docs/AGENTS.md\n\n**Verify:** `grep -n 2026-05-02-calendars-module docs/AGENTS.md docs/plans/2026-05-02-nyse-calendar.md` → both files match\n\n```json:metadata\n{\"files\":[\"docs/plans/2026-05-02-nyse-calendar.md\",\"docs/AGENTS.md\"],\"verifyCommand\":\"grep -n 2026-05-02-calendars-module docs/AGENTS.md docs/plans/2026-05-02-nyse-calendar.md\",\"acceptanceCriteria\":[\"First line of old plan is supersede note pointing at new plan/spec\",\"docs/AGENTS.md bullet replaced with reference to new plan/spec pair\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-02T11:30:00-05:00"
+  "lastUpdated": "2026-05-02T15:00:00-05:00"
 }
