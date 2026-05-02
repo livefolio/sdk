@@ -1,6 +1,8 @@
+import type { TimeOfDay } from '../interfaces/calendar';
+
 const MS_PER_DAY = 86_400_000;
 
-export type TimeOfDay = { h: number; m: number };
+export type { TimeOfDay };
 
 export type HolidayRule = {
   name: string;
@@ -115,7 +117,7 @@ export function resolveSpecialOpens(rules: ReadonlyArray<SpecialOpen>, year: num
 /**
  * Pick the rule with the latest `effectiveFrom ≤ date.toISOString().slice(0,10)`.
  * Rules without `effectiveFrom` are treated as the default (since inception).
- * Returns the matched rule's `time`, or `null` if no rule matches (impossible if a default rule is present).
+ * Throws if no rule matches at all (provide a default rule to guarantee a match).
  */
 export function resolveSessionTime(rules: ReadonlyArray<SessionTimeRule>, date: Date): TimeOfDay {
   const key = date.toISOString().slice(0, 10);

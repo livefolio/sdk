@@ -5,6 +5,9 @@ import {
   easter,
   observed,
   resolveHolidays,
+  resolveSessionTime,
+  resolveSpecialOpens,
+  resolveSpecialCloses,
   type HolidayRule,
 } from './holiday-rules';
 
@@ -79,16 +82,14 @@ describe('resolveHolidays', () => {
 });
 
 describe('resolveSessionTime', () => {
-  it('returns the unbounded default when no era rule applies yet', async () => {
-    const { resolveSessionTime } = await import('./holiday-rules');
+  it('returns the unbounded default when no era rule applies yet', () => {
     const time = resolveSessionTime(
       [{ time: { h: 10, m: 0 } }, { effectiveFrom: '1985-09-30', time: { h: 9, m: 30 } }],
       utc('1980-01-01'),
     );
     expect(time).toEqual({ h: 10, m: 0 });
   });
-  it('picks the latest rule whose effectiveFrom ≤ date', async () => {
-    const { resolveSessionTime } = await import('./holiday-rules');
+  it('picks the latest rule whose effectiveFrom ≤ date', () => {
     const rules = [
       { time: { h: 15, m: 0 } },
       { effectiveFrom: '1952-09-29', time: { h: 15, m: 30 } },
@@ -103,8 +104,7 @@ describe('resolveSessionTime', () => {
 });
 
 describe('resolveSpecialOpens / resolveSpecialCloses', () => {
-  it('SpecialOpen: returns Map<dayMs, TimeOfDay>', async () => {
-    const { resolveSpecialOpens } = await import('./holiday-rules');
+  it('SpecialOpen: returns Map<dayMs, TimeOfDay>', () => {
     const rules = [
       { name: 'Late open', resolve: (y: number) => new Date(Date.UTC(y, 0, 15)), openAt: { h: 11, m: 0 } },
     ];
@@ -112,8 +112,7 @@ describe('resolveSpecialOpens / resolveSpecialCloses', () => {
     expect(map.get(utc('2024-01-15').getTime())).toEqual({ h: 11, m: 0 });
   });
 
-  it('SpecialClose: returns Map<dayMs, TimeOfDay>', async () => {
-    const { resolveSpecialCloses } = await import('./holiday-rules');
+  it('SpecialClose: returns Map<dayMs, TimeOfDay>', () => {
     const rules = [
       { name: 'Early close', resolve: (y: number) => new Date(Date.UTC(y, 6, 3)), closeAt: { h: 13, m: 0 } },
     ];
@@ -121,8 +120,7 @@ describe('resolveSpecialOpens / resolveSpecialCloses', () => {
     expect(map.get(utc('2024-07-03').getTime())).toEqual({ h: 13, m: 0 });
   });
 
-  it('SpecialClose: honors validFrom/validUntil', async () => {
-    const { resolveSpecialCloses } = await import('./holiday-rules');
+  it('SpecialClose: honors validFrom/validUntil', () => {
     const rules = [
       {
         name: 'Bounded',
