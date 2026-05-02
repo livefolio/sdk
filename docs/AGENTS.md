@@ -33,7 +33,7 @@ The v0.4 rollout is structured as numbered phases, each with a spec and a plan i
 
 `specs/2026-05-02-v0.4-parity-divergences.md` codifies the structural allowances the parity gate accepts.
 
-`plans/2026-05-02-nyse-calendar.md` captures decisions for the deferred NYSE calendar port (post phase-7).
+`plans/2026-05-02-calendars-module.md` (companion spec `specs/2026-05-02-calendars-module-design.md`) — multi-exchange calendar framework: `ExchangeCalendar` base + `NYSEExchangeCalendar` + `LSEExchangeCalendar`. Supersedes the deferred `plans/2026-05-02-nyse-calendar.md` brainstorm.
 
 ## For AI Agents
 

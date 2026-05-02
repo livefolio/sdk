@@ -1,3 +1,5 @@
+> **Superseded by [`docs/plans/2026-05-02-calendars-module.md`](2026-05-02-calendars-module.md)** (broader scope: framework + NYSE + LSE). Companion spec: [`docs/specs/2026-05-02-calendars-module-design.md`](../specs/2026-05-02-calendars-module-design.md). Original brainstorm preserved below for historical context.
+
 # NYSE Calendar — port `pandas_market_calendars`
 
 **Status:** Deferred until after phase 6 (codemod). Brainstorm captured 2026-05-02; no implementation work yet.
