@@ -108,17 +108,22 @@ describe('fromSpec', () => {
     const strategy = fromSpec(tolerantSpec, { runtime, calendar });
 
     const days = [utc('2026-01-05'), utc('2026-01-06'), utc('2026-01-07')];
-    const targetsByDay: number[] = [];
+    const ordersByDay: number[] = [];
 
     for (const t of days) {
       const features = await strategy.features(strategy.universe(t, initialPortfolio), initialPortfolio, t);
       const orders = strategy.build(features, initialPortfolio, t);
-      const delta = orders.find((o) => o.kind === 'rebalance')?.delta ?? 0;
-      targetsByDay.push(delta);
+      ordersByDay.push(orders.length);
     }
 
-    expect(targetsByDay[0]!).toBeGreaterThan(0);
-    expect(targetsByDay[2]!).toBeLessThan(0);
+    // Day 1: enters long → buy orders.
+    expect(ordersByDay[0]!).toBeGreaterThan(0);
+    // Day 2: still inside band, hysteresis keeps target={SPY:1} → buy orders against the still-empty portfolio.
+    // Without state threading, day 2's raw compare (96 > 100) would be false → target={} → 0 orders.
+    // So a non-zero count here is the proof that state was threaded.
+    expect(ordersByDay[1]!).toBeGreaterThan(0);
+    // Day 3: drops below lower band → state flips to 0 → target={} → no positions to sell → 0 orders.
+    expect(ordersByDay[2]!).toBe(0);
   });
 
   it('rebalance Weekly skips Mon–Thu and only emits orders on Friday', async () => {

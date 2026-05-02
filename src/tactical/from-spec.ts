@@ -82,7 +82,6 @@ export function fromSpec(spec: TacticalSpec, opts: FromSpecOptions): Strategy<Ta
   const cadence: RebalanceFrequency = spec.rebalance?.frequency ?? 'Daily';
 
   let state: RuleTreeState = new Map();
-  const lastShares = new Map<AssetId, number>();
 
   return {
     universe: () => universe,
@@ -122,51 +121,7 @@ export function fromSpec(spec: TacticalSpec, opts: FromSpecOptions): Strategy<Ta
       for (const assetId of evaluated.weights.keys()) {
         if (!features.prices.has(assetId)) return [];
       }
-
-      // Synthesize a virtual portfolio that combines the caller-supplied
-      // portfolio with shares we have allocated through previous build()
-      // calls. This way exits triggered by hysteresis still emit sell
-      // orders when the caller does not (yet) thread executed positions
-      // back into the portfolio for the next tick.
-      const synthPositions = portfolio.positions.slice();
-      let synthCounter = 0;
-      const heldByAsset = new Map<AssetId, number>();
-      for (const p of synthPositions) {
-        if (p.side === 'long') {
-          heldByAsset.set(p.asset.id, (heldByAsset.get(p.asset.id) ?? 0) + p.quantity);
-        }
-      }
-      for (const [assetId, q] of lastShares) {
-        const have = heldByAsset.get(assetId) ?? 0;
-        const missing = q - have;
-        if (missing > 0) {
-          const asset = universe.find((u) => u.id === assetId);
-          if (!asset) continue;
-          synthPositions.push({
-            id: `__virt_${assetId}_${synthCounter++}`,
-            asset,
-            side: 'long',
-            quantity: missing,
-            entry: { date: portfolio.t, price: features.prices.get(assetId) ?? 0 },
-            basis: 0,
-          });
-        }
-      }
-
-      const virtualPortfolio =
-        synthPositions.length === portfolio.positions.length
-          ? portfolio
-          : { cash: portfolio.cash, t: portfolio.t, positions: synthPositions };
-
-      const orders = reconcile(evaluated.weights, virtualPortfolio, features.prices);
-
-      for (const o of orders) {
-        const cur = lastShares.get(o.asset.id) ?? 0;
-        const next = cur + o.delta;
-        if (next <= 0) lastShares.delete(o.asset.id);
-        else lastShares.set(o.asset.id, next);
-      }
-      return orders;
+      return reconcile(evaluated.weights, portfolio, features.prices);
     },
   };
 }
