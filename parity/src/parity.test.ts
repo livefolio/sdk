@@ -140,18 +140,10 @@ describe('parity gate: v0.3 fluent API ↔ tactical/v0 spec', () => {
     });
 
     // ---- structural date allowances -------------------------------------
-    // Three date-set divergences require explicit handling. Each is documented
+    // Two date-set divergences require explicit handling. Each is documented
     // in docs/specs/2026-05-02-v0.4-parity-divergences.md.
     //
-    // 1. Calendar drift (3 dates): v0.3 fixture-derived calendar treats
-    //    Juneteenth (2020-06-19, 2021-06-18) and observed-NYE Friday
-    //    (2021-12-31) as trading days; NYSEExchangeCalendar excludes them. Real
-    //    NYSE was OPEN on all three — but v0.3's strategy still rebalances on
-    //    those days using fixture data, so the v0.3 history has rows v0.4
-    //    legitimately doesn't. Ignored as a structural calendar divergence.
-    const CALENDAR_IGNORE = new Set<string>(['2020-06-19', '2021-06-18', '2021-12-31']);
-    //
-    // 2. Range clipping (warmup + boundary):
+    // 1. Range clipping (warmup + boundary):
     //    a. SMA200 warmup: v0.3 evaluates the rule tree from day 1 — when the
     //       trend signal is undefined (SMA200 still warming up), v0.3's
     //       evaluator coerces it to `false` (see src/computations/strategy.ts
@@ -175,7 +167,7 @@ describe('parity gate: v0.3 fluent API ↔ tactical/v0 spec', () => {
     const compareTo = v3Last < v4Last ? v3Last : v4Last;
 
     const filterByRange = <T extends { date: string }>(rows: ReadonlyArray<T>): T[] =>
-      rows.filter((r) => r.date >= compareFrom && r.date <= compareTo && !CALENDAR_IGNORE.has(r.date));
+      rows.filter((r) => r.date >= compareFrom && r.date <= compareTo);
 
     const histAClipped = filterByRange(histA);
     const histBClipped = filterByRange(histBFull);
