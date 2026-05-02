@@ -12,8 +12,8 @@ import {
   MemoryFeatureCache,
   BacktestExecutor,
 } from '@livefolio/sdk';
-import type { Asset, Bar, DateRange, Frequency } from '@livefolio/sdk';
-import { YfinanceDataFeed } from '@livefolio/datafeed-yfinance';
+import type { Asset, Bar } from '@livefolio/sdk';
+import { FixtureDataFeed } from './fixture-data-feed';
 
 import { buildV3Strategy, PARITY_SPEC, PARITY_RANGE, PARITY_RANGE_V3 } from './strategy';
 import { FixtureMarketProvider, makeInMemoryStorage, tradingDaysFromBars } from './v3-fixture-providers';
@@ -87,18 +87,7 @@ describe('parity gate: v0.3 fluent API ↔ tactical/v0 spec', () => {
     ]);
     const calendar = new NYSEExchangeCalendar();
     const cache = new MemoryFeatureCache();
-    const dataFeed = new YfinanceDataFeed({
-      fetcher: async (
-        symbol: string,
-        range: DateRange,
-        _freq: Frequency,
-        _opts: { includeIncompleteToday: boolean },
-      ) => {
-        const bars = barsBySym.get(symbol);
-        if (!bars) throw new Error(`no fixture for ${symbol}`);
-        return bars.filter((b) => b.t >= range.from && b.t < range.to);
-      },
-    });
+    const dataFeed = new FixtureDataFeed(barsBySym);
     // The FeatureRuntime range determines how much price history is loaded
     // for indicator computation. SMA200 needs ~200 prior trading days; widen
     // the lower bound to the fixture's start so SMA warmup matches v0.3

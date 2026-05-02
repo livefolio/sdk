@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { FeatureRuntime, NYSEExchangeCalendar, MemoryFeatureCache } from '@livefolio/sdk';
-import type { Bar, DateRange, Frequency, TacticalSpec } from '@livefolio/sdk';
-import { YfinanceDataFeed } from '@livefolio/datafeed-yfinance';
+import type { Bar, TacticalSpec } from '@livefolio/sdk';
+import { FixtureDataFeed } from './fixture-data-feed';
 import { extractV3History, extractV4History, extractV4TargetHistory } from './extract-history';
 
 const utc = (s: string) => new Date(`${s}T00:00:00Z`);
@@ -146,14 +146,7 @@ describe('extractV4TargetHistory', () => {
   };
 
   function buildRuntime(bars: Bar[]) {
-    const dataFeed = new YfinanceDataFeed({
-      fetcher: async (
-        _symbol: string,
-        range: DateRange,
-        _freq: Frequency,
-        _opts: { includeIncompleteToday: boolean },
-      ) => bars.filter((b) => b.t >= range.from && b.t < range.to),
-    });
+    const dataFeed = new FixtureDataFeed(new Map([['SPY', bars]]));
     const runtime = new FeatureRuntime({
       dataFeed,
       featureCache: new MemoryFeatureCache(),
