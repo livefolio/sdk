@@ -9,12 +9,12 @@ Multi-exchange calendar framework. `ExchangeCalendar` is the abstract base; per-
 
 | File | Description |
 |------|-------------|
-| `exchange-calendar.ts` | `abstract class ExchangeCalendar implements Calendar` — shared scheduling/holiday/observance logic; subclasses provide `name`, `tz`, and override `regularHolidays`/`adhocHolidays`/`specialCloses`/`regularOpen`/`regularClose` |
-| `holiday-rules.ts` | `HolidayRule`, `SpecialClose`, `nthWeekdayOfMonth`, `lastWeekdayOfMonth`, `easter`, `observed` |
+| `exchange-calendar.ts` | `abstract class ExchangeCalendar implements Calendar` — shared scheduling/holiday/observance/TZ logic. Subclasses provide `name`, `tz`, and override 9 hooks: `regularHolidays`, `adhocHolidays`, `specialCloses`, `specialClosesAdhoc`, `specialOpens`, `specialOpensAdhoc`, `regularOpen(date)`, `regularClose(date)`, `weekmask(date)` |
+| `holiday-rules.ts` | Types: `HolidayRule`, `SpecialClose`, `SpecialOpen`, `AdhocTimeOverrides`, `SessionTimeRule`, `TimeOfDay`. Date helpers: `nthWeekdayOfMonth`, `lastWeekdayOfMonth`, `easter`, `observed`, `nearestWorkday`, `sundayToMonday`, `firstMondayOnOrAfter`, `easterPlus`, `dropIfNotInDays`. Resolvers: `resolveHolidays`, `resolveSpecialCloses`, `resolveSpecialOpens`, `resolveSessionTime` |
 | `nyse.ts` | `NYSEExchangeCalendar` — full faithful port (Juneteenth from 2022, MLK from 1998, adhoc closures, early closes) |
 | `lse.ts` | `LSEExchangeCalendar` — UK bank holidays, Europe/London, early closes Christmas Eve and NYE 12:30 |
-| `get-calendar.ts` | `getCalendar('NYSE' \| 'LSE')` registry |
-| `index.ts` | Barrel |
+| `get-calendar.ts` | `getCalendar('NYSE' \| 'LSE')` registry; exports `ExchangeName` union type |
+| `index.ts` | Barrel — re-exports `ExchangeCalendar`, `NYSEExchangeCalendar`, `LSEExchangeCalendar`, `getCalendar`, `ExchangeName`, and types `HolidayRule`, `SpecialClose`, `SpecialOpen`, `AdhocTimeOverrides` |
 
 ## For AI Agents
 

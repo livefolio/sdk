@@ -21,7 +21,7 @@ import {
   fromSpec,
   runBacktest,
   FeatureRuntime,
-  USEquityCalendar,
+  NYSEExchangeCalendar,
   MemoryFeatureCache,
   BacktestExecutor,
 } from '@livefolio/sdk';
@@ -51,7 +51,7 @@ const spec: TacticalSpec = {
 
 // 2. Wire the runtime layers.
 const dataFeed = new YfinanceDataFeed();
-const calendar = new USEquityCalendar();
+const calendar = new NYSEExchangeCalendar();
 const featureCache = new MemoryFeatureCache();
 const range: DateRange = {
   from: new Date('2020-01-01T00:00:00Z'),
@@ -101,8 +101,9 @@ barrel — `import type { DataFeed } from '@livefolio/sdk'`.
 ### `Calendar`
 
 Trading-day arithmetic: `isOpen`, `next`, `previous`, `sessions`.
-`USEquityCalendar` ships in the box. Pluggable for non-US exchanges
-(NYSE-faithful port forthcoming).
+`NYSEExchangeCalendar` and `LSEExchangeCalendar` ship in the box. Select one
+via `getCalendar('NYSE' | 'LSE')` or instantiate directly. Pluggable — any
+class implementing `Calendar` works.
 
 ### `FeatureCache`
 
@@ -137,7 +138,7 @@ import {
   // Feature runtime
   FeatureRuntime, defineFeature,
   // Reference impls
-  USEquityCalendar, MemoryFeatureCache, BacktestExecutor,
+  NYSEExchangeCalendar, LSEExchangeCalendar, getCalendar, MemoryFeatureCache, BacktestExecutor,
   // Portfolio helpers
   applyFills, applyOrders,
 } from '@livefolio/sdk';

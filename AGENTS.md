@@ -3,7 +3,7 @@
 # @livefolio/sdk
 
 ## Purpose
-TypeScript SDK for building tactical allocation strategies. Strategies are declared as `TacticalSpec` (universe, features, rebalance schedule, rule tree) and executed by `runBacktest` against pluggable runtime layers — `DataFeed` for market data, `Calendar` for trading-day arithmetic, `FeatureCache` for indicator memoization, `Executor` for order routing. Reference implementations (`USEquityCalendar`, `MemoryFeatureCache`, `BacktestExecutor`) ship in the box.
+TypeScript SDK for building tactical allocation strategies. Strategies are declared as `TacticalSpec` (universe, features, rebalance schedule, rule tree) and executed by `runBacktest` against pluggable runtime layers — `DataFeed` for market data, `Calendar` for trading-day arithmetic, `FeatureCache` for indicator memoization, `Executor` for order routing. Reference implementations (`NYSEExchangeCalendar`, `LSEExchangeCalendar`, `MemoryFeatureCache`, `BacktestExecutor`) ship in the box.
 
 ## Key Files
 
