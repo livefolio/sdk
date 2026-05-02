@@ -38,7 +38,7 @@ class TestCalendar extends ExchangeCalendar {
     if (key < '1974-01-02') return { h: 15, m: 30 };
     return { h: 16, m: 0 };
   }
-  protected override regularOpen(): TimeOfDay {
+  protected override regularOpen(_date: Date): TimeOfDay {
     return { h: 9, m: 30 };
   }
   // Mon–Sat through 1952-09-29; Mon–Fri from then on.
@@ -71,6 +71,13 @@ describe('ExchangeCalendar (via TestCalendar)', () => {
   });
   it('previous() skips weekends in modern era', () => {
     expect(cal.previous(utc('2024-01-08')).toISOString()).toBe(utc('2024-01-05').toISOString());
+  });
+  it('next() skips holidays (next after Christmas Eve in 2024 → Dec 26)', () => {
+    // 2024-12-24 (Tue) → next() returns first session after; 2024-12-25 closed → 2024-12-26 (Thu) open
+    expect(cal.next(utc('2024-12-24')).toISOString()).toBe(utc('2024-12-26').toISOString());
+  });
+  it('previous() skips holidays (previous before Christmas in 2024 → Dec 24)', () => {
+    expect(cal.previous(utc('2024-12-26')).toISOString()).toBe(utc('2024-12-24').toISOString());
   });
 
   it('schedule() uses era-varying close: 1950 → 15:00 ET (= 19:00 UTC, EST since pre-DST-mod)', () => {

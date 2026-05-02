@@ -28,6 +28,10 @@ export abstract class ExchangeCalendar implements Calendar {
   private readonly specialCloseCache = new Map<number, Map<number, TimeOfDay>>();
   private readonly specialOpenCache = new Map<number, Map<number, TimeOfDay>>();
 
+  private adhocHolidaysCache: ReadonlySet<string> | null = null;
+  private adhocSpecialClosesCache: AdhocTimeOverrides | null = null;
+  private adhocSpecialOpensCache: AdhocTimeOverrides | null = null;
+
   // --- Hooks ---
   protected regularHolidays(): ReadonlyArray<HolidayRule> {
     return [];
@@ -57,7 +61,25 @@ export abstract class ExchangeCalendar implements Calendar {
     return DEFAULT_WEEKMASK;
   }
 
+  // --- Adhoc caching getters ---
+  private getAdhocHolidays(): ReadonlySet<string> {
+    if (this.adhocHolidaysCache === null) this.adhocHolidaysCache = this.adhocHolidays();
+    return this.adhocHolidaysCache;
+  }
+  private getAdhocSpecialCloses(): AdhocTimeOverrides {
+    if (this.adhocSpecialClosesCache === null) this.adhocSpecialClosesCache = this.specialClosesAdhoc();
+    return this.adhocSpecialClosesCache;
+  }
+  private getAdhocSpecialOpens(): AdhocTimeOverrides {
+    if (this.adhocSpecialOpensCache === null) this.adhocSpecialOpensCache = this.specialOpensAdhoc();
+    return this.adhocSpecialOpensCache;
+  }
+
   // --- Caches ---
+  /**
+   * Cached lookup of regular-holiday timestamps for the given year.
+   * Assumes `regularHolidays()` returns the same rule list on every call.
+   */
   private holidaysForYear(year: number): Set<number> {
     let set = this.holidayCache.get(year);
     if (!set) {
@@ -93,7 +115,7 @@ export abstract class ExchangeCalendar implements Calendar {
   isOpen(t: Date): boolean {
     const d = this.normalize(t);
     if (!this.weekmask(d).has(d.getUTCDay())) return false;
-    if (this.adhocHolidays().has(ymdKey(d))) return false;
+    if (this.getAdhocHolidays().has(ymdKey(d))) return false;
     const year = d.getUTCFullYear();
     if (this.holidaysForYear(year).has(d.getTime())) return false;
     return true;
@@ -111,6 +133,7 @@ export abstract class ExchangeCalendar implements Calendar {
     return d;
   }
 
+  /** Returns trading-day Date midnights for `range.from` (inclusive) through `range.to` (exclusive). */
   sessions(range: DateRange): ReadonlyArray<Date> {
     const out: Date[] = [];
     let d = this.normalize(range.from);
@@ -134,22 +157,23 @@ export abstract class ExchangeCalendar implements Calendar {
   isEarlyClose(t: Date): boolean {
     const d = this.normalize(t);
     if (!this.isOpen(d)) return false;
-    if (this.specialClosesAdhoc().has(ymdKey(d))) return true;
+    if (this.getAdhocSpecialCloses().has(ymdKey(d))) return true;
     return this.specialClosesForYear(d.getUTCFullYear()).has(d.getTime());
   }
 
   // --- Resolution ---
   /** Adhoc overrides win over rule-driven; both win over `regularOpen(date)`. */
   private openTimeFor(date: Date): TimeOfDay {
-    const adhoc = this.specialOpensAdhoc().get(ymdKey(date));
+    const adhoc = this.getAdhocSpecialOpens().get(ymdKey(date));
     if (adhoc) return adhoc;
     const ruled = this.specialOpensForYear(date.getUTCFullYear()).get(date.getTime());
     if (ruled) return ruled;
     return this.regularOpen(date);
   }
 
+  /** Adhoc overrides win over rule-driven; both win over `regularClose(date)`. */
   private closeTimeFor(date: Date): TimeOfDay {
-    const adhoc = this.specialClosesAdhoc().get(ymdKey(date));
+    const adhoc = this.getAdhocSpecialCloses().get(ymdKey(date));
     if (adhoc) return adhoc;
     const ruled = this.specialClosesForYear(date.getUTCFullYear()).get(date.getTime());
     if (ruled) return ruled;
