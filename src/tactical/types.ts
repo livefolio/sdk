@@ -65,7 +65,7 @@ export type IfNode = {
 export type RuleNode = AllocateNode | IfNode;
 
 export type TacticalSpec = {
-  kind: 'tactical/v0';
+  kind: 'tactical/v0' | 'tactical/v1';
   universe: AssetRef[];
   synthetics?: SyntheticAsset[];
   rebalance?: RebalanceConfig;

@@ -46,7 +46,7 @@ export function buildV3Strategy(client: LivefolioClient): StrategyHandle {
  * mechanically.
  */
 export const PARITY_SPEC: TacticalSpec = {
-  kind: 'tactical/v0',
+  kind: 'tactical/v1',
   universe: [SPY_REF, QQQ_REF, IEF_REF],
   rebalance: { frequency: 'Weekly' },
   features: [

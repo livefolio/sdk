@@ -132,7 +132,7 @@ describe('extractV4TargetHistory', () => {
   const SPY_REF = { id: 'us:SPY', symbol: 'SPY' } as const;
 
   const SPEC: TacticalSpec = {
-    kind: 'tactical/v0',
+    kind: 'tactical/v1',
     universe: [SPY_REF],
     rebalance: { frequency: 'Daily' }, // every session is a rebalance day
     features: [

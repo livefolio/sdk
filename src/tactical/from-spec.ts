@@ -8,6 +8,13 @@ import type { AssetRef, RebalanceFrequency, RuleTreeState, TacticalSpec } from '
 import { evaluateRuleTree } from './evaluate-rule-tree';
 import { evaluateFeatureSpecs } from './evaluate-feature-specs';
 
+let _warnedV0 = false;
+
+/** Test-only: reset the once-per-process deprecation gate. */
+export function _resetTacticalDeprecationWarningForTesting(): void {
+  _warnedV0 = false;
+}
+
 export type TacticalFeatures = {
   values: ReadonlyMap<string, number | undefined>;
   prices: ReadonlyMap<AssetId, number>;
@@ -76,6 +83,14 @@ export function isRebalanceDay(t: Date, freq: RebalanceFrequency, calendar: Cale
 }
 
 export function fromSpec(spec: TacticalSpec, opts: FromSpecOptions): Strategy<TacticalFeatures> {
+  if (spec.kind === 'tactical/v0' && !_warnedV0) {
+    _warnedV0 = true;
+
+    console.warn(
+      '[@livefolio/sdk] tactical/v0 is deprecated; migrate to tactical/v1. ' +
+        'The two are byte-for-byte equivalent. This warning fires once per process.',
+    );
+  }
   validateSynthetics(spec);
   const universe: ReadonlyArray<Asset> = spec.universe.map(resolveAsset);
   const { runtime, calendar } = opts;

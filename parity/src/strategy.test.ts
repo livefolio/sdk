@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { PARITY_SPEC, PARITY_RANGE, PARITY_RANGE_V3 } from './strategy';
 
 describe('PARITY_SPEC', () => {
-  it('declares tactical/v0 kind', () => {
-    expect(PARITY_SPEC.kind).toBe('tactical/v0');
+  it('declares tactical/v1 kind', () => {
+    expect(PARITY_SPEC.kind).toBe('tactical/v1');
   });
 
   it('every feature ref in rules is declared in features', () => {

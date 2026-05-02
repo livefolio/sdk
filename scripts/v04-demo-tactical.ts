@@ -89,7 +89,7 @@ const SPY_REF = { id: 'us:SPY', symbol: 'SPY' };
 const AGG_REF = { id: 'us:AGG', symbol: 'AGG' };
 
 const spec: TacticalSpec = {
-  kind: 'tactical/v0',
+  kind: 'tactical/v1',
   universe: [SPY_REF, AGG_REF],
   rebalance: { frequency: 'Weekly' },
   features: [

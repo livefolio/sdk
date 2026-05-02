@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fromSpec } from './from-spec';
+import { _resetTacticalDeprecationWarningForTesting } from './from-spec';
 import { FeatureRuntime } from '../features/runtime';
 import { MemoryFeatureCache, USEquityCalendar } from '../reference';
 import type { Bar } from '../interfaces/types';
@@ -30,7 +31,7 @@ function feedFor(closes: number[]) {
 const initialPortfolio: Portfolio = { cash: 10_000, positions: [], t: utc('2026-01-05') };
 
 const stateless: TacticalSpec = {
-  kind: 'tactical/v0',
+  kind: 'tactical/v1',
   universe: [SPY_REF],
   features: [
     { id: 'price', kind: 'price', asset: SPY_REF },
@@ -86,7 +87,7 @@ describe('fromSpec', () => {
 
   it('threads hysteresis state across consecutive build calls', async () => {
     const tolerantSpec: TacticalSpec = {
-      kind: 'tactical/v0',
+      kind: 'tactical/v1',
       universe: [SPY_REF],
       features: [{ id: 'price', kind: 'price', asset: SPY_REF }],
       rules: {
@@ -161,7 +162,7 @@ describe('fromSpec', () => {
 
   it('throws on synthetic id colliding with a non-underlying universe ref', () => {
     const conflicting: TacticalSpec = {
-      kind: 'tactical/v0',
+      kind: 'tactical/v1',
       universe: [{ id: 'us:SPY_3X', symbol: 'SPY_3X' }, SPY_REF],
       synthetics: [{ id: 'us:SPY_3X', symbol: 'SPY_3X', underlying: SPY_REF, leverage: 3 }],
       features: [],
@@ -176,5 +177,44 @@ describe('fromSpec', () => {
       synthetics: [{ id: 'us:SPY', symbol: 'SPY', underlying: { id: 'us:VOO', symbol: 'VOO' }, leverage: 1 }],
     };
     expect(() => fromSpec(ambiguous, { runtime, calendar })).toThrow(/synthetic asset id "us:SPY" collides/);
+  });
+});
+
+describe('tactical/v0 deprecation warning', () => {
+  beforeEach(() => {
+    _resetTacticalDeprecationWarningForTesting();
+  });
+
+  it('accepts tactical/v0 with a one-time deprecation warning', () => {
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const spec: TacticalSpec = {
+      kind: 'tactical/v0',
+      universe: [SPY_REF],
+      features: [{ id: 'p', kind: 'price', asset: SPY_REF }],
+      rules: { op: 'allocate', weights: { 'us:SPY': 1 } },
+    };
+    const { feed } = feedFor([100, 101, 102]);
+    const runtime = new FeatureRuntime({ dataFeed: feed, featureCache: new MemoryFeatureCache(), range, freq: '1d' });
+    const opts = { runtime, calendar };
+    fromSpec(spec, opts);
+    fromSpec(spec, opts);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]![0]).toMatch(/tactical\/v0 is deprecated/);
+    spy.mockRestore();
+  });
+
+  it('accepts tactical/v1 without a warning', () => {
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const spec: TacticalSpec = {
+      kind: 'tactical/v1',
+      universe: [SPY_REF],
+      features: [{ id: 'p', kind: 'price', asset: SPY_REF }],
+      rules: { op: 'allocate', weights: { 'us:SPY': 1 } },
+    };
+    const { feed } = feedFor([100, 101, 102]);
+    const runtime = new FeatureRuntime({ dataFeed: feed, featureCache: new MemoryFeatureCache(), range, freq: '1d' });
+    fromSpec(spec, { runtime, calendar });
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

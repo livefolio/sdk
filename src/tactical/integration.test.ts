@@ -50,7 +50,7 @@ describe('phase 3 integration', () => {
     const calendar = new USEquityCalendar();
 
     const spec: TacticalSpec = {
-      kind: 'tactical/v0',
+      kind: 'tactical/v1',
       universe: [SPY_REF],
       features: [
         { id: 'price', kind: 'price', asset: SPY_REF },
@@ -127,7 +127,7 @@ describe('phase 3 integration', () => {
     const calendar = new USEquityCalendar();
 
     const baseRule = (tolerant: boolean): TacticalSpec => ({
-      kind: 'tactical/v0',
+      kind: 'tactical/v1',
       universe: [SPY_REF],
       features: [{ id: 'price', kind: 'price', asset: SPY_REF }],
       rules: {
@@ -168,7 +168,7 @@ describe('phase 3 integration', () => {
 
     function spec(delay: number): TacticalSpec {
       return {
-        kind: 'tactical/v0',
+        kind: 'tactical/v1',
         universe: [SPY_REF],
         features: [
           { id: 'price', kind: 'price', asset: SPY_REF },
@@ -212,7 +212,7 @@ describe('phase 3 integration', () => {
 
     const SPY3X: SyntheticAsset = { id: 'us:SPY_3X', symbol: 'SPY_3X', underlying: SPY_REF, leverage: 3 };
     const spec: TacticalSpec = {
-      kind: 'tactical/v0',
+      kind: 'tactical/v1',
       universe: [{ id: 'us:SPY_3X', symbol: 'SPY_3X' }, SPY_REF],
       synthetics: [SPY3X],
       features: [{ id: 'price', kind: 'price', asset: { id: 'us:SPY_3X', symbol: 'SPY_3X' } }],
@@ -273,7 +273,7 @@ describe('phase 3 integration', () => {
     const calendar = new USEquityCalendar();
 
     const spec: TacticalSpec = {
-      kind: 'tactical/v0',
+      kind: 'tactical/v1',
       universe: [SPY_REF],
       rebalance: { frequency: 'Weekly' },
       features: [
