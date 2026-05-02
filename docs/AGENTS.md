@@ -29,7 +29,7 @@ The v0.4 rollout is structured as numbered phases, each with a spec and a plan i
 - Phase 5 — parity gate (v0.4 ↔ v0.3 allocation-history regression test)
 - Phase 6 — relocate v0.3 to `parity/src/v3/`, flip `src/index.ts` to v0.4-only
 - Phase 7 — documentation refresh (this round)
-- Phase 8 (provisional) — comprehensive user wiki / hosted docs site
+- Phase 8 — comprehensive user wiki / hosted docs site (VitePress + TypeDoc), runnable code samples under `scripts/docs/`, and focused agent skills (`livefolio-tactical-author`, `livefolio-custom-adapter`, optional `livefolio-debug-strategy`). See `specs/2026-05-02-v0.4-phase-8-wiki-docs-design.md` and `plans/2026-05-02-v0.4-phase-8-wiki-docs.md`.
 
 `specs/2026-05-02-v0.4-parity-divergences.md` codifies the structural allowances the parity gate accepts.
 
