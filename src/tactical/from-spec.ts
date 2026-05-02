@@ -15,13 +15,30 @@ export function _resetTacticalDeprecationWarningForTesting(): void {
   _warnedV0 = false;
 }
 
+/**
+ * The feature bundle computed on each rebalance step and passed to the rule
+ * tree. Produced by the `features` method of the {@link Strategy} returned by
+ * {@link fromSpec}.
+ *
+ * - `values` — named indicator results keyed by the `id` field of each
+ *   {@link TacticalFeatureSpec}. A value is `undefined` when the indicator
+ *   cannot be computed for that bar (e.g. insufficient history).
+ * - `prices` — most-recent closing prices for each asset in the universe,
+ *   keyed by asset ID.
+ */
 export type TacticalFeatures = {
   values: ReadonlyMap<string, number | undefined>;
   prices: ReadonlyMap<AssetId, number>;
 };
 
+/**
+ * Runtime dependencies required by {@link fromSpec} to hydrate a
+ * {@link TacticalSpec} into a runnable {@link Strategy}.
+ */
 export type FromSpecOptions = {
+  /** Feature computation backend — wraps the data feed and caching layer. */
   runtime: FeatureRuntime;
+  /** Exchange calendar used to gate rebalance days via {@link isRebalanceDay}. */
   calendar: Calendar;
 };
 
@@ -54,6 +71,17 @@ function validateSynthetics(spec: TacticalSpec): void {
   }
 }
 
+/**
+ * Returns a stable string key that identifies the rebalance period containing
+ * date `t` for the given `freq`. Two dates that map to the same key belong to
+ * the same period and therefore produce the same rebalance decision. Used
+ * internally by {@link isRebalanceDay} to detect period boundaries.
+ *
+ * @param t    - The date to classify.
+ * @param freq - Rebalance cadence (see {@link RebalanceFrequency}).
+ * @returns A compact string such as `'2024-3'` (monthly), `'2024-W14'`
+ *   (weekly), or `'2024-1'` (quarterly Q2).
+ */
 export function periodKey(t: Date, freq: RebalanceFrequency): string {
   const y = t.getUTCFullYear();
   const m = t.getUTCMonth();
@@ -76,12 +104,57 @@ export function periodKey(t: Date, freq: RebalanceFrequency): string {
   }
 }
 
+/**
+ * Returns `true` when `t` is the last trading day of its rebalance period
+ * according to `freq` and `calendar`. The check is: `periodKey(t) !== periodKey(next(t))`.
+ * For `'Daily'` cadence this always returns `true`.
+ *
+ * @param t        - Current trading day (must itself be a trading day).
+ * @param freq     - Rebalance cadence (see {@link RebalanceFrequency}).
+ * @param calendar - Exchange calendar used to find the next trading day.
+ * @returns `true` if today is the last day of its period and orders should be issued.
+ */
 export function isRebalanceDay(t: Date, freq: RebalanceFrequency, calendar: Calendar): boolean {
   if (freq === 'Daily') return true;
   const next = calendar.next(t);
   return periodKey(t, freq) !== periodKey(next, freq);
 }
 
+/**
+ * Hydrates a plain {@link TacticalSpec} data object into a runnable
+ * {@link Strategy} that `runBacktest` can drive step-by-step.
+ *
+ * The returned strategy closes over the following mutable state:
+ * - **Rebalance gate** — `isRebalanceDay` is checked on each call to
+ *   `build`; if the current day is not a period boundary the method returns an
+ *   empty order list without touching the portfolio.
+ * - **Hysteresis carryover** — the {@link RuleTreeState} is stored in a `let`
+ *   binding and forwarded into each call to {@link evaluateRuleTree}. This
+ *   means that named {@link Comparison} nodes with `tolerance` remember their
+ *   last-evaluated outcome across steps.
+ *
+ * Validation performed at construction time:
+ * - A `'tactical/v0'` `kind` emits a one-time deprecation warning to `console.warn`.
+ * - Synthetic assets are checked for self-reference, symbol collisions, and
+ *   missing universe entries (see internal `validateSynthetics`).
+ *
+ * @param spec - The declarative strategy spec.
+ * @param opts - Runtime dependencies (feature backend and calendar).
+ * @returns A {@link Strategy} whose `features` method fetches indicator values
+ *   and whose `build` method converts them to rebalance orders.
+ *
+ * @example
+ * ```ts
+ * import { fromSpec, MemoryFeatureCache, NYSEExchangeCalendar } from '@livefolio/sdk';
+ * import { FeatureRuntime } from '@livefolio/sdk/features';
+ *
+ * const calendar = new NYSEExchangeCalendar();
+ * const cache    = new MemoryFeatureCache();
+ * const runtime  = new FeatureRuntime({ feed: myDataFeed, cache });
+ *
+ * const strategy = fromSpec(mySpec, { runtime, calendar });
+ * ```
+ */
 export function fromSpec(spec: TacticalSpec, opts: FromSpecOptions): Strategy<TacticalFeatures> {
   if (spec.kind === 'tactical/v0' && !_warnedV0) {
     _warnedV0 = true;

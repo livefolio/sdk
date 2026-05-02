@@ -2,9 +2,68 @@ import type { Portfolio } from '../portfolio/types';
 import type { Asset, AssetId } from '../interfaces/types';
 import type { RebalanceOrder } from '../orders/types';
 
+/**
+ * Maps each asset ID to its desired portfolio weight as a fraction of total
+ * portfolio value (e.g. `0.6` means 60 %). Weights need not sum to 1; any
+ * residual becomes cash. Passing a weight of `0` or omitting an asset entirely
+ * will generate a full exit order for any existing long position in that asset.
+ */
 export type TargetWeights = ReadonlyMap<AssetId, number>;
+
+/**
+ * Maps each asset ID to its current market price. Required for every asset that
+ * appears in `TargetWeights` and for every asset currently held in the portfolio.
+ * `reconcile` throws if a target asset has no corresponding price entry.
+ */
 export type PriceMap = ReadonlyMap<AssetId, number>;
 
+/**
+ * Converts target portfolio weights into a minimal set of `RebalanceOrder`
+ * instructions that move the current portfolio toward the desired allocation.
+ *
+ * The algorithm:
+ * 1. Compute total portfolio value as `cash + Σ(held_shares × price)`.
+ * 2. For each target asset, derive `targetShares = floor(totalValue × weight / price)`.
+ * 3. Emit a `RebalanceOrder` with `delta = targetShares - heldShares` for any
+ *    asset where the delta is non-zero (positive = buy, negative = sell).
+ * 4. Emit exit orders (`delta = -heldShares`) for any long position in an asset
+ *    that does not appear in `targets`.
+ *
+ * Only long positions are considered — short positions in the portfolio are
+ * ignored. Share counts are always floored to integer lots.
+ *
+ * @param targets - Desired weight per asset. Keys are `AssetId` strings. A weight
+ *   of `0` is valid and will result in a full exit for any existing position.
+ * @param portfolio - Current portfolio. Cash and long positions determine total
+ *   value and existing share counts.
+ * @param prices - Current prices for all assets that appear in `targets` or are
+ *   currently held. Throws `Error` if a target asset is missing from this map.
+ * @returns A readonly array of `RebalanceOrder` objects. The array may be empty
+ *   if the portfolio is already at the target allocation. Order IDs are
+ *   deterministic within a single call (`rebal_<assetId>_<counter>`).
+ *
+ * @example
+ * ```ts
+ * import { reconcile } from '@livefolio/sdk';
+ *
+ * const targets = new Map([
+ *   ['US:SPY', 0.6],
+ *   ['US:BND', 0.4],
+ * ]);
+ * const prices = new Map([
+ *   ['US:SPY', 440.0],
+ *   ['US:BND', 75.0],
+ * ]);
+ *
+ * // Empty portfolio with $100 000 cash
+ * const portfolio = { cash: 100_000, positions: [] };
+ * const orders = reconcile(targets, portfolio, prices);
+ * // orders => [
+ * //   { id: 'rebal_US:SPY_0', kind: 'rebalance', asset: { ... }, delta: 136 },
+ * //   { id: 'rebal_US:BND_1', kind: 'rebalance', asset: { ... }, delta: 533 },
+ * // ]
+ * ```
+ */
 export function reconcile(
   targets: TargetWeights,
   portfolio: Portfolio,

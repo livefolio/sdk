@@ -31,8 +31,30 @@ function canonicalPrefix(prefix: Partial<FeatureKey>): string {
 }
 
 /**
- * In-process Map-backed FeatureCache. No eviction. Suitable for
- * single-run backtests; replace with a persistent impl for hosted use.
+ * In-process, Map-backed implementation of {@link FeatureCache}. Caches
+ * computed indicator series in memory for the lifetime of the instance.
+ * There is no eviction policy — the cache grows until the instance is
+ * garbage-collected.
+ *
+ * **When to use**: the right choice for single-run backtests or unit tests
+ * where the full dataset fits in process memory and cross-run persistence is
+ * not required. For long-running hosted services or multi-process setups,
+ * substitute a persistent implementation (e.g. Redis-backed) that satisfies
+ * the {@link FeatureCache} interface.
+ *
+ * Cache keys are content-addressed strings composed of `(feature kind, params
+ * hash, asset scope, date range, frequency)` — see the internal
+ * `canonicalKey` function. The `invalidate` method performs prefix-based
+ * deletion using the same key segments.
+ *
+ * @example
+ * ```ts
+ * import { MemoryFeatureCache } from '@livefolio/sdk';
+ * import { FeatureRuntime } from '@livefolio/sdk/features';
+ *
+ * const cache   = new MemoryFeatureCache();
+ * const runtime = new FeatureRuntime({ feed: myDataFeed, cache });
+ * ```
  */
 export class MemoryFeatureCache implements FeatureCache {
   private store = new Map<string, Series>();

@@ -56,6 +56,38 @@ function readDelayed(series: Series, t: Date, delay: number): number | undefined
   return series[target]!.v;
 }
 
+/**
+ * Resolves each {@link TacticalFeatureSpec} in `specs` to a scalar value as of
+ * date `t` by calling into `runtime` and reading the series at the appropriate
+ * bar index. All specs are computed in parallel via `Promise.all`.
+ *
+ * The returned map uses each spec's `id` as the key. The value is `undefined`
+ * when the indicator series has no data on or before `t`, or when the `delay`
+ * offset steps past the beginning of the series.
+ *
+ * Validation performed before dispatching to the runtime:
+ * - Duplicate `id` values in `specs` throw immediately.
+ * - A non-integer or negative `delay` throws immediately.
+ *
+ * @param specs   - Ordered list of feature declarations from {@link TacticalSpec.features}.
+ * @param runtime - Feature computation backend that owns the data feed and cache.
+ * @param t       - Evaluation date; the series is read at the latest bar on or before `t`.
+ * @returns A map from feature id to resolved numeric value (`undefined` when unavailable).
+ *
+ * @example
+ * ```ts
+ * import { evaluateFeatureSpecs } from '@livefolio/sdk';
+ * import type { TacticalFeatureSpec } from '@livefolio/sdk';
+ *
+ * const specs: TacticalFeatureSpec[] = [
+ *   { id: 'spy_sma200', kind: 'sma', asset: { id: 'SPY', symbol: 'SPY' }, period: 200 },
+ *   { id: 'spy_price',  kind: 'price', asset: { id: 'SPY', symbol: 'SPY' } },
+ * ];
+ *
+ * const values = await evaluateFeatureSpecs(specs, runtime, new Date('2024-06-01'));
+ * // values.get('spy_price') → 528.3
+ * ```
+ */
 export async function evaluateFeatureSpecs(
   specs: ReadonlyArray<TacticalFeatureSpec>,
   runtime: FeatureRuntime,

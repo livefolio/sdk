@@ -10,6 +10,47 @@ function findOrder(orders: ReadonlyArray<Order>, id: string): Order | undefined 
   return orders.find((o) => o.id === id);
 }
 
+/**
+ * Applies a batch of confirmed fills to a portfolio, returning a new
+ * {@link Portfolio} snapshot. This is the single function that advances
+ * portfolio state after order execution.
+ *
+ * For each fill the corresponding order is looked up in `orders` by
+ * `fill.orderRef`. The order's `kind` determines the accounting treatment:
+ * - `'open'`      — adds a new {@link Position} and debits cash.
+ * - `'close'`     — removes shares from an existing position and credits cash.
+ * - `'adjust'`    — updates the position's `quantity`; only fees are debited.
+ * - `'rebalance'` — buys or sells shares in the long position for `asset`;
+ *                   creates or removes the position as needed.
+ *
+ * The returned `portfolio.t` is updated to the maximum fill timestamp.
+ *
+ * @param portfolio - The current portfolio state before this batch.
+ * @param fills     - Execution confirmations returned by {@link Executor.submit}.
+ *   Each fill's `orderRef` MUST match an `id` in `orders`.
+ * @param orders    - The full order batch that was submitted. Used to look up
+ *   order details for each fill.
+ * @returns A new {@link Portfolio} with updated positions, cash, and timestamp.
+ *   The input `portfolio` is not mutated.
+ *
+ * @example
+ * ```ts
+ * import { applyFills } from '@livefolio/sdk';
+ * import type { Portfolio, Order, Fill } from '@livefolio/sdk';
+ *
+ * const portfolio: Portfolio = { cash: 10_000, positions: [], t: new Date('2024-01-01') };
+ *
+ * const order: Order = {
+ *   id: 'ord_1', kind: 'open',
+ *   asset: { kind: 'equity', id: 'AAPL', symbol: 'AAPL' },
+ *   side: 'long', quantity: 10,
+ * };
+ * const fill: Fill = { orderRef: 'ord_1', t: new Date('2024-01-02'), quantity: 10, price: 185, fees: 0 };
+ *
+ * const next = applyFills(portfolio, [fill], [order]);
+ * // next.cash === 8_250, next.positions.length === 1
+ * ```
+ */
 export function applyFills(portfolio: Portfolio, fills: ReadonlyArray<Fill>, orders: ReadonlyArray<Order>): Portfolio {
   let positions: Position[] = [...portfolio.positions];
   let cash = portfolio.cash;
@@ -108,12 +149,41 @@ export function applyFills(portfolio: Portfolio, fills: ReadonlyArray<Fill>, ord
 }
 
 /**
- * Projects a portfolio forward through pending (unfilled) orders. Used by
- * Strategy.build to read the post-prior-step state when composing helpers.
+ * Projects a portfolio forward through a set of pending (unfilled) orders,
+ * returning a structurally updated snapshot. Used by strategy build helpers
+ * to read the expected post-step state before fills arrive.
  *
- * v0.4 contract: structural projection only. `quantity` updates exactly,
- * but `cash` is left unchanged and basis on freshly opened/projected lots
- * is provisional (0). A price-aware projection comes in a later phase.
+ * **v0.4 contract — structural projection only.** Quantities are updated
+ * exactly as the orders specify, but:
+ * - `cash` is left unchanged (no price is available at projection time).
+ * - Newly opened positions have `basis: 0` and `entry.price: 0` as
+ *   provisional values. A price-aware projection is planned for a later phase.
+ *
+ * Use {@link applyFills} (not this function) to settle the portfolio after
+ * confirmed execution.
+ *
+ * @param portfolio - The current portfolio state to project from.
+ * @param orders    - The pending orders to apply structurally. Order must have
+ *   a valid `id` and `kind`; price fields are ignored.
+ * @returns A new {@link Portfolio} with positions reflecting the orders.
+ *   `cash` and `t` are copied unchanged from `portfolio`.
+ *
+ * @example
+ * ```ts
+ * import { applyOrders } from '@livefolio/sdk';
+ * import type { Portfolio, Order } from '@livefolio/sdk';
+ *
+ * const portfolio: Portfolio = { cash: 10_000, positions: [], t: new Date('2024-01-01') };
+ *
+ * const order: Order = {
+ *   id: 'ord_1', kind: 'open',
+ *   asset: { kind: 'equity', id: 'AAPL', symbol: 'AAPL' },
+ *   side: 'long', quantity: 10,
+ * };
+ *
+ * const projected = applyOrders(portfolio, [order]);
+ * // projected.positions.length === 1, projected.cash === 10_000 (unchanged)
+ * ```
  */
 export function applyOrders(portfolio: Portfolio, orders: ReadonlyArray<Order>): Portfolio {
   let positions: Position[] = [...portfolio.positions];

@@ -214,18 +214,26 @@ const SPECIAL_OPENS: ReadonlyArray<SpecialOpen> = [];
 const SPECIAL_OPENS_ADHOC: AdhocTimeOverrides = new Map<string, TimeOfDay>();
 
 /**
- * London Stock Exchange (LSE) calendar. Faithful port of
- * pandas_market_calendars/calendars/lse.py and holidays/uk.py.
+ * London Stock Exchange (LSE) trading-day calendar. Faithful port of
+ * `pandas_market_calendars`' `lse.py` and `holidays/uk.py`. Historical
+ * coverage begins 1801-01-01, aligned with the start of the modern exchange
+ * after the Banking and Financial Dealings Act 1971 codified the current
+ * bank-holiday framework.
  *
- * Session: 08:00–16:30 Europe/London. The exchange observes BST (UTC+1) in
- * summer and GMT (UTC+0) in winter — DST handling is delegated to luxon via
- * the timezone string, so wall-clock close times are stable across the
- * transition while their UTC equivalents shift by an hour.
+ * **Session**: 08:00–16:30 Europe/London. The exchange observes BST (UTC+1)
+ * in summer and GMT (UTC+0) in winter — DST handling is delegated to luxon via
+ * the `Europe/London` IANA timezone, so wall-clock session times are stable
+ * across the DST transition while their UTC equivalents shift by one hour.
  *
- * Era handling around Jubilees and VE-Day anniversaries is implemented by
- * splitting the affected `Holiday` rules into era-bounded shards (matching
- * upstream's `start_date` / `end_date` markers) and appending the actual
- * Jubilee / VE-Day dates as adhoc closures.
+ * **Early closes**: Christmas Eve (Dec 24) and New Year's Eve (Dec 31) close
+ * at 12:30. Both use `previous_friday` observance — when the calendar date
+ * falls on a weekend, the early close moves to the prior Friday.
+ *
+ * **Era boundaries**: bank-holiday exceptions for Royal Jubilees and VE-Day
+ * anniversaries are implemented by splitting affected `Spring Bank Holiday`
+ * and `Early May Bank Holiday` rules into era-bounded shards (matching
+ * upstream `start_date` / `end_date` markers) and adding the displaced dates
+ * as adhoc closures.
  */
 export class LSEExchangeCalendar extends ExchangeCalendar {
   readonly name = 'LSE';

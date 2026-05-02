@@ -4,31 +4,73 @@ const MS_PER_DAY = 86_400_000;
 
 export type { TimeOfDay };
 
+/**
+ * A year-derived holiday rule consumed by {@link ExchangeCalendar}. The rule
+ * is active only for years in the range `[validFrom, validUntil]` (both
+ * inclusive; omit either bound to leave it open).
+ *
+ * `resolve(year)` returns the UTC midnight `Date` for the holiday in that year,
+ * or `null` if the holiday does not occur that year (e.g. a conditional rule
+ * for Good Friday in certain years). When `observe` is `true`, a Saturday
+ * result is moved to Friday and a Sunday result is moved to Monday (standard
+ * US-style holiday observation).
+ */
 export type HolidayRule = {
+  /** Human-readable name, used for debugging and logging. */
   name: string;
+  /** Returns the UTC midnight `Date` for this holiday in `year`, or `null` to skip. */
   resolve: (year: number) => Date | null;
+  /** First year (inclusive) this rule applies. Defaults to −∞. */
   validFrom?: number;
+  /** Last year (inclusive) this rule applies. Defaults to +∞. */
   validUntil?: number;
+  /** When `true`, Saturday dates are moved to Friday, Sunday dates to Monday. */
   observe?: boolean;
 };
 
+/**
+ * A year-derived early-close rule consumed by {@link ExchangeCalendar}. Follows
+ * the same validity bounds and `resolve` contract as {@link HolidayRule}, but
+ * instead of marking a day closed entirely it overrides the session close time
+ * to `closeAt` for the matched date.
+ */
 export type SpecialClose = {
+  /** Human-readable name, used for debugging and logging. */
   name: string;
+  /** Returns the UTC midnight `Date` for this early-close day in `year`, or `null` to skip. */
   resolve: (year: number) => Date | null;
+  /** The overridden close time in local exchange time. */
   closeAt: TimeOfDay;
+  /** First year (inclusive) this rule applies. Defaults to −∞. */
   validFrom?: number;
+  /** Last year (inclusive) this rule applies. Defaults to +∞. */
   validUntil?: number;
 };
 
+/**
+ * A year-derived late-open rule consumed by {@link ExchangeCalendar}. Follows
+ * the same validity bounds and `resolve` contract as {@link HolidayRule}, but
+ * overrides the session open time to `openAt` for the matched date.
+ */
 export type SpecialOpen = {
+  /** Human-readable name, used for debugging and logging. */
   name: string;
+  /** Returns the UTC midnight `Date` for this late-open day in `year`, or `null` to skip. */
   resolve: (year: number) => Date | null;
+  /** The overridden open time in local exchange time. */
   openAt: TimeOfDay;
+  /** First year (inclusive) this rule applies. Defaults to −∞. */
   validFrom?: number;
+  /** Last year (inclusive) this rule applies. Defaults to +∞. */
   validUntil?: number;
 };
 
-/** Map of YYYY-MM-DD → override time. Used for one-off historical specials that don't fit a year-derived rule. */
+/**
+ * Map of `YYYY-MM-DD` date strings to override times. Used for one-off
+ * historical specials (e.g. a single early close due to a snowstorm) that do
+ * not fit a repeating year-derived rule. Keys must be in `YYYY-MM-DD` format
+ * in UTC.
+ */
 export type AdhocTimeOverrides = ReadonlyMap<string, TimeOfDay>;
 
 /**
@@ -40,18 +82,36 @@ export type SessionTimeRule = {
   time: TimeOfDay;
 };
 
+/**
+ * Returns the UTC midnight `Date` of the nth occurrence of `weekday` in the
+ * given `month` and `year`. `weekday` follows `Date.getUTCDay()` convention
+ * (0 = Sunday, 1 = Monday, …, 6 = Saturday). `n` is 1-based.
+ *
+ * Example: 3rd Monday of January 2024 → `nthWeekdayOfMonth(2024, 1, 1, 3)`.
+ */
 export function nthWeekdayOfMonth(year: number, month: number, weekday: number, n: number): Date {
   const first = new Date(Date.UTC(year, month - 1, 1));
   const offset = (weekday - first.getUTCDay() + 7) % 7;
   return new Date(Date.UTC(year, month - 1, 1 + offset + (n - 1) * 7));
 }
 
+/**
+ * Returns the UTC midnight `Date` of the last occurrence of `weekday` in the
+ * given `month` and `year`. `weekday` follows `Date.getUTCDay()` convention.
+ *
+ * Example: last Monday of May 2024 → `lastWeekdayOfMonth(2024, 5, 1)`.
+ */
 export function lastWeekdayOfMonth(year: number, month: number, weekday: number): Date {
   const last = new Date(Date.UTC(year, month, 0));
   const offset = (last.getUTCDay() - weekday + 7) % 7;
   return new Date(last.getTime() - offset * MS_PER_DAY);
 }
 
+/**
+ * Computes the UTC midnight `Date` of Easter Sunday for the given Gregorian
+ * `year` using the Anonymous Gregorian algorithm (also known as the "Meeus/Jones/Butcher"
+ * algorithm). Valid for years 1583–4099.
+ */
 export function easter(year: number): Date {
   const a = year % 19;
   const b = Math.floor(year / 100);
@@ -70,6 +130,11 @@ export function easter(year: number): Date {
   return new Date(Date.UTC(year, month - 1, day));
 }
 
+/**
+ * Applies Saturday → Friday, Sunday → Monday observation to a holiday date.
+ * Weekday dates are returned unchanged. Used when a {@link HolidayRule} has
+ * `observe: true`.
+ */
 export function observed(d: Date): Date {
   const dow = d.getUTCDay();
   if (dow === 6) return new Date(d.getTime() - MS_PER_DAY);
@@ -77,6 +142,12 @@ export function observed(d: Date): Date {
   return d;
 }
 
+/**
+ * Applies a list of {@link HolidayRule} definitions to a single `year` and
+ * returns a `Set` of UTC millisecond timestamps for all holidays active that
+ * year. Rules outside their `[validFrom, validUntil]` bounds are skipped.
+ * Rules that return `null` from `resolve` are also skipped.
+ */
 export function resolveHolidays(rules: ReadonlyArray<HolidayRule>, year: number): Set<number> {
   const out = new Set<number>();
   for (const rule of rules) {
@@ -90,6 +161,12 @@ export function resolveHolidays(rules: ReadonlyArray<HolidayRule>, year: number)
   return out;
 }
 
+/**
+ * Applies a list of {@link SpecialClose} rules to a single `year` and returns
+ * a map from UTC millisecond timestamp to override close time. Rules outside
+ * their `[validFrom, validUntil]` bounds and rules that return `null` from
+ * `resolve` are skipped.
+ */
 export function resolveSpecialCloses(rules: ReadonlyArray<SpecialClose>, year: number): Map<number, TimeOfDay> {
   const out = new Map<number, TimeOfDay>();
   for (const rule of rules) {
@@ -102,6 +179,12 @@ export function resolveSpecialCloses(rules: ReadonlyArray<SpecialClose>, year: n
   return out;
 }
 
+/**
+ * Applies a list of {@link SpecialOpen} rules to a single `year` and returns
+ * a map from UTC millisecond timestamp to override open time. Rules outside
+ * their `[validFrom, validUntil]` bounds and rules that return `null` from
+ * `resolve` are skipped.
+ */
 export function resolveSpecialOpens(rules: ReadonlyArray<SpecialOpen>, year: number): Map<number, TimeOfDay> {
   const out = new Map<number, TimeOfDay>();
   for (const rule of rules) {

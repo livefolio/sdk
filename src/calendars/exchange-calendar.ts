@@ -20,8 +20,34 @@ function ymdKey(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Abstract base class for exchange trading calendars. Implements the full
+ * {@link Calendar} interface by composing up to nine overridable hooks that
+ * subclasses provide. Concrete implementations ship for {@link NYSEExchangeCalendar}
+ * and {@link LSEExchangeCalendar}; additional exchanges can be added by
+ * extending this class.
+ *
+ * **Per-year caching**: holiday sets and special-session maps are computed once
+ * per calendar year and stored in private Maps, so repeated calls to `isOpen`,
+ * `next`, or `sessions` within the same year are cheap.
+ *
+ * **Hook resolution order** (adhoc beats rule, rule beats regular):
+ * 1. `adhocHolidays()` / `specialClosesAdhoc()` / `specialOpensAdhoc()` —
+ *    `YYYY-MM-DD` string sets/maps populated once at first access.
+ * 2. `regularHolidays()` / `specialCloses()` / `specialOpens()` —
+ *    year-derived rule arrays applied per year via the resolver helpers.
+ * 3. `regularOpen(date)` / `regularClose(date)` / `weekmask(date)` —
+ *    per-date fallbacks that subclasses override to encode era-varying session
+ *    times and trading-day sets.
+ *
+ * **Extending**: override only the hooks you need. All hooks have no-op / sensible
+ * defaults (Mon–Fri weekmask, 09:30–16:00 session) so a minimal subclass need
+ * only set `name`, `tz`, and `regularHolidays()`.
+ */
 export abstract class ExchangeCalendar implements Calendar {
+  /** Short exchange name used as the registry key in {@link getCalendar}. */
   abstract readonly name: string;
+  /** IANA timezone identifier, e.g. `'America/New_York'` or `'Europe/London'`. */
   abstract readonly tz: string;
 
   private readonly holidayCache = new Map<number, Set<number>>();
@@ -33,30 +59,102 @@ export abstract class ExchangeCalendar implements Calendar {
   private adhocSpecialOpensCache: AdhocTimeOverrides | null = null;
 
   // --- Hooks ---
+
+  /**
+   * Returns the ordered list of year-derived holiday rules for this exchange.
+   * The base implementation returns an empty array (no regular holidays). Override
+   * to supply the full rule set; each {@link HolidayRule} in the array is applied
+   * via {@link resolveHolidays} once per calendar year and cached. Rules may be
+   * era-bounded via `validFrom` / `validUntil`.
+   */
   protected regularHolidays(): ReadonlyArray<HolidayRule> {
     return [];
   }
+
+  /**
+   * Returns the set of `YYYY-MM-DD` strings for one-off full-day closures that
+   * do not fit a repeating rule (e.g. presidential funerals, natural disasters).
+   * The base implementation returns an empty set. Override with the complete
+   * historical adhoc list for the exchange. This method is called at most once
+   * per `ExchangeCalendar` instance; the result is cached.
+   */
   protected adhocHolidays(): ReadonlySet<string> {
     return new Set();
   }
+
+  /**
+   * Returns the ordered list of year-derived early-close rules for this exchange.
+   * The base implementation returns an empty array. Override to supply rules such
+   * as "day after Thanksgiving closes at 13:00". Results are computed once per
+   * year and cached; each rule is applied via {@link resolveSpecialCloses}.
+   */
   protected specialCloses(): ReadonlyArray<SpecialClose> {
     return [];
   }
+
+  /**
+   * Returns the map of `YYYY-MM-DD` strings to override close times for
+   * one-off early-close days that do not fit a repeating rule. The base
+   * implementation returns an empty map. Override with the historical adhoc
+   * set for the exchange. Called at most once per instance; result is cached.
+   */
   protected specialClosesAdhoc(): AdhocTimeOverrides {
     return EMPTY_ADHOC;
   }
+
+  /**
+   * Returns the ordered list of year-derived late-open rules for this exchange.
+   * The base implementation returns an empty array. Override to supply rules such
+   * as "delayed open due to a moment of silence". Results are computed once per
+   * year and cached; each rule is applied via {@link resolveSpecialOpens}.
+   */
   protected specialOpens(): ReadonlyArray<SpecialOpen> {
     return [];
   }
+
+  /**
+   * Returns the map of `YYYY-MM-DD` strings to override open times for
+   * one-off late-open days that do not fit a repeating rule. The base
+   * implementation returns an empty map. Override with the historical adhoc
+   * set for the exchange. Called at most once per instance; result is cached.
+   */
   protected specialOpensAdhoc(): AdhocTimeOverrides {
     return EMPTY_ADHOC;
   }
+
+  /**
+   * Returns the default open time in local exchange time for `date` when no
+   * special-open rule matches. The base implementation returns 09:30. Override
+   * to encode era-varying session times (e.g. NYSE opened at 10:00 before
+   * 1985-09-30).
+   *
+   * @param date - UTC midnight `Date` for the trading day being queried.
+   */
   protected regularOpen(_date: Date): TimeOfDay {
     return { h: 9, m: 30 };
   }
+
+  /**
+   * Returns the default close time in local exchange time for `date` when no
+   * special-close rule matches. The base implementation returns 16:00. Override
+   * to encode era-varying session times (e.g. NYSE closed at 15:00 before
+   * 1952-09-29, and at 15:30 until 1974-01-02).
+   *
+   * @param date - UTC midnight `Date` for the trading day being queried.
+   */
   protected regularClose(_date: Date): TimeOfDay {
     return { h: 16, m: 0 };
   }
+
+  /**
+   * Returns the set of weekday indices (using `Date.getUTCDay()` convention:
+   * 0 = Sunday, 1 = Monday, …, 6 = Saturday) that are regular trading days.
+   * The base implementation returns `{1, 2, 3, 4, 5}` (Mon–Fri). Override to
+   * encode historical six-day trading weeks (e.g. NYSE traded Mon–Sat before
+   * 1952-09-29, keyed by `date` so the shift is era-aware).
+   *
+   * @param date - UTC midnight `Date` for the day being tested.
+   */
   protected weekmask(_date: Date): ReadonlySet<number> {
     return DEFAULT_WEEKMASK;
   }
@@ -112,6 +210,8 @@ export abstract class ExchangeCalendar implements Calendar {
   }
 
   // --- Public Calendar API ---
+
+  /** Returns `true` when `t` falls on a regular trading day (weekmask check, then holiday check). */
   isOpen(t: Date): boolean {
     const d = this.normalize(t);
     if (!this.weekmask(d).has(d.getUTCDay())) return false;
@@ -121,19 +221,24 @@ export abstract class ExchangeCalendar implements Calendar {
     return true;
   }
 
+  /** Returns the first trading day strictly after `t`. */
   next(t: Date): Date {
     let d = new Date(this.normalize(t).getTime() + MS_PER_DAY);
     while (!this.isOpen(d)) d = new Date(d.getTime() + MS_PER_DAY);
     return d;
   }
 
+  /** Returns the first trading day strictly before `t`. */
   previous(t: Date): Date {
     let d = new Date(this.normalize(t).getTime() - MS_PER_DAY);
     while (!this.isOpen(d)) d = new Date(d.getTime() - MS_PER_DAY);
     return d;
   }
 
-  /** Returns trading-day Date midnights for `range.from` (inclusive) through `range.to` (exclusive). */
+  /**
+   * Returns UTC midnight `Date` objects for every trading day in
+   * `[range.from, range.to)`. The `from` bound is inclusive; `to` is exclusive.
+   */
   sessions(range: DateRange): ReadonlyArray<Date> {
     const out: Date[] = [];
     let d = this.normalize(range.from);

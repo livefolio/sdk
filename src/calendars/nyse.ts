@@ -953,15 +953,22 @@ const SPECIAL_OPENS_ADHOC: AdhocTimeOverrides = new Map<string, TimeOfDay>([
 ]);
 
 /**
- * NYSE / NYSE-equivalent (NASDAQ, BATS, DJIA, DOW) trading-day calendar from
- * 1885-01-01 onward. Faithful port of pandas_market_calendars' nyse.py.
+ * New York Stock Exchange (NYSE) trading-day calendar covering 1885-01-01 to
+ * the present. Also applicable to NYSE-equivalent venues (NASDAQ, BATS, DJIA,
+ * DOW). Faithful port of `pandas_market_calendars`' `nyse.py`.
  *
- * Era-varying session times:
- *   - open: 10:00 (pre-1985-09-30) → 09:30 (1985-09-30+)
- *   - close: 15:00 (pre-1952-09-29) → 15:30 (1952-09-29 → 1973-12-31) → 16:00 (1974-01-02+)
- *   - Saturday (when active, pre-1952-09-29): 12:00 close (approximation)
+ * **Era boundaries:**
+ * - Weekmask: Mon–Sat through 1952-09-28; Mon–Fri from 1952-09-29 onward
+ *   (Saturday trading retired on that date).
+ * - Regular open: 10:00 ET before 1985-09-30; 09:30 ET from 1985-09-30 onward.
+ * - Regular close: 15:00 ET before 1952-09-29; 15:30 ET through 1973-12-31;
+ *   16:00 ET from 1974-01-02 onward. Saturday closes (pre-1952) are
+ *   approximated as 12:00.
  *
- * Variable weekmask: Mon-Sat through 1952-09-28; Mon-Fri from 1952-09-29 on.
+ * Holiday coverage includes the full set of regular (rule-derived) and adhoc
+ * (literal date set) closures sourced from `pandas_market_calendars`, spanning
+ * historical events from the Ulysses Grant funeral (1885) through the Jimmy
+ * Carter national day of mourning (2025).
  */
 export class NYSEExchangeCalendar extends ExchangeCalendar {
   readonly name = 'NYSE';

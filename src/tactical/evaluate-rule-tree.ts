@@ -91,6 +91,51 @@ function walk(
     : walk(rules.else, values, state, outState);
 }
 
+/**
+ * Evaluates a {@link RuleNode} tree against a resolved set of feature values
+ * and returns the target allocation weights together with the updated
+ * hysteresis state.
+ *
+ * The tree is walked depth-first. At each {@link IfNode} the comparison is
+ * evaluated (with hysteresis applied when `tolerance` and `id` are present)
+ * and the walk follows either `then` or `else`. Evaluation terminates at an
+ * {@link AllocateNode} whose `weights` map is returned verbatim.
+ *
+ * Hysteresis: when a {@link Comparison} carries a `tolerance`, the previous
+ * outcome in `state` is used to decide whether to flip the result. The updated
+ * outcomes for all visited comparisons are collected in the returned `state` map.
+ *
+ * Throws if a {@link FeatureRef} resolves to `undefined` (the caller should
+ * suppress this with a guard or catch-block, as {@link fromSpec} does).
+ *
+ * @param rules  - Root of the rule tree to evaluate.
+ * @param values - Resolved feature values, keyed by feature id. Must contain
+ *   every `ref` string used in the tree; missing keys throw.
+ * @param state  - Prior hysteresis state from the previous evaluation step.
+ *   Pass an empty `Map` on the first call.
+ * @returns An object with:
+ *   - `weights` — target portfolio weights as a `Map<AssetId, number>`.
+ *   - `state`   — updated {@link RuleTreeState} to pass to the next step.
+ *
+ * @example
+ * ```ts
+ * import { evaluateRuleTree } from '@livefolio/sdk';
+ * import type { RuleNode, RuleTreeState } from '@livefolio/sdk';
+ *
+ * const rules: RuleNode = {
+ *   op:   'if',
+ *   cond: { op: 'gt', left: { ref: 'price' }, right: { ref: 'sma200' } },
+ *   then: { op: 'allocate', weights: { SPY: 1 } },
+ *   else: { op: 'allocate', weights: { SHY: 1 } },
+ * };
+ *
+ * let state: RuleTreeState = new Map();
+ * const values = new Map([['price', 450], ['sma200', 420]]);
+ * const result = evaluateRuleTree(rules, values, state);
+ * // result.weights → Map { 'SPY' => 1 }
+ * state = result.state;
+ * ```
+ */
 export function evaluateRuleTree(
   rules: RuleNode,
   values: ReadonlyMap<string, number>,
