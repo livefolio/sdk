@@ -62,8 +62,7 @@ describe('fromSpec', () => {
     const strategy = fromSpec(stateless, { runtime, calendar });
     const t = utc('2026-01-09');
     const features = await strategy.features(strategy.universe(t, initialPortfolio), initialPortfolio, t);
-    const result = strategy.build(features, initialPortfolio, strategy.initialState!(), t);
-    const orders = Array.isArray(result) ? result : result.orders;
+    const { orders } = strategy.build(features, initialPortfolio, strategy.initialState!(), t);
     expect(orders.length).toBeGreaterThan(0);
     expect(orders[0]!.kind).toBe('rebalance');
   });
@@ -74,8 +73,7 @@ describe('fromSpec', () => {
     const strategy = fromSpec(stateless, { runtime, calendar });
     const t = utc('2026-01-05');
     const features = await strategy.features(strategy.universe(t, initialPortfolio), initialPortfolio, t);
-    const result = strategy.build(features, initialPortfolio, strategy.initialState!(), t);
-    const orders = Array.isArray(result) ? result : result.orders;
+    const { orders } = strategy.build(features, initialPortfolio, strategy.initialState!(), t);
     expect(orders).toEqual([]);
   });
 
@@ -86,8 +84,7 @@ describe('fromSpec', () => {
     const strategy = fromSpec(stateless, { runtime, calendar });
     const t = utc('2026-01-09');
     const features = await strategy.features(strategy.universe(t, initialPortfolio), initialPortfolio, t);
-    const result = strategy.build(features, initialPortfolio, strategy.initialState!(), t);
-    const orders = Array.isArray(result) ? result : result.orders;
+    const { orders } = strategy.build(features, initialPortfolio, strategy.initialState!(), t);
     expect(orders).toEqual([]);
   });
 
@@ -120,9 +117,8 @@ describe('fromSpec', () => {
 
     for (const t of days) {
       const features = await strategy.features(strategy.universe(t, initialPortfolio), initialPortfolio, t);
-      const result = strategy.build(features, initialPortfolio, state, t);
-      const orders = Array.isArray(result) ? result : result.orders;
-      if (!Array.isArray(result)) state = result.state;
+      const { orders, state: nextState } = strategy.build(features, initialPortfolio, state, t);
+      state = nextState;
       ordersByDay.push(orders.length);
     }
 
@@ -154,9 +150,8 @@ describe('fromSpec', () => {
     let state = strategy.initialState!();
     for (const t of sessions) {
       const features = await strategy.features(strategy.universe(t, initialPortfolio), initialPortfolio, t);
-      const result = strategy.build(features, initialPortfolio, state, t);
-      const orders = Array.isArray(result) ? result : result.orders;
-      if (!Array.isArray(result)) state = result.state;
+      const { orders, state: nextState } = strategy.build(features, initialPortfolio, state, t);
+      state = nextState;
       ordersByDay.push(orders.length);
     }
     expect(ordersByDay.slice(0, 4)).toEqual([0, 0, 0, 0]);
@@ -169,8 +164,7 @@ describe('fromSpec', () => {
     const strategy = fromSpec(stateless, { runtime, calendar });
     const t = utc('2026-01-09');
     const features = await strategy.features(strategy.universe(t, initialPortfolio), initialPortfolio, t);
-    const result = strategy.build(features, initialPortfolio, strategy.initialState!(), t);
-    const orders = Array.isArray(result) ? result : result.orders;
+    const { orders } = strategy.build(features, initialPortfolio, strategy.initialState!(), t);
     expect(orders.length).toBeGreaterThan(0);
   });
 
