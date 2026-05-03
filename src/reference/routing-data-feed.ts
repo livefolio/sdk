@@ -19,7 +19,7 @@ export class RoutingDataFeedError extends Error {
 export type RoutingDataFeedRouteFn = (asset: Asset) => DataFeed | undefined;
 
 /** Map form of the routing rule. Keys are `Asset['kind']` discriminants. */
-export type RoutingDataFeedRouteMap = Readonly<Record<string, DataFeed>>;
+export type RoutingDataFeedRouteMap = Readonly<Partial<Record<Asset['kind'], DataFeed>>>;
 
 /**
  * A {@link DataFeed} that delegates each call to one of several underlying
@@ -46,7 +46,7 @@ export type RoutingDataFeedRouteMap = Readonly<Record<string, DataFeed>>;
  * const result = await runBacktest({
  *   strategy, range, initialPortfolio,
  *   dataFeed: feed,
- *   executor: new BacktestExecutor({ dataFeed: feed }),
+ *   executor,
  *   calendar,
  * });
  * ```
@@ -62,6 +62,9 @@ export class RoutingDataFeed implements DataFeed {
     }
   }
 
+  // Async generator (rather than plain delegation) so resolve() runs lazily on
+  // the first next() call, surfacing errors via the iterable's normal rejection
+  // path instead of throwing synchronously at call time.
   async *bars(asset: Asset, range: DateRange, freq: Frequency): AsyncGenerator<Bar> {
     const feed = this.resolve(asset);
     yield* feed.bars(asset, range, freq);

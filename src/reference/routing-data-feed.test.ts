@@ -98,6 +98,9 @@ describe('RoutingDataFeed', () => {
   it('throws RoutingDataFeedError when function form returns undefined', async () => {
     const router = new RoutingDataFeed(() => undefined);
     await expect(drain(router.bars(equity, range, '1d'))).rejects.toThrow(RoutingDataFeedError);
+    await expect(drain(router.bars(equity, range, '1d'))).rejects.toThrow(
+      /no feed registered.*kind="equity".*id="AAPL"/,
+    );
   });
 
   it('does not implement events', () => {
