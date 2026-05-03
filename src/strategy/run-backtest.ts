@@ -16,7 +16,7 @@ import { applyFills } from '../portfolio/apply';
  * when the other arm is an object type, so we use an explicit type predicate instead.
  * The helper is defined at module scope so `runLive` (Task 8) can reuse it.
  */
-function isStateResult<S>(
+export function isStateResult<S>(
   r: ReadonlyArray<Order> | { orders: ReadonlyArray<Order>; state: S },
 ): r is { orders: ReadonlyArray<Order>; state: S } {
   return !Array.isArray(r);
