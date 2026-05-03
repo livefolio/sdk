@@ -24,13 +24,13 @@
     {
       "id": 4,
       "subject": "Task 4: StreamingDataFeed interface",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Add `StreamingDataFeed` sibling interface to `DataFeed`. Purely additive — no changes to `DataFeed` or any existing caller.\n\n**Files:**\n- Create: `src/interfaces/streaming-data-feed.ts`\n- Create: `src/interfaces/streaming-data-feed.test.ts`\n- Modify: `src/interfaces/index.ts`\n- Modify: `src/index.ts`\n\n**Verify:** `npm test -- src/interfaces/streaming-data-feed.test.ts && npm run build`\n\n```json:metadata\n{\"files\":[\"src/interfaces/streaming-data-feed.ts\",\"src/interfaces/streaming-data-feed.test.ts\",\"src/interfaces/index.ts\",\"src/index.ts\"],\"verifyCommand\":\"npm test -- src/interfaces/streaming-data-feed.test.ts && npm run build\",\"planTaskNumber\":4}\n```"
     },
     {
       "id": 5,
       "subject": "Task 5: Crypto24x7Calendar reference impl",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** 24/7 calendar where every day is a single session running midnight UTC to next midnight UTC. Suitable for crypto and any always-on market.\n\n**Files:**\n- Create: `src/calendars/crypto-24x7.ts`\n- Create: `src/calendars/crypto-24x7.test.ts`\n- Modify: `src/calendars/index.ts`\n- Modify: `src/index.ts`\n\n**Verify:** `npm test -- src/calendars/crypto-24x7.test.ts`\n\n```json:metadata\n{\"files\":[\"src/calendars/crypto-24x7.ts\",\"src/calendars/crypto-24x7.test.ts\",\"src/calendars/index.ts\",\"src/index.ts\"],\"verifyCommand\":\"npm test -- src/calendars/crypto-24x7.test.ts\",\"planTaskNumber\":5}\n```"
     },
     {

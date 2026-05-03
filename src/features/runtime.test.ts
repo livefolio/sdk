@@ -153,4 +153,16 @@ describe('FeatureRuntime streaming mode', () => {
     const series = await runtime.compute({ kind: 'sma', period: 3 }, SPY);
     expect(series.length).toBe(3);
   });
+
+  it('appendBar throws when called on historical-mode FeatureRuntime', () => {
+    const runtime = new FeatureRuntime({
+      dataFeed: { bars: vi.fn() },
+      featureCache: new MemoryFeatureCache(),
+      range: { from: new Date('2024-06-01'), to: new Date('2024-06-30') },
+      freq: '1d',
+    });
+    expect(() =>
+      runtime.appendBar(SPY, { t: new Date('2024-06-01'), open: 1, high: 1, low: 1, close: 1, volume: 0 }),
+    ).toThrow(/streaming mode/);
+  });
 });

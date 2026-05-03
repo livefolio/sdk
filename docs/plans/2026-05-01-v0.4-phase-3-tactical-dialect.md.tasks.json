@@ -1,0 +1,47 @@
+{
+  "planPath": "docs/plans/2026-05-01-v0.4-phase-3-tactical-dialect.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Tactical dialect types (tactical/v0)",
+      "status": "completed",
+      "description": "Land JSON-friendly type surface for tactical/v0 (AssetRef, SyntheticAsset, RebalanceConfig, TacticalFeatureSpec with delay, Comparison with tolerance + id, RuleNode, TacticalSpec, RuleTreeState). Commit: ac1f7bf."
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: evaluateRuleTree (stateful, hysteresis)",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "Stateful (rules, values, state?) → { weights, state }. Hysteresis bands, prev-state via comparison.id. Commit: 219c5dc."
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: evaluateFeatureSpecs (with delay)",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "async (specs, runtime, t) → Map<id, number | undefined>. Positional delay shift. Commit: 81f2829."
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: withSynthetics DataFeed wrapper (with expense)",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "DataFeed wrapper. Daily-reset leverage compounding × (1 − expense/252). Commit: 075ee98."
+    },
+    {
+      "id": 6,
+      "subject": "Task 5: fromSpec hydrator (hysteresis + rebalance + synthetics)",
+      "status": "completed",
+      "blockedBy": [2, 3, 4],
+      "description": "fromSpec(spec, { runtime, calendar }) → Strategy<TacticalFeatures>. Rebalance gate, hysteresis state via closure, validateSynthetics. Commits: 0415e33, b919780 (fix: dropped virtual-portfolio hack)."
+    },
+    {
+      "id": 7,
+      "subject": "Task 6: Tactical barrel + end-to-end integration test",
+      "status": "completed",
+      "blockedBy": [6],
+      "description": "Barrel exports + 5 sub-tests through runBacktest (parity, hysteresis, delay, leverage, weekly cadence). Commit: e2d8582. Full suite 451/451 green."
+    }
+  ],
+  "lastUpdated": "2026-05-01T22:35:00Z"
+}
