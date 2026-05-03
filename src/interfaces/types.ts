@@ -6,14 +6,11 @@
 export type AssetId = string;
 
 /**
- * A tradeable instrument. Currently only `'equity'` is defined; additional
- * kinds (ETF, option, crypto) will be added as discriminated variants.
+ * An equity instrument — common stock or ETF.
  *
  * @example
  * ```ts
- * import type { Asset } from '@livefolio/sdk';
- *
- * const aapl: Asset = {
+ * const aapl: EquityAsset = {
  *   kind: 'equity',
  *   id: 'AAPL',
  *   symbol: 'AAPL',
@@ -21,7 +18,7 @@ export type AssetId = string;
  * };
  * ```
  */
-export type Asset = {
+export type EquityAsset = {
   kind: 'equity';
   /** Stable opaque ID — typically the ticker, but treat as opaque. */
   id: AssetId;
@@ -30,6 +27,39 @@ export type Asset = {
   /** MIC or common exchange name, e.g. `'NYSE'`, `'NASDAQ'`. Optional. */
   exchange?: string;
 };
+
+/**
+ * A macroeconomic time series — e.g. a FRED series like `DGS10` (10-year
+ * Treasury yield) or `CPIAUCSL` (CPI, all items). Models single-value series
+ * as bars whose OHLC are equal to the published value.
+ *
+ * @example
+ * ```ts
+ * const dgs10: MacroAsset = {
+ *   kind: 'macro',
+ *   id: 'DGS10',
+ *   symbol: '10Y Treasury',
+ *   source: 'FRED',
+ * };
+ * ```
+ */
+export type MacroAsset = {
+  kind: 'macro';
+  /** Provider-scoped series ID, e.g. `'DGS10'`, `'CPIAUCSL'`. */
+  id: AssetId;
+  /** Human-readable label, e.g. `'10Y Treasury'`, `'CPI'`. */
+  symbol: string;
+  /** Data provider tag, e.g. `'FRED'`. Optional. */
+  source?: string;
+};
+
+/**
+ * A tradeable or queryable instrument. Discriminated by `kind`. Add a new
+ * variant to this union when introducing a new asset class (futures, option,
+ * crypto, etc.); each variant is the natural narrowing point for vendor-
+ * specific fields.
+ */
+export type Asset = EquityAsset | MacroAsset;
 
 /**
  * Bar granularity. Determines the width of each {@link Bar} returned by
