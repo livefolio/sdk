@@ -89,7 +89,9 @@ export function fromMyDialectSpec(spec: MyDialectSpec): Strategy<MyFeatures> {
 
     // build() — synchronous. Translates features into orders.
     // Returning [] means "hold current positions unchanged" (100 % cash here).
-    build(_features: MyFeatures, _portfolio: Portfolio, _t: Date): ReadonlyArray<Order> {
+    // The `state` parameter is `void` for state-less strategies; returning a bare
+    // Order[] is the legacy shape (still supported).
+    build(_features: MyFeatures, _portfolio: Portfolio, _state: void, _t: Date): ReadonlyArray<Order> {
       return [];
     },
   };
@@ -117,7 +119,8 @@ console.log(`universe() → ${u.length} assets: ${u.map((a) => a.symbol).join(',
 const f = await strategy.features(u, emptyPortfolio, now);
 console.log(`features() → prices map has ${f.prices.size} entries`);
 
-const orders = strategy.build(f, emptyPortfolio, now);
+// This dialect's build() returns a bare Order[] (legacy shape, void state).
+const orders = strategy.build(f, emptyPortfolio, undefined, now) as ReadonlyArray<Order>;
 console.log(`build()    → ${orders.length} orders (degenerate: always 0)`);
 
 console.log('\nContract verified. The dialect shape is correct.');

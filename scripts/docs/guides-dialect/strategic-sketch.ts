@@ -114,7 +114,7 @@ function fromStrategicSpec(spec: StrategicSpec, opts: FromStrategicSpecOptions):
       return { prices };
     },
 
-    build(features: StrategicFeatures, portfolio: Portfolio, t: Date): ReadonlyArray<Order> {
+    build(features: StrategicFeatures, portfolio: Portfolio, _state: void, t: Date): ReadonlyArray<Order> {
       // Gate: only rebalance on the last trading day of the period.
       if (!isRebalanceDay(t, cadence, opts.calendar)) return [];
 
