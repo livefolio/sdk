@@ -22,6 +22,8 @@ export type {
   Fundamentals,
   EventKind,
   DataEvent,
+  StreamingDataFeed,
+  StreamingBar,
   Executor,
   Calendar,
   Session,
