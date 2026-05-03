@@ -76,7 +76,6 @@ describe('FeatureRuntime streaming mode', () => {
 
   it('accepts streaming construction without a fixed range', () => {
     const runtime = new FeatureRuntime({
-      dataFeed: { bars: vi.fn() },
       featureCache: new MemoryFeatureCache(),
       mode: 'streaming',
       freq: '1d',
@@ -86,7 +85,6 @@ describe('FeatureRuntime streaming mode', () => {
 
   it('appendBar adds bars to the buffer in ascending order', () => {
     const runtime = new FeatureRuntime({
-      dataFeed: { bars: vi.fn() },
       featureCache: new MemoryFeatureCache(),
       mode: 'streaming',
       freq: '1d',
@@ -106,9 +104,7 @@ describe('FeatureRuntime streaming mode', () => {
   });
 
   it('compute reads from the in-memory buffer, not dataFeed.bars', async () => {
-    const barsSpy = vi.fn();
     const runtime = new FeatureRuntime({
-      dataFeed: { bars: barsSpy },
       featureCache: new MemoryFeatureCache(),
       mode: 'streaming',
       freq: '1d',
@@ -124,7 +120,6 @@ describe('FeatureRuntime streaming mode', () => {
       });
     }
     const series = await runtime.compute({ kind: 'sma', period: 3 }, SPY);
-    expect(barsSpy).not.toHaveBeenCalled();
     // SMA(3) over [100, 101, 102, 103, 104] yields 3 values: 101, 102, 103.
     expect(series.length).toBe(3);
   });
@@ -144,7 +139,6 @@ describe('FeatureRuntime streaming mode', () => {
       ],
     ]);
     const runtime = new FeatureRuntime({
-      dataFeed: { bars: vi.fn() },
       featureCache: new MemoryFeatureCache(),
       mode: 'streaming',
       freq: '1d',
@@ -164,5 +158,38 @@ describe('FeatureRuntime streaming mode', () => {
     expect(() =>
       runtime.appendBar(SPY, { t: new Date('2024-06-01'), open: 1, high: 1, low: 1, close: 1, volume: 0 }),
     ).toThrow(/streaming mode/);
+  });
+
+  it('appendBar invalidates seriesCache so subsequent compute reflects new bars', async () => {
+    const runtime = new FeatureRuntime({
+      mode: 'streaming',
+      featureCache: new MemoryFeatureCache(),
+      freq: '1d',
+    });
+    for (let i = 0; i < 3; i++) {
+      runtime.appendBar(SPY, {
+        t: new Date(Date.UTC(2024, 5, i + 1)),
+        open: 100,
+        high: 100,
+        low: 100,
+        close: 100,
+        volume: 0,
+      });
+    }
+    const s1 = await runtime.compute({ kind: 'sma', period: 3 }, SPY);
+    expect(s1.length).toBe(1);
+
+    runtime.appendBar(SPY, {
+      t: new Date(Date.UTC(2024, 5, 4)),
+      open: 200,
+      high: 200,
+      low: 200,
+      close: 200,
+      volume: 0,
+    });
+    const s2 = await runtime.compute({ kind: 'sma', period: 3 }, SPY);
+    expect(s2.length).toBe(2);
+    // Last value should reflect the new bar: SMA(100, 100, 200) = 133.33...
+    expect(s2[s2.length - 1]?.v).toBeCloseTo(133.333, 2);
   });
 });

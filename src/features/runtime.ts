@@ -9,6 +9,15 @@ import { getFeatureCompute, paramsHash, type FeatureSpec } from './spec';
  *  value cannot collide with any real historical cache entry. */
 const STREAMING_SENTINEL_RANGE: DateRange = { from: new Date(0), to: new Date(0) };
 
+/** Stub DataFeed used when no `dataFeed` is supplied in streaming mode.
+ *  Throws immediately if `.bars` is ever called, which surfaces accidental
+ *  historical-mode code paths at runtime rather than silently returning empty. */
+const STREAMING_STUB_FEED: DataFeed = {
+  bars: () => {
+    throw new Error('dataFeed.bars called on streaming-mode FeatureRuntime');
+  },
+};
+
 /**
  * Configuration for a `FeatureRuntime` instance.
  *
@@ -58,13 +67,15 @@ export type FeatureRuntimeOptions =
   | {
       /** Selects streaming (open-ended live) mode. Required. */
       mode: 'streaming';
-      /** Kept on the type for interface symmetry but is NOT called in streaming mode.
-       *  Supply `{ bars: vi.fn() }` in tests. */
-      dataFeed: DataFeed;
+      /** Optional — not called in streaming mode. Omit in streaming-only usages.
+       *  If provided it is stored but never invoked; supply only when sharing an
+       *  options object that also carries a `DataFeed` for other purposes. */
+      dataFeed?: DataFeed;
       /**
-       * Persistent indicator cache. Cache keys for streaming computations use a
-       * sentinel `range` (`{ from: new Date(0), to: new Date(0) }`) to avoid
-       * collision with historical entries stored under the same cache instance.
+       * Persistent indicator cache. In streaming mode the cache is bypassed
+       * entirely — every `compute` call recomputes from the in-memory bar buffer.
+       * The instance is still required so that a shared cache object can be
+       * passed without special-casing at the call site.
        */
       featureCache: FeatureCache;
       /**
@@ -101,15 +112,18 @@ export type FeatureRuntimeOptions =
  *   called.
  * - **Indicator dispatch** — Delegates computation to the function registered via
  *   `defineFeature` for the given `FeatureSpec.kind`.
- * - **Persistent caching** — Checks `FeatureCache` before computing. On a miss,
- *   the result is stored in the cache. Subsequent calls with the same `(spec, asset)`
- *   combination return instantly from cache without re-fetching bars.
+ * - **Persistent caching** (historical mode only) — Checks `FeatureCache` before
+ *   computing. On a miss, the result is stored in the cache. Subsequent calls with
+ *   the same `(spec, asset)` combination return instantly from cache without
+ *   re-fetching bars.
  *
  * Caching semantics:
  * - Historical mode: cache keys incorporate `spec`, `asset.id`, `range`, and `freq`.
- * - Streaming mode: the `range` field in cache keys is replaced by a sentinel
- *   (`{ from: new Date(0), to: new Date(0) }`) so streaming entries never collide
- *   with historical entries stored in the same `MemoryFeatureCache`.
+ *   Results are read from and written to `featureCache`.
+ * - Streaming mode: `featureCache` is bypassed entirely — every `compute` call
+ *   recomputes from the growing in-memory bar buffer. The `seriesCache` (per-asset
+ *   in-memory base-series cache) is the only cache layer; it is invalidated on each
+ *   `appendBar` so the next `compute` sees the updated buffer.
  * - Calling `appendBar` invalidates the in-memory series cache for that asset so
  *   the next `compute` call rebuilds the series from the updated buffer.
  *
@@ -137,7 +151,6 @@ export type FeatureRuntimeOptions =
  * @example Streaming mode
  * ```ts
  * const runtime = new FeatureRuntime({
- *   dataFeed,            // not called in streaming mode
  *   featureCache: new MemoryFeatureCache(),
  *   mode: 'streaming',
  *   freq: '1d',
@@ -164,23 +177,23 @@ export class FeatureRuntime {
 
   constructor(opts: FeatureRuntimeOptions) {
     this.mode = opts.mode ?? 'historical';
-    this.dataFeed = opts.dataFeed;
     this.featureCache = opts.featureCache;
     this.freq = opts.freq;
     this.field = opts.field ?? 'close';
     this.seriesCache = new Map();
     this.streamingBars = new Map();
 
-    if (this.mode === 'streaming') {
+    if (opts.mode === 'streaming') {
+      this.dataFeed = opts.dataFeed ?? STREAMING_STUB_FEED;
       this.range = null;
-      const initial = (opts as Extract<FeatureRuntimeOptions, { mode: 'streaming' }>).initialBars;
-      if (initial) {
-        for (const [assetId, bars] of initial) {
+      if (opts.initialBars) {
+        for (const [assetId, bars] of opts.initialBars) {
           this.streamingBars.set(assetId, [...bars]);
         }
       }
     } else {
-      this.range = (opts as Extract<FeatureRuntimeOptions, { mode?: 'historical' }>).range;
+      this.dataFeed = opts.dataFeed;
+      this.range = opts.range;
     }
   }
 
@@ -252,13 +265,14 @@ export class FeatureRuntime {
    * 1. Fetches or reuses the in-memory base `Series` for the asset.
    * 2. Dispatches to the registered compute function for `spec.kind`.
    * 3. Stores the result in `featureCache`.
+   * On subsequent calls, returns the cached `Series` directly from `featureCache`.
    *
    * **Streaming mode:** reads from the in-memory bar buffer populated via
-   * `appendBar`. `DataFeed.bars` is never called. Cache keys use a sentinel
-   * range to avoid collision with historical entries.
-   *
-   * On subsequent calls with the same `(spec, asset)` pair, returns the cached
-   * `Series` directly, bypassing bar fetching and computation.
+   * `appendBar`. `DataFeed.bars` is never called. The persistent `featureCache`
+   * is bypassed entirely — results are never read from or written to it.
+   * The in-memory `seriesCache` (base series per asset) is the only cache layer
+   * and is invalidated on each `appendBar`, so every `compute` after a new bar
+   * reflects the updated buffer.
    *
    * @param spec - The feature specification describing which indicator to compute
    *   and its parameters (e.g. `{ kind: 'sma', period: 20 }`).
@@ -281,12 +295,16 @@ export class FeatureRuntime {
    */
   async compute(spec: FeatureSpec, asset: Asset): Promise<Series> {
     const key = this.cacheKey(spec, asset);
-    const cached = await this.featureCache.get(key);
-    if (cached) return cached;
+    if (this.mode !== 'streaming') {
+      const cached = await this.featureCache.get(key);
+      if (cached) return cached;
+    }
     const base = await this.baseSeries(asset);
     const compute = getFeatureCompute(spec.kind);
     const result = compute(base, spec);
-    await this.featureCache.set(key, result);
+    if (this.mode !== 'streaming') {
+      await this.featureCache.set(key, result);
+    }
     return result;
   }
 }
