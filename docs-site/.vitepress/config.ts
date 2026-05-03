@@ -74,6 +74,7 @@ export default defineConfig({
             { text: 'Multi-asset trend-following', link: '/recipes/multi-asset-trend' },
             { text: 'Mean-reversion with hysteresis', link: '/recipes/mean-reversion' },
             { text: 'Backtest with realistic slippage', link: '/recipes/realistic-slippage' },
+            { text: 'Replay-then-stream (live)', link: '/recipes/replay-then-stream' },
           ],
         },
       ],
