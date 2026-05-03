@@ -62,7 +62,8 @@ describe('fromSpec', () => {
     const strategy = fromSpec(stateless, { runtime, calendar });
     const t = utc('2026-01-09');
     const features = await strategy.features(strategy.universe(t, initialPortfolio), initialPortfolio, t);
-    const orders = strategy.build(features, initialPortfolio, t);
+    const result = strategy.build(features, initialPortfolio, strategy.initialState!(), t);
+    const orders = Array.isArray(result) ? result : result.orders;
     expect(orders.length).toBeGreaterThan(0);
     expect(orders[0]!.kind).toBe('rebalance');
   });
@@ -73,7 +74,9 @@ describe('fromSpec', () => {
     const strategy = fromSpec(stateless, { runtime, calendar });
     const t = utc('2026-01-05');
     const features = await strategy.features(strategy.universe(t, initialPortfolio), initialPortfolio, t);
-    expect(strategy.build(features, initialPortfolio, t)).toEqual([]);
+    const result = strategy.build(features, initialPortfolio, strategy.initialState!(), t);
+    const orders = Array.isArray(result) ? result : result.orders;
+    expect(orders).toEqual([]);
   });
 
   it('missing price → no orders', async () => {
@@ -83,7 +86,9 @@ describe('fromSpec', () => {
     const strategy = fromSpec(stateless, { runtime, calendar });
     const t = utc('2026-01-09');
     const features = await strategy.features(strategy.universe(t, initialPortfolio), initialPortfolio, t);
-    expect(strategy.build(features, initialPortfolio, t)).toEqual([]);
+    const result = strategy.build(features, initialPortfolio, strategy.initialState!(), t);
+    const orders = Array.isArray(result) ? result : result.orders;
+    expect(orders).toEqual([]);
   });
 
   it('threads hysteresis state across consecutive build calls', async () => {
@@ -111,10 +116,13 @@ describe('fromSpec', () => {
 
     const days = [utc('2026-01-05'), utc('2026-01-06'), utc('2026-01-07')];
     const ordersByDay: number[] = [];
+    let state = strategy.initialState!();
 
     for (const t of days) {
       const features = await strategy.features(strategy.universe(t, initialPortfolio), initialPortfolio, t);
-      const orders = strategy.build(features, initialPortfolio, t);
+      const result = strategy.build(features, initialPortfolio, state, t);
+      const orders = Array.isArray(result) ? result : result.orders;
+      if (!Array.isArray(result)) state = result.state;
       ordersByDay.push(orders.length);
     }
 
@@ -143,9 +151,12 @@ describe('fromSpec', () => {
 
     const sessions = [utc('2026-01-05'), utc('2026-01-06'), utc('2026-01-07'), utc('2026-01-08'), utc('2026-01-09')];
     const ordersByDay: number[] = [];
+    let state = strategy.initialState!();
     for (const t of sessions) {
       const features = await strategy.features(strategy.universe(t, initialPortfolio), initialPortfolio, t);
-      const orders = strategy.build(features, initialPortfolio, t);
+      const result = strategy.build(features, initialPortfolio, state, t);
+      const orders = Array.isArray(result) ? result : result.orders;
+      if (!Array.isArray(result)) state = result.state;
       ordersByDay.push(orders.length);
     }
     expect(ordersByDay.slice(0, 4)).toEqual([0, 0, 0, 0]);
@@ -158,7 +169,9 @@ describe('fromSpec', () => {
     const strategy = fromSpec(stateless, { runtime, calendar });
     const t = utc('2026-01-09');
     const features = await strategy.features(strategy.universe(t, initialPortfolio), initialPortfolio, t);
-    expect(strategy.build(features, initialPortfolio, t).length).toBeGreaterThan(0);
+    const result = strategy.build(features, initialPortfolio, strategy.initialState!(), t);
+    const orders = Array.isArray(result) ? result : result.orders;
+    expect(orders.length).toBeGreaterThan(0);
   });
 
   it('throws on synthetic id colliding with a non-underlying universe ref', () => {
@@ -178,6 +191,52 @@ describe('fromSpec', () => {
       synthetics: [{ id: 'us:SPY', symbol: 'SPY', underlying: { id: 'us:VOO', symbol: 'VOO' }, leverage: 1 }],
     };
     expect(() => fromSpec(ambiguous, { runtime, calendar })).toThrow(/synthetic asset id "us:SPY" collides/);
+  });
+});
+
+describe('fromSpec state threading', () => {
+  const simpleSpecWithHysteresis: TacticalSpec = {
+    kind: 'tactical/v1',
+    universe: [SPY_REF],
+    features: [{ id: 'price', kind: 'price', asset: SPY_REF }],
+    rules: {
+      op: 'if',
+      cond: {
+        op: 'gt',
+        left: { ref: 'price' },
+        right: 100,
+        tolerance: { value: 5, mode: 'absolute' },
+        id: 'px_vs_100',
+      },
+      then: { op: 'allocate', weights: { 'us:SPY': 1 } },
+      else: { op: 'allocate', weights: {} },
+    },
+  };
+
+  it('initialState() returns an empty RuleTreeState Map', () => {
+    const { feed } = feedFor([106, 96, 94]);
+    const runtime = new FeatureRuntime({ dataFeed: feed, featureCache: new MemoryFeatureCache(), range, freq: '1d' });
+    const strategy = fromSpec(simpleSpecWithHysteresis, { runtime, calendar });
+    const initial = strategy.initialState!();
+    expect(initial).toBeInstanceOf(Map);
+    expect(initial.size).toBe(0);
+  });
+
+  it('build is deterministic given the same state input (no hidden closure)', async () => {
+    const { feed } = feedFor([106, 96, 94]);
+    const runtime = new FeatureRuntime({ dataFeed: feed, featureCache: new MemoryFeatureCache(), range, freq: '1d' });
+    const strategy = fromSpec(simpleSpecWithHysteresis, { runtime, calendar });
+    const t = utc('2026-01-05');
+    const portfolio = { cash: 100_000, positions: [], t };
+    const features = await strategy.features(strategy.universe(t, portfolio), portfolio, t);
+    const state = strategy.initialState!();
+
+    const r1 = strategy.build(features, portfolio, state, t);
+    const r2 = strategy.build(features, portfolio, state, t);
+
+    // If state were held in a closure and mutated by r1, r2 would differ.
+    // With threaded state, both calls receive the same input and produce the same output.
+    expect(r1).toEqual(r2);
   });
 });
 

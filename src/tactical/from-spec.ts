@@ -124,14 +124,12 @@ export function isRebalanceDay(t: Date, freq: RebalanceFrequency, calendar: Cale
  * Hydrates a plain {@link TacticalSpec} data object into a runnable
  * {@link Strategy} that `runBacktest` can drive step-by-step.
  *
- * The returned strategy closes over the following mutable state:
- * - **Rebalance gate** — `isRebalanceDay` is checked on each call to
- *   `build`; if the current day is not a period boundary the method returns an
- *   empty order list without touching the portfolio.
- * - **Hysteresis carryover** — the {@link RuleTreeState} is stored in a `let`
- *   binding and forwarded into each call to {@link evaluateRuleTree}. This
- *   means that named {@link Comparison} nodes with `tolerance` remember their
- *   last-evaluated outcome across steps.
+ * State is threaded explicitly through `build` via the
+ * {@link Strategy | `Strategy<F, S>.build`} signature. `initialState()` returns
+ * an empty {@link RuleTreeState} Map; the runtime is responsible for storing and
+ * forwarding the state between calls. This design makes `build` a pure function
+ * of its inputs — calling it twice with identical arguments produces identical
+ * outputs, enabling snapshot/restore for preview-builds in live mode.
  *
  * Validation performed at construction time:
  * - A `'tactical/v0'` `kind` emits a one-time deprecation warning to `console.warn`.
@@ -155,7 +153,7 @@ export function isRebalanceDay(t: Date, freq: RebalanceFrequency, calendar: Cale
  * const strategy = fromSpec(mySpec, { runtime, calendar });
  * ```
  */
-export function fromSpec(spec: TacticalSpec, opts: FromSpecOptions): Strategy<TacticalFeatures> {
+export function fromSpec(spec: TacticalSpec, opts: FromSpecOptions): Strategy<TacticalFeatures, RuleTreeState> {
   if (spec.kind === 'tactical/v0' && !_warnedV0) {
     _warnedV0 = true;
 
@@ -168,8 +166,6 @@ export function fromSpec(spec: TacticalSpec, opts: FromSpecOptions): Strategy<Ta
   const universe: ReadonlyArray<Asset> = spec.universe.map(resolveAsset);
   const { runtime, calendar } = opts;
   const cadence: RebalanceFrequency = spec.rebalance?.frequency ?? 'Daily';
-
-  let state: RuleTreeState = new Map();
 
   return {
     universe: () => universe,
@@ -191,8 +187,12 @@ export function fromSpec(spec: TacticalSpec, opts: FromSpecOptions): Strategy<Ta
       return { values, prices };
     },
 
-    build: (features, portfolio, t) => {
-      if (!isRebalanceDay(t, cadence, calendar)) return [];
+    initialState: () => new Map() as RuleTreeState,
+
+    build: (features, portfolio, state, t) => {
+      if (!isRebalanceDay(t, cadence, calendar)) {
+        return { orders: [], state };
+      }
 
       const defined = new Map<string, number>();
       for (const [id, v] of features.values) {
@@ -202,14 +202,20 @@ export function fromSpec(spec: TacticalSpec, opts: FromSpecOptions): Strategy<Ta
       try {
         evaluated = evaluateRuleTree(spec.rules, defined, state);
       } catch (e) {
-        if (e instanceof Error && /has no value/.test(e.message)) return [];
+        if (e instanceof Error && /has no value/.test(e.message)) {
+          return { orders: [], state };
+        }
         throw e;
       }
-      state = evaluated.state;
       for (const assetId of evaluated.weights.keys()) {
-        if (!features.prices.has(assetId)) return [];
+        if (!features.prices.has(assetId)) {
+          return { orders: [], state };
+        }
       }
-      return reconcile(evaluated.weights, portfolio, features.prices);
+      return {
+        orders: reconcile(evaluated.weights, portfolio, features.prices),
+        state: evaluated.state,
+      };
     },
   };
 }
