@@ -5,6 +5,8 @@ import { NYSEExchangeCalendar, Crypto24x7Calendar } from '../calendars';
 import { FeatureRuntime } from '../features/runtime';
 import type { Portfolio } from '../portfolio';
 import type { Asset, Bar, DataFeed, StreamingBar, StreamingDataFeed } from '../interfaces';
+import type { Order } from '../orders/types';
+import type { Position } from '../portfolio/types';
 import type { Features } from './types';
 
 const SPY: Asset = { kind: 'equity', id: 'us:SPY', symbol: 'SPY' };
@@ -71,24 +73,54 @@ describe('replay -> live continuity', () => {
       };
     }
 
-    function makeStrategy(): Strategy<Features, void> {
+    // State-bearing strategy: increments tickCount each session and emits a
+    // 1-share rebalance buy of SPY every 5th session (sessions 5/10/15/20).
+    // This exercises:
+    //   (a) state continuity across the replay->live seam (live-mode buys at
+    //       sessions 15 and 20 only fire if state was correctly threaded
+    //       forward from replay's finalState.tickCount === 14);
+    //   (b) order/fill/position continuity (replay produces 2 buys, live
+    //       produces 2 more — both runs must match the full backtest);
+    //   (c) cash + position-quantity arithmetic through applyFills.
+    //
+    // Order ids encode the tickCount at issue time (`buy-${n}`). This means
+    // the assertion `liveOrders.map(o => o.id) === ['buy-15', 'buy-20']` is
+    // a direct proof that the strategy received state values 15 and 20
+    // during the live phase — i.e., state continuity worked.
+    type StratState = { tickCount: number };
+    function makeStrategy(): Strategy<Features, StratState> {
       return {
         universe: () => [SPY],
         features: async () => ({}),
-        // No-op: this test verifies replay->live plumbing, not strategy logic.
-        build: () => [],
+        initialState: () => ({ tickCount: 0 }),
+        build: (_features, _portfolio, state) => {
+          const next = state.tickCount + 1;
+          const orders: Order[] = [];
+          if (next % 5 === 0) {
+            // Use 'rebalance' (not 'open') so all buys accumulate into one
+            // SPY position. With 'open' each buy creates a new position with
+            // a fresh module-counter ID; that ID counter is global, so Test A
+            // and Test B would assign different ids and break position-equality.
+            orders.push({ kind: 'rebalance', id: `buy-${next}`, asset: SPY, delta: 1 });
+          }
+          return { orders, state: { tickCount: next } };
+        },
       };
     }
 
-    // The strategy never emits orders, so the executor.submit branch in
-    // applyFills is a no-op identity. We still need a valid BacktestExecutor
-    // (constructor requires calendar + nextOpen); a stub that throws if ever
-    // called surfaces accidental invocations loudly.
+    // Real nextOpen: returns the matching daily bar's open price. Both Test A
+    // (full backtest) and Test B (replay+live) call submit on identical
+    // session dates (midnight UTC of each trading day), so this pure-function
+    // implementation produces identical fills across both paths — the
+    // requirement for snapshot-by-snapshot continuity.
+    const barAt = new Map(allBars.map((b) => [b.t.getTime(), b]));
     function makeExecutor(): BacktestExecutor {
       return new BacktestExecutor({
         calendar,
-        nextOpen: async () => {
-          throw new Error('nextOpen should not be called when no orders are emitted');
+        nextOpen: async (_asset, t) => {
+          const bar = barAt.get(t.getTime());
+          if (!bar) throw new Error(`no bar for session ${t.toISOString()}`);
+          return { t, price: bar.open };
         },
       });
     }
@@ -190,10 +222,44 @@ describe('replay -> live continuity', () => {
     // ---- Concatenate and compare to the full end-to-end run ----
     const combined = [...replayResult.snapshots, ...liveSnapshots];
     expect(combined).toHaveLength(21);
+
+    // Position IDs come from a module-global counter (`pos_1`, `pos_2`, ...).
+    // Test A and Test B share the module, so the counter assigns different
+    // ids in each run. Strip ids before comparing — every other field must
+    // match exactly.
+    const stripIds = (positions: ReadonlyArray<Position>) => positions.map(({ id: _id, ...rest }) => rest);
+
     for (let i = 0; i < 21; i++) {
-      expect(combined[i]?.t.toISOString()).toBe(fullResult.snapshots[i]?.t.toISOString());
-      expect(combined[i]?.portfolio.cash).toBe(fullResult.snapshots[i]?.portfolio.cash);
-      expect(combined[i]?.orders).toEqual(fullResult.snapshots[i]?.orders);
+      const live = combined[i]!;
+      const full = fullResult.snapshots[i]!;
+      expect(live.t.toISOString()).toBe(full.t.toISOString());
+      expect(live.portfolio.cash).toBe(full.portfolio.cash);
+      expect(live.orders).toEqual(full.orders);
+      expect(live.fills).toEqual(full.fills);
+      expect(stripIds(live.portfolio.positions)).toEqual(stripIds(full.portfolio.positions));
     }
+
+    // Sanity check: the strategy is non-trivial. 4 buys at sessions 5/10/15/20.
+    const allOrders = combined.flatMap((s) => s.orders);
+    expect(allOrders.map((o) => o.id)).toEqual(['buy-5', 'buy-10', 'buy-15', 'buy-20']);
+    const allFills = combined.flatMap((s) => s.fills);
+    expect(allFills).toHaveLength(4);
+
+    // State continuity: replay's finalState should reflect 14 incremented ticks.
+    expect(replayResult.finalState).toEqual({ tickCount: 14 });
+
+    // The live phase must have observed state values 15..21 — proven by the
+    // fact that buys 15 and 20 only fire when the strategy's `build` receives
+    // state.tickCount === 14 and === 19 respectively at session start. If
+    // state were reset, we would see `buy-5` and `buy-10` repeated instead.
+    const liveOrders = liveSnapshots.flatMap((s) => s.orders);
+    expect(liveOrders.map((o) => o.id)).toEqual(['buy-15', 'buy-20']);
+
+    // Final portfolio shape: 4 shares of SPY accumulated via 'rebalance' orders
+    // (which merge into one position), and cash debited by the 4 fill costs
+    // (prices = 100+4, 100+9, 100+14, 100+19 = 104+109+114+119 = 446).
+    expect(combined[20]!.portfolio.positions).toHaveLength(1);
+    expect(combined[20]!.portfolio.positions[0]!.quantity).toBe(4);
+    expect(combined[20]!.portfolio.cash).toBe(10_000 - (104 + 109 + 114 + 119));
   });
 });
