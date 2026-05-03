@@ -70,3 +70,87 @@ describe('FeatureRuntime', () => {
     await expect(rt.compute({ kind: 'mystery' as never, period: 1 } as never, SPY)).rejects.toThrow(/unknown/);
   });
 });
+
+describe('FeatureRuntime streaming mode', () => {
+  const SPY: Asset = { kind: 'equity', id: 'SPY', symbol: 'SPY' };
+
+  it('accepts streaming construction without a fixed range', () => {
+    const runtime = new FeatureRuntime({
+      dataFeed: { bars: vi.fn() },
+      featureCache: new MemoryFeatureCache(),
+      mode: 'streaming',
+      freq: '1d',
+    });
+    expect(runtime).toBeDefined();
+  });
+
+  it('appendBar adds bars to the buffer in ascending order', () => {
+    const runtime = new FeatureRuntime({
+      dataFeed: { bars: vi.fn() },
+      featureCache: new MemoryFeatureCache(),
+      mode: 'streaming',
+      freq: '1d',
+    });
+    runtime.appendBar(SPY, { t: new Date('2024-06-01'), open: 100, high: 100, low: 100, close: 100, volume: 0 });
+    runtime.appendBar(SPY, { t: new Date('2024-06-02'), open: 101, high: 101, low: 101, close: 101, volume: 0 });
+    expect(() =>
+      runtime.appendBar(SPY, {
+        t: new Date('2024-06-01'),
+        open: 99,
+        high: 99,
+        low: 99,
+        close: 99,
+        volume: 0,
+      }),
+    ).toThrow(/ascending/);
+  });
+
+  it('compute reads from the in-memory buffer, not dataFeed.bars', async () => {
+    const barsSpy = vi.fn();
+    const runtime = new FeatureRuntime({
+      dataFeed: { bars: barsSpy },
+      featureCache: new MemoryFeatureCache(),
+      mode: 'streaming',
+      freq: '1d',
+    });
+    for (let i = 0; i < 5; i++) {
+      runtime.appendBar(SPY, {
+        t: new Date(Date.UTC(2024, 5, i + 1)),
+        open: 100 + i,
+        high: 100 + i,
+        low: 100 + i,
+        close: 100 + i,
+        volume: 0,
+      });
+    }
+    const series = await runtime.compute({ kind: 'sma', period: 3 }, SPY);
+    expect(barsSpy).not.toHaveBeenCalled();
+    // SMA(3) over [100, 101, 102, 103, 104] yields 3 values: 101, 102, 103.
+    expect(series.length).toBe(3);
+  });
+
+  it('initialBars seeds the streaming buffer', async () => {
+    const initialBars = new Map<string, Bar[]>([
+      [
+        'SPY',
+        Array.from({ length: 5 }, (_, i) => ({
+          t: new Date(Date.UTC(2024, 5, i + 1)),
+          open: 100 + i,
+          high: 100 + i,
+          low: 100 + i,
+          close: 100 + i,
+          volume: 0,
+        })),
+      ],
+    ]);
+    const runtime = new FeatureRuntime({
+      dataFeed: { bars: vi.fn() },
+      featureCache: new MemoryFeatureCache(),
+      mode: 'streaming',
+      freq: '1d',
+      initialBars,
+    });
+    const series = await runtime.compute({ kind: 'sma', period: 3 }, SPY);
+    expect(series.length).toBe(3);
+  });
+});
