@@ -20,7 +20,7 @@ The SDK's `DataFeed` interface is pluggable. To connect to real market data, ins
 
 ```bash
 # Yahoo Finance (community-maintained)
-npm install @livefolio/datafeed-yfinance
+npm install @livefolio/yfinance
 ```
 
 You can also implement `DataFeed` directly against any source — see Custom DataFeed in the Guides section.

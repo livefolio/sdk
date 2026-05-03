@@ -4,7 +4,7 @@ import type { DataFeed, Asset, Bar, DateRange, Frequency } from '@livefolio/sdk'
  * Minimal in-memory `DataFeed` for the parity workspace. Backed by a symbol
  * → bars map; yields bars in the requested range half-open ([from, to)).
  *
- * Exists so the parity tests don't need to depend on `@livefolio/datafeed-yfinance`
+ * Exists so the parity tests don't need to depend on `@livefolio/yfinance`
  * — that package is published separately and not available to CI when this
  * workspace is tested in isolation. The fixture-fed tests never exercised
  * yfinance vendor logic anyway; they just needed a `DataFeed` impl over the

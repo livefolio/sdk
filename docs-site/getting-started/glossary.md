@@ -17,7 +17,7 @@ The interface for exchange trading-day arithmetic. Provides `isOpen`, `sessions`
 A rule-tree node that compares two feature references. Has `op` (`'gt'`, `'lt'`, `'gte'`, `'lte'`, `'eq'`, `'ne'`), `left`, and `right`. Used as the `cond` of an `IfNode`. See [`Comparison`](/api/type-aliases/Comparison) and [`ComparisonOp`](/api/type-aliases/ComparisonOp).
 
 **DataFeed**
-The market-data interface. Exposes `bars(asset, range, freq)` as an async iterable of `Bar` objects. The SDK ships no built-in implementation; `@livefolio/datafeed-yfinance` is a companion adapter. See [`DataFeed`](/api/interfaces/DataFeed).
+The market-data interface. Exposes `bars(asset, range, freq)` as an async iterable of `Bar` objects. The SDK ships no built-in implementation; `@livefolio/yfinance` is a companion adapter. See [`DataFeed`](/api/interfaces/DataFeed).
 
 **Dialect**
 The tactical dialect is the specific rule-tree language understood by `fromSpec` and `evaluateRuleTree`. It defines the `if/else` and `allocate` node types, feature spec kinds (`price`, `sma`, `ema`, `rsi`, etc.), and rebalance frequencies. All dialect symbols are exported under the `tactical` namespace.

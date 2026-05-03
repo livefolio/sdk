@@ -32,7 +32,7 @@ Streams corporate events (earnings, dividends, splits, other actions) in ascendi
 
 ## Real-world example: `YfinanceDataFeed`
 
-The sibling package `@livefolio/datafeed-yfinance` (in `yfinance/src/yfinance-data-feed.ts`) is a production-grade reference. Key patterns it uses:
+The sibling package `@livefolio/yfinance` (in `yfinance/src/yfinance-data-feed.ts`) is a production-grade reference. Key patterns it uses:
 
 - **Symbol translation** — `assetToYahooSymbol(asset)` maps the SDK's `asset.id` format to Yahoo Finance ticker strings.
 - **In-process bar cache** (`BarCache`) — A `Map<symbol, Map<freq, Bar[]>>` deduplicates fetches within a single backtest run. The same asset/frequency pair is only fetched once no matter how many features reference it.

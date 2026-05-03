@@ -70,7 +70,7 @@ const spec: TacticalSpec = {
 ## Full runnable sample
 
 The sample below runs a full backtest against a synthetic in-memory data feed.
-Swap the `dataFeed` for a real adapter (e.g. `@livefolio/datafeed-yfinance`)
+Swap the `dataFeed` for a real adapter (e.g. `@livefolio/yfinance`)
 without touching the spec or any other part of the code.
 
 ```ts

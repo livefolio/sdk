@@ -51,7 +51,7 @@ interface DataFeed {
 
 `DataFeed` may also expose `fundamentals(asset, date)` and `events(asset, range)` for fundamental data and corporate events respectively. The core runtime does not require these; they are available for custom feature implementations.
 
-**Reference:** none ships in the core SDK — `DataFeed` is purely an interface. The companion package `@livefolio/datafeed-yfinance` is one implementation. You can write your own for any source (broker API, local CSV, cloud data warehouse).
+**Reference:** none ships in the core SDK — `DataFeed` is purely an interface. The companion package `@livefolio/yfinance` is one implementation. You can write your own for any source (broker API, local CSV, cloud data warehouse).
 
 See [`DataFeed`](/api/interfaces/DataFeed) and [`Bar`](/api/type-aliases/Bar).
 

@@ -21,7 +21,7 @@ The v0.4 type surface. Pure type-only declarations — no runtime code. Defines 
 
 ### Working In This Directory
 - Type-only — no runtime imports allowed. Every file should compile to nothing
-- This is the contract layer: changes here ripple through `src/strategy/`, `src/features/`, `src/reference/`, and downstream packages (`@livefolio/datafeed-yfinance`)
+- This is the contract layer: changes here ripple through `src/strategy/`, `src/features/`, `src/reference/`, and downstream packages (`@livefolio/yfinance`)
 - New interface? Add it here, export from `index.ts`, then implement in `src/reference/` (or a downstream package)
 - Tests: mostly nonexistent — these are pure types. `streaming-data-feed.test.ts` is a tiny structural-conformance test for the `StreamingDataFeed` shape. Conformance is otherwise verified by the implementations passing their own tests
 

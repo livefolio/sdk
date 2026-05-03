@@ -59,7 +59,7 @@ const dataFeed: DataFeed = {
 
 `DataFeed` is an interface with a single required method: `bars`. It is an async generator that yields `Bar` objects (OHLCV + timestamp) in ascending time order for a given `(asset, range, frequency)` tuple. The range is half-open: `[from, to)`.
 
-In this example the feed is entirely in-memory. In production you would replace it with `@livefolio/datafeed-yfinance` or your own adapter — the strategy code does not change.
+In this example the feed is entirely in-memory. In production you would replace it with `@livefolio/yfinance` or your own adapter — the strategy code does not change.
 
 See [`DataFeed`](/api/interfaces/DataFeed) and [`Bar`](/api/type-aliases/Bar).
 

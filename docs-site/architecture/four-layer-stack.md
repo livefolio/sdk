@@ -27,7 +27,7 @@ For the complete design rationale, see `docs/specs/2026-04-28-generalized-strate
 ├─────────────────────────────────────────────────┤
 │  MARKET DATA (below — pluggable)                │
 │   DataFeed interface                            │
-│   @livefolio/datafeed-yfinance (external)       │
+│   @livefolio/yfinance (external)                │
 │   Any custom feed that implements DataFeed      │
 └─────────────────────────────────────────────────┘
 ```
@@ -56,7 +56,7 @@ The design intention is that `build` is the only method that emits actions. Stra
 
 This layer has four interfaces. The SDK ships a reference implementation for each; consumers swap any of them without touching strategy code.
 
-**DataFeed** supplies OHLCV bars as an async iterable. The core SDK contains no data provider — `@livefolio/datafeed-yfinance` is a separate package. Your own feed (broker API, local parquet, cloud warehouse) plugs in by implementing the two-method interface. See [`DataFeed`](/api/interfaces/DataFeed).
+**DataFeed** supplies OHLCV bars as an async iterable. The core SDK contains no data provider — `@livefolio/yfinance` is a separate package. Your own feed (broker API, local parquet, cloud warehouse) plugs in by implementing the two-method interface. See [`DataFeed`](/api/interfaces/DataFeed).
 
 **Calendar** provides trading-day arithmetic: `isOpen`, `sessions`, `next`, `previous`. `NYSEExchangeCalendar` (NYSE sessions from 1885, including era-varying holidays and ad-hoc closures) and `LSEExchangeCalendar` ship in the box. Non-US strategies implement `Calendar` for their exchange. See [`Calendar`](/api/interfaces/Calendar), [`NYSEExchangeCalendar`](/api/classes/NYSEExchangeCalendar).
 

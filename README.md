@@ -11,10 +11,10 @@ same spec, same rule tree, no hand-off seam between historical and live.
 ## Install
 
 ```bash
-npm install @livefolio/sdk @livefolio/datafeed-yfinance
+npm install @livefolio/sdk @livefolio/yfinance
 ```
 
-`@livefolio/datafeed-yfinance` is one option for the data layer. Implement
+`@livefolio/yfinance` is one option for the data layer. Implement
 your own `DataFeed` for proprietary feeds.
 
 ## Quick start
@@ -29,7 +29,7 @@ import {
   BacktestExecutor,
 } from '@livefolio/sdk';
 import type { TacticalSpec, Asset, DateRange } from '@livefolio/sdk';
-import { YfinanceDataFeed } from '@livefolio/datafeed-yfinance';
+import { YfinanceDataFeed } from '@livefolio/yfinance';
 
 // 1. Declare the strategy as data.
 const SPY = { id: 'us:SPY', symbol: 'SPY' };
@@ -97,7 +97,7 @@ is plain data — serialize it, store it, version it, send it across a wire.
 ### `DataFeed`
 
 The data-layer seam: anything that can answer "give me OHLCV bars for asset
-X over date range Y." `@livefolio/datafeed-yfinance` is one implementation;
+X over date range Y." `@livefolio/yfinance` is one implementation;
 implement your own for proprietary feeds. The interface lives in the root
 barrel — `import type { DataFeed } from '@livefolio/sdk'`. For live
 evaluation, implement the sibling `StreamingDataFeed` interface

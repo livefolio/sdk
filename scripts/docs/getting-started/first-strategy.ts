@@ -1,7 +1,7 @@
 // Quick-start: build a tactical strategy, run a backtest, print the final
 // portfolio. Self-contained — uses an in-memory synthetic DataFeed so the
 // sample runs without any external service. The same code shape works
-// against a real adapter (e.g. @livefolio/datafeed-yfinance) — only the
+// against a real adapter (e.g. @livefolio/yfinance) — only the
 // `dataFeed` parameter changes.
 //
 //   npx tsx scripts/docs/getting-started/first-strategy.ts
@@ -39,7 +39,7 @@ const spec: TacticalSpec = {
 };
 
 // --- 2. Build a DataFeed ------------------------------------------------
-// In production you'd use @livefolio/datafeed-yfinance or your own adapter.
+// In production you'd use @livefolio/yfinance or your own adapter.
 // Here we synthesize bars so the sample is self-contained.
 
 const utc = (s: string) => new Date(`${s}T00:00:00Z`);

@@ -16,7 +16,7 @@ The SDK's pluggable interfaces (`DataFeed`, `StreamingDataFeed`, `Executor`, `Ca
 - `freq` is `'1m' | '5m' | '15m' | '1h' | '1d'`.
 - Bars are total-return adjusted (splits + dividends baked in) — adapter is responsible for adjustment math.
 - Optional `fundamentals(asset)` and `events(asset, range)` methods. Don't stub them with throwers — leave them undefined so feature-detection (`'fundamentals' in feed`) works.
-- Reference: `@livefolio/datafeed-yfinance` (sibling repo `~/Documents/Personal/livefolio-2/yfinance/`).
+- Reference: `@livefolio/yfinance` (sibling repo `~/Documents/Personal/livefolio-2/yfinance/`).
 
 ### StreamingDataFeed — `subscribe(assets) → AsyncIterable<StreamingBar>`
 
