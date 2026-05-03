@@ -168,4 +168,31 @@ describe('runBacktest state threading', () => {
 
     expect(result.finalState).toBeUndefined();
   });
+
+  it('returns initialState in finalState when sessions is empty', async () => {
+    type S = { seeded: boolean };
+    const strategy: Strategy<Features, S> = {
+      universe: () => [],
+      features: async () => ({}),
+      initialState: () => ({ seeded: true }),
+      build: (_f, _p, state, _t) => ({ orders: [], state }),
+    };
+
+    const calendar = new NYSEExchangeCalendar();
+    // Saturday-only range — NYSE has zero sessions.
+    const range = { from: new Date('2024-01-06'), to: new Date('2024-01-07') };
+    const dataFeed: DataFeed = { bars: vi.fn().mockImplementation(async function* () {}) };
+
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: { cash: 1000, positions: [] },
+      dataFeed,
+      executor: { submit: vi.fn().mockResolvedValue([]) },
+      calendar,
+    });
+
+    expect(result.snapshots).toHaveLength(0);
+    expect(result.finalState).toEqual({ seeded: true });
+  });
 });

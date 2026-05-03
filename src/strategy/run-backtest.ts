@@ -9,6 +9,19 @@ import type { Order, Fill } from '../orders/types';
 import { applyFills } from '../portfolio/apply';
 
 /**
+ * Narrows the dual return type of `Strategy.build` to the stateful object form.
+ *
+ * `Array.isArray` does not narrow `ReadonlyArray<T>` out of a union in TypeScript 5.x
+ * when the other arm is an object type, so we use an explicit type predicate instead.
+ * The helper is defined at module scope so `runLive` (Task 8) can reuse it.
+ */
+function isStateResult<S>(
+  r: ReadonlyArray<Order> | { orders: ReadonlyArray<Order>; state: S },
+): r is { orders: ReadonlyArray<Order>; state: S } {
+  return !Array.isArray(r);
+}
+
+/**
  * All inputs required to run a historical backtest.
  *
  * Callers must provide a concrete `Strategy`, a `DateRange`, and the four
@@ -162,17 +175,18 @@ export type BacktestResult<S = unknown> = {
 export async function runBacktest<F extends Features = Features, S = unknown>(
   opts: RunBacktestOptions<F, S>,
 ): Promise<BacktestResult<S>> {
+  const initialStateValue: S | undefined = opts.strategy.initialState?.();
   const sessions = opts.calendar.sessions(opts.range);
   if (sessions.length === 0) {
     return {
       snapshots: [],
       finalPortfolio: opts.initialPortfolio,
-      finalState: opts.strategy.initialState?.() as S | undefined,
+      finalState: initialStateValue,
     };
   }
 
   let portfolio = opts.initialPortfolio;
-  let state: S | undefined = opts.strategy.initialState?.();
+  let state: S | undefined = initialStateValue;
   const snapshots: BacktestSnapshot[] = [];
 
   for (const t of sessions) {
@@ -181,12 +195,12 @@ export async function runBacktest<F extends Features = Features, S = unknown>(
     const buildResult = opts.strategy.build(features, portfolio, state as S, t);
 
     let orders: ReadonlyArray<Order>;
-    if (Array.isArray(buildResult)) {
-      // Legacy state-less return shape — state unchanged.
-      orders = buildResult;
-    } else {
+    if (isStateResult(buildResult)) {
       orders = buildResult.orders;
       state = buildResult.state;
+    } else {
+      // Legacy state-less return shape — state unchanged.
+      orders = buildResult;
     }
 
     const fills = await opts.executor.submit(orders, t, portfolio);
