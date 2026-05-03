@@ -9,7 +9,7 @@ import type { Asset, Bar } from './types';
 export type StreamingBar = {
   /** The asset this tick is for. */
   asset: Asset;
-  /** The bar payload — typically a 1-tick OHLCV with `open === close === high === low === price`. */
+  /** The bar payload — typically a 1-tick OHLCV with `open = high = low = close = <tick price>` and `volume = 0`. */
   bar: Bar;
 };
 
@@ -45,6 +45,13 @@ export type StreamingBar = {
 export interface StreamingDataFeed {
   /**
    * Subscribes to live tick updates for the given assets.
+   *
+   * **Frequency note:** This interface intentionally omits a `freq` parameter. Bar/tick aggregation
+   * is the runtime's responsibility — see the `runLive` design in
+   * `docs/specs/2026-05-02-v0.4-phase-9-streaming-design.md` Decision #1 (resolved during design).
+   * Adapters emit raw ticks at whatever cadence the vendor provides; the runtime decides which
+   * session/bar each tick belongs to via the `Calendar`. Multi-frequency streaming (sub-daily
+   * strategies) is a separate phase, currently out of scope.
    *
    * @param assets - The instruments to subscribe to.
    * @returns An open-ended async iterable of {@link StreamingBar} updates.
