@@ -36,37 +36,37 @@
     {
       "id": 6,
       "subject": "Task 6: FeatureRuntime streaming mode",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Add streaming mode to `FeatureRuntime` accepting open-ended construction (no fixed `range`) and exposing `appendBar(asset, bar)` for incremental tick ingestion. Indicators compute against the growing buffer.\n\n**Files:**\n- Modify: `src/features/runtime.ts`\n- Modify: `src/features/runtime.test.ts`\n\n**Verify:** `npm test -- src/features/runtime.test.ts`\n\n```json:metadata\n{\"files\":[\"src/features/runtime.ts\",\"src/features/runtime.test.ts\"],\"verifyCommand\":\"npm test -- src/features/runtime.test.ts\",\"planTaskNumber\":6}\n```"
     },
     {
       "id": 7,
       "subject": "Task 7: BacktestResult exposes per-asset bar buffer",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [2, 6],
       "description": "**Goal:** Extend `BacktestResult` to carry the per-asset bar buffer the historical FeatureRuntime accumulated. This is what `runLive` reads to seed its streaming runtime so SMA(200) doesn't return empty on the first live tick.\n\n**Files:**\n- Modify: `src/strategy/run-backtest.ts`\n- Modify: `src/strategy/run-backtest.test.ts`\n- Modify: `src/features/runtime.ts`\n\n**Verify:** `npm test -- src/strategy/run-backtest.test.ts src/features/runtime.test.ts`\n\n```json:metadata\n{\"files\":[\"src/strategy/run-backtest.ts\",\"src/strategy/run-backtest.test.ts\",\"src/features/runtime.ts\",\"src/features/runtime.test.ts\"],\"verifyCommand\":\"npm test -- src/strategy/run-backtest.test.ts src/features/runtime.test.ts\",\"planTaskNumber\":7}\n```"
     },
     {
       "id": 8,
       "subject": "Task 8: runLive + LiveEvent (mark/snapshot demux + preview-build)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1, 2, 3, 4, 6, 7],
       "description": "**Goal:** Implement `runLive` as async generator consuming `StreamingDataFeed.subscribe`, owning tick→bar aggregation via calendar, running preview-build with state snapshot/restore on every tick, yielding unified `AsyncIterable<LiveEvent>` with `mark` and `snapshot` variants.\n\n**Files:**\n- Create: `src/strategy/run-live.ts`\n- Create: `src/strategy/run-live.test.ts`\n- Modify: `src/strategy/index.ts`\n- Modify: `src/index.ts`\n\n**Verify:** `npm test -- src/strategy/run-live.test.ts`\n\n```json:metadata\n{\"files\":[\"src/strategy/run-live.ts\",\"src/strategy/run-live.test.ts\",\"src/strategy/index.ts\",\"src/index.ts\"],\"verifyCommand\":\"npm test -- src/strategy/run-live.test.ts\",\"planTaskNumber\":8}\n```"
     },
     {
       "id": 9,
       "subject": "Task 9: Integration test — replay → live continuity",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [5, 8],
       "description": "**Goal:** End-to-end verification: `runBacktest` for first 2 weeks + `runLive` for week 3 produces snapshots byte-equivalent to `runBacktest` over the full 3 weeks.\n\n**Files:**\n- Modify: `src/strategy/integration.test.ts`\n\n**Verify:** `npm test -- src/strategy/integration.test.ts`\n\n```json:metadata\n{\"files\":[\"src/strategy/integration.test.ts\"],\"verifyCommand\":\"npm test -- src/strategy/integration.test.ts\",\"planTaskNumber\":9}\n```"
     },
     {
       "id": 10,
       "subject": "Task 10: Docs site recipe — replay-then-stream",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [8],
       "description": "**Goal:** User-facing recipe in docs site showing canonical `runBacktest` → `runLive` workflow with chart wiring.\n\n**Files:**\n- Create: `docs-site/guide/replay-then-stream.md`\n- Modify: `docs-site/.vitepress/config.ts`\n\n**Verify:** `cd docs-site && npm run build`\n\n```json:metadata\n{\"files\":[\"docs-site/guide/replay-then-stream.md\",\"docs-site/.vitepress/config.ts\"],\"verifyCommand\":\"cd docs-site && npm run build\",\"planTaskNumber\":10}\n```"
     }
   ],
-  "lastUpdated": "2026-05-03T22:30:00Z"
+  "lastUpdated": "2026-05-03T23:30:00Z"
 }
