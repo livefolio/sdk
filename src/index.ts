@@ -16,6 +16,8 @@ export type {
 export type {
   Asset,
   AssetId,
+  EquityAsset,
+  MacroAsset,
   Bar,
   DateRange,
   Frequency,
