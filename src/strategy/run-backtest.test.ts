@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { runBacktest } from './run-backtest';
 import { NYSEExchangeCalendar } from '../calendars';
-import type { Strategy } from './types';
+import type { Strategy, Features } from './types';
 import type { Asset } from '../interfaces/types';
 import type { DataFeed } from '../interfaces/data-feed';
 import type { Executor } from '../interfaces/executor';
@@ -108,5 +108,64 @@ describe('runBacktest', () => {
       calendar: new NYSEExchangeCalendar(),
     });
     expect(received).toEqual({ price: 123 });
+  });
+});
+
+describe('runBacktest state threading', () => {
+  it('threads state from initialState through every build call', async () => {
+    type F = { x: number } & Features;
+    type S = { tickCount: number };
+
+    const buildSpy = vi.fn();
+    const strategy: Strategy<F, S> = {
+      universe: () => [],
+      features: async () => ({ x: 1 }),
+      initialState: () => ({ tickCount: 0 }),
+      build: (features, _p, state, _t) => {
+        buildSpy(state);
+        return { orders: [], state: { tickCount: state.tickCount + 1 } };
+      },
+    };
+
+    const calendar = new NYSEExchangeCalendar();
+    const range = { from: new Date('2024-01-02'), to: new Date('2024-01-09') };
+    const dataFeed: DataFeed = { bars: vi.fn().mockImplementation(async function* () {}) };
+
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: { cash: 1000, positions: [] },
+      dataFeed,
+      executor: { submit: vi.fn().mockResolvedValue([]) },
+      calendar,
+    });
+
+    // Five trading days in that range. State should have advanced once per session.
+    expect(buildSpy).toHaveBeenNthCalledWith(1, { tickCount: 0 });
+    expect(buildSpy).toHaveBeenNthCalledWith(2, { tickCount: 1 });
+    expect(buildSpy).toHaveBeenNthCalledWith(3, { tickCount: 2 });
+    expect(result.finalState).toEqual({ tickCount: 5 });
+  });
+
+  it('treats state-less strategies as S = void (finalState is undefined)', async () => {
+    const strategy: Strategy = {
+      universe: () => [],
+      features: async () => ({}),
+      build: () => [],
+    };
+    const calendar = new NYSEExchangeCalendar();
+    const range = { from: new Date('2024-01-02'), to: new Date('2024-01-09') };
+    const dataFeed: DataFeed = { bars: vi.fn().mockImplementation(async function* () {}) };
+
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: { cash: 1000, positions: [] },
+      dataFeed,
+      executor: { submit: vi.fn().mockResolvedValue([]) },
+      calendar,
+    });
+
+    expect(result.finalState).toBeUndefined();
   });
 });

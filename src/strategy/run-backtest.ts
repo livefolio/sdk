@@ -16,9 +16,9 @@ import { applyFills } from '../portfolio/apply';
  * The reference implementations (`MemoryFeatureCache`, `BacktestExecutor`,
  * `NYSEExchangeCalendar`) satisfy all four without network dependencies.
  */
-export type RunBacktestOptions<F extends Features = Features> = {
+export type RunBacktestOptions<F extends Features = Features, S = unknown> = {
   /** The strategy under test. Must implement `universe`, `features`, and `build`. */
-  strategy: Strategy<F>;
+  strategy: Strategy<F, S>;
   /**
    * Inclusive date range over which to iterate. The calendar resolves this
    * range into the actual sequence of trading sessions.
@@ -79,7 +79,7 @@ export type BacktestSnapshot = {
  * The return value of `runBacktest`, containing the full simulation history
  * and the terminal portfolio state.
  */
-export type BacktestResult = {
+export type BacktestResult<S = unknown> = {
   /**
    * Ordered list of snapshots, one per trading session in `range`. Empty when
    * the calendar has no sessions in the requested range.
@@ -91,6 +91,13 @@ export type BacktestResult = {
    * or `initialPortfolio` when the range is empty.
    */
   finalPortfolio: Portfolio;
+  /**
+   * Final value of the strategy's auxiliary state after the last `build()` call.
+   * `undefined` when the strategy is state-less (no `initialState()` defined).
+   * Used by `runLive` to seed the live runtime so the first live tick continues
+   * from the exact state the historical run ended on.
+   */
+  finalState: S | undefined;
 };
 
 /**
@@ -99,21 +106,25 @@ export type BacktestResult = {
  *
  * The simulation loop:
  * 1. Enumerate trading sessions via `opts.calendar.sessions(opts.range)`.
- * 2. For each session `t`, call `strategy.universe(t, portfolio)`.
- * 3. Await `strategy.features(universe, portfolio, t)`.
- * 4. Call `strategy.build(features, portfolio, t)` to obtain orders.
- * 5. Await `opts.executor.submit(orders, t, portfolio)` to obtain fills.
- * 6. Apply fills to the portfolio with `applyFills`.
- * 7. Append a `BacktestSnapshot` and advance to the next session.
+ * 2. Call `strategy.initialState?.()` once to seed the carry-over state.
+ * 3. For each session `t`, call `strategy.universe(t, portfolio)`.
+ * 4. Await `strategy.features(universe, portfolio, t)`.
+ * 5. Call `strategy.build(features, portfolio, state, t)` to obtain orders and
+ *    the next state value. Both legacy `Order[]` returns and new `{ orders, state }`
+ *    returns are normalised — the legacy form leaves state unchanged.
+ * 6. Await `opts.executor.submit(orders, t, portfolio)` to obtain fills.
+ * 7. Apply fills to the portfolio with `applyFills`.
+ * 8. Append a `BacktestSnapshot` and advance to the next session.
  *
  * The portfolio is never mutated in place; each session receives the immutable
  * result of the previous session's `applyFills`.
  *
  * @param opts - Backtest configuration. See {@link RunBacktestOptions}.
  * @returns A promise that resolves to a {@link BacktestResult} containing one
- *   snapshot per trading session and the final portfolio state. Returns
- *   `{ snapshots: [], finalPortfolio: opts.initialPortfolio }` when the calendar
- *   has no sessions in the requested range.
+ *   snapshot per trading session, the final portfolio state, and the final
+ *   strategy state (`finalState`). Returns
+ *   `{ snapshots: [], finalPortfolio: opts.initialPortfolio, finalState: undefined }`
+ *   when the calendar has no sessions in the requested range.
  *
  * @example
  * ```ts
@@ -148,23 +159,40 @@ export type BacktestResult = {
  * console.log(result.snapshots.length); // one entry per NYSE trading day in 2023
  * ```
  */
-export async function runBacktest<F extends Features = Features>(opts: RunBacktestOptions<F>): Promise<BacktestResult> {
+export async function runBacktest<F extends Features = Features, S = unknown>(
+  opts: RunBacktestOptions<F, S>,
+): Promise<BacktestResult<S>> {
   const sessions = opts.calendar.sessions(opts.range);
   if (sessions.length === 0) {
-    return { snapshots: [], finalPortfolio: opts.initialPortfolio };
+    return {
+      snapshots: [],
+      finalPortfolio: opts.initialPortfolio,
+      finalState: opts.strategy.initialState?.() as S | undefined,
+    };
   }
 
   let portfolio = opts.initialPortfolio;
+  let state: S | undefined = opts.strategy.initialState?.();
   const snapshots: BacktestSnapshot[] = [];
 
   for (const t of sessions) {
     const universe = opts.strategy.universe(t, portfolio);
     const features = await opts.strategy.features(universe, portfolio, t);
-    const orders = opts.strategy.build(features, portfolio, t);
+    const buildResult = opts.strategy.build(features, portfolio, state as S, t);
+
+    let orders: ReadonlyArray<Order>;
+    if (Array.isArray(buildResult)) {
+      // Legacy state-less return shape — state unchanged.
+      orders = buildResult;
+    } else {
+      orders = buildResult.orders;
+      state = buildResult.state;
+    }
+
     const fills = await opts.executor.submit(orders, t, portfolio);
     portfolio = applyFills(portfolio, fills, orders);
     snapshots.push({ t, portfolio, orders, fills });
   }
 
-  return { snapshots, finalPortfolio: portfolio };
+  return { snapshots, finalPortfolio: portfolio, finalState: state };
 }
