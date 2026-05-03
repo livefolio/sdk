@@ -58,8 +58,10 @@ export type LiveEvent<F extends Features = Features, _S = unknown> =
 
 /** Required inputs to {@link runLive}. */
 export type RunLiveOptions<F extends Features = Features, S = unknown> = {
-  /** The strategy to drive. Should already be wired to a streaming-mode
-   *  `FeatureRuntime` if its `features` method depends on one. */
+  /** The strategy to drive. If its `features` method depends on a captured
+   *  `FeatureRuntime` (e.g. tactical strategies built via `fromSpec`), pass the
+   *  same runtime instance via {@link RunLiveOptions.streamingRuntime} so the
+   *  live bar buffer stays in sync with what the strategy reads. */
   strategy: Strategy<F, S>;
   /**
    * Result of a prior {@link runBacktest} call. Provides the seed `portfolio`,
@@ -72,26 +74,40 @@ export type RunLiveOptions<F extends Features = Features, S = unknown> = {
   executor: Executor;
   /** Calendar that resolves a tick's wall-clock time into its session date. */
   calendar: Calendar;
+  /**
+   * Optional streaming {@link FeatureRuntime}. Provide this to share the
+   * runtime with the strategy — tactical strategies built via `fromSpec`
+   * capture a runtime in their `features` closure, so passing the same
+   * instance here keeps the live bar buffer in sync with what the strategy
+   * reads. When omitted, `runLive` constructs its own streaming runtime
+   * seeded from `history.bars`.
+   */
+  streamingRuntime?: FeatureRuntime;
 };
 
 /**
  * Returns a structurally equivalent copy of `state` so previews cannot mutate
- * the committed state value. Uses `structuredClone` when available (Node ≥17),
- * falling back to JSON round-trip for older runtimes.
+ * the committed state value. Uses `structuredClone` (Node ≥20). State must be
+ * structured-cloneable — JSON-serializable types plus Date/Map/Set/etc.
  */
 function snapshotState<S>(state: S | undefined): S | undefined {
   if (state === undefined) return undefined;
-  if (typeof structuredClone === 'function') return structuredClone(state);
-  return JSON.parse(JSON.stringify(state)) as S;
+  return structuredClone(state);
 }
 
 /**
- * Returns the midnight-UTC `Date` for the day containing `d`. Used as the
- * canonical session key throughout `runLive` — two ticks belong to the same
- * session iff their midnight-UTC dates are equal.
+ * Returns the trading-day key (midnight UTC) for the session containing
+ * instant `t`, as resolved by the supplied {@link Calendar}. Two ticks belong
+ * to the same session iff `findSession(t1) === findSession(t2)`.
+ *
+ * Uses `calendar.next(t)` to find the next trading day strictly after `t`,
+ * then `calendar.previous` to back-anchor to the session that contains `t`.
+ * For NYSE: a tick at Friday 17:00 ET (after-close) has `next` = Monday and
+ * `previous(Monday)` = Friday — the correct session anchor.
  */
-function midnightUtc(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+function findSession(t: Date, calendar: Calendar): Date {
+  const next = calendar.next(t);
+  return calendar.previous(next);
 }
 
 /**
@@ -100,7 +116,10 @@ function midnightUtc(d: Date): Date {
  * snapshots without code branching.
  *
  * **Lifecycle on each tick:**
- * 1. Compute the tick's session date (midnight UTC).
+ * 1. Resolve the tick's session date via the supplied {@link Calendar} —
+ *    `calendar.previous(calendar.next(tick.t))`. This correctly handles
+ *    after-hours ticks (NYSE 17:00 ET stays in the same session) and DST
+ *    transitions.
  * 2. If the tick crosses a session boundary, finalize the just-closed bar:
  *    append it to the streaming `FeatureRuntime`, run `strategy.build` for
  *    REAL (committing state), submit orders to the executor, apply fills,
@@ -116,12 +135,22 @@ function midnightUtc(d: Date): Date {
  * produce 1000 marks but leave `state` exactly where the prior session-close
  * commit left it.
  *
- * **Bar lineage:** the streaming `FeatureRuntime` is seeded from
- * `history.bars`, so indicators with warmup periods (SMA(200), etc.) work on
- * the first live tick.
+ * **FeatureRuntime:** if the strategy was built via `fromSpec` it captures its
+ * own runtime in the `features` closure. Pass that same instance via
+ * {@link RunLiveOptions.streamingRuntime} so `appendBar` calls land on the
+ * runtime the strategy actually reads. When omitted, `runLive` constructs its
+ * own streaming runtime seeded from `history.bars` — this works for hand-rolled
+ * strategies whose `features` method consults the runtime directly, but it
+ * leaves a `fromSpec` strategy reading a stale captured runtime.
  *
- * **Universe:** captured once at startup from `strategy.universe(now, portfolio)`.
- * Dynamic universes are not yet supported in live mode.
+ * **Bar lineage:** the streaming `FeatureRuntime` (provided or constructed) is
+ * seeded from `history.bars`, so indicators with warmup periods (SMA(200),
+ * etc.) work on the first live tick.
+ *
+ * **Universe:** captured once at startup from
+ * `strategy.universe(anchorTime, portfolio)`, where `anchorTime` is the last
+ * historical snapshot's timestamp (or epoch zero for empty history). Dynamic
+ * universes are not yet supported in live mode.
  *
  * **Termination:** the iterable terminates when the underlying
  * `StreamingDataFeed.subscribe` iterable terminates. Real adapters yield
@@ -145,27 +174,28 @@ function midnightUtc(d: Date): Date {
 export async function* runLive<F extends Features = Features, S = unknown>(
   opts: RunLiveOptions<F, S>,
 ): AsyncIterable<LiveEvent<F, S>> {
-  const { strategy, history, dataFeed, executor, calendar: _calendar } = opts;
+  const { strategy, history, dataFeed, executor, calendar } = opts;
 
-  // Seed a streaming FeatureRuntime from the historical bars. Strategies that
-  // depend on a captured runtime should already be wired to one — this
-  // instance is constructed for any strategy whose `features` method consults
-  // `runLive`'s buffer directly (rare; documented in the recipe).
-  const featureCache = new MemoryFeatureCache();
-  const runtime = new FeatureRuntime({
-    mode: 'streaming',
-    featureCache,
-    freq: '1d',
-    initialBars: history.bars,
-  });
-  // Reference so the `runtime` is not flagged as unused. Strategies that wrap
-  // a different runtime won't read from this one — it exists so future
-  // refinements (auto-wiring) have a target instance.
-  void runtime;
+  // Streaming FeatureRuntime: prefer a caller-supplied instance (so `fromSpec`
+  // strategies that captured a runtime keep reading the same buffer we append
+  // to). Otherwise build one seeded from `history.bars` for hand-rolled
+  // strategies that consult the runtime directly.
+  const runtime =
+    opts.streamingRuntime ??
+    new FeatureRuntime({
+      mode: 'streaming',
+      featureCache: new MemoryFeatureCache(),
+      freq: '1d',
+      initialBars: history.bars,
+    });
 
   let portfolio = history.finalPortfolio;
   let state: S | undefined = history.finalState;
-  const universe = strategy.universe(new Date(), portfolio);
+  // Universe is captured once at startup using the last historical snapshot's
+  // timestamp as an anchor (or epoch zero for empty history). Dynamic
+  // universes are not yet supported in live mode.
+  const anchorTime = history.snapshots.length > 0 ? history.snapshots[history.snapshots.length - 1]!.t : new Date(0);
+  const universe = strategy.universe(anchorTime, portfolio);
 
   // Track the current session being accumulated. Initialize from the last
   // historical snapshot if present, else lazily from the first tick.
@@ -205,7 +235,7 @@ export async function* runLive<F extends Features = Features, S = unknown>(
   }
 
   for await (const tick of dataFeed.subscribe(universe)) {
-    const tickSession = midnightUtc(tick.bar.t);
+    const tickSession = findSession(tick.bar.t, calendar);
 
     if (currentSession === null) {
       currentSession = tickSession;

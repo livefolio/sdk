@@ -5,6 +5,9 @@ import type { Strategy, Features } from './types';
 import type { BacktestResult } from './run-backtest';
 import { runLive } from './run-live';
 import { Crypto24x7Calendar } from '../calendars/crypto-24x7';
+import { NYSEExchangeCalendar } from '../calendars/nyse';
+import { FeatureRuntime } from '../features/runtime';
+import { MemoryFeatureCache } from '../reference/memory-feature-cache';
 
 const SPY: Asset = { kind: 'equity', id: 'SPY', symbol: 'SPY' };
 
@@ -158,5 +161,87 @@ describe('runLive', () => {
     expect(events).toHaveLength(5);
     expect(events.filter((e) => e.type === 'snapshot')).toHaveLength(1);
     expect(events.filter((e) => e.type === 'mark')).toHaveLength(4);
+  });
+
+  it('uses calendar.next for boundary detection (NYSE after-hours tick stays in session)', async () => {
+    const calendar = new NYSEExchangeCalendar();
+    const ticks: StreamingBar[] = [
+      { asset: SPY, bar: bar('2024-06-03T20:00:00Z', 100) }, // Mon 16:00 ET (close)
+      { asset: SPY, bar: bar('2024-06-03T22:00:00Z', 101) }, // Mon 18:00 ET (after-hours)
+      { asset: SPY, bar: bar('2024-06-04T13:30:00Z', 102) }, // Tue 09:30 ET (open)
+    ];
+    const buildSpy = vi.fn().mockReturnValue({ orders: [], state: undefined });
+    const strategy: Strategy<Features, void> = {
+      universe: () => [SPY],
+      features: async () => ({}),
+      build: buildSpy,
+    };
+    const history: BacktestResult<void> = {
+      snapshots: [],
+      finalPortfolio: { cash: 1000, positions: [], t: new Date('2024-06-03T00:00:00Z') },
+      finalState: undefined,
+      bars: new Map(),
+    };
+
+    const events = [];
+    for await (const ev of runLive({
+      strategy,
+      history,
+      dataFeed: tickStream(ticks),
+      executor: { submit: vi.fn().mockResolvedValue([]) },
+      calendar,
+    })) {
+      events.push(ev);
+    }
+
+    // Both Monday ticks (20:00 UTC and 22:00 UTC) belong to Monday's session
+    // per NYSE calendar — the after-hours tick at 22:00 must NOT trigger a
+    // boundary. Tuesday's tick (13:30 UTC = 09:30 ET) crosses into a new
+    // session, triggering exactly one snapshot for Monday.
+    const snapshots = events.filter((e) => e.type === 'snapshot');
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0]?.t.toISOString().startsWith('2024-06-03')).toBe(true);
+  });
+
+  it('uses provided streamingRuntime instead of constructing one', async () => {
+    const calendar = new Crypto24x7Calendar();
+    const cache = new MemoryFeatureCache();
+    const sharedRuntime = new FeatureRuntime({
+      mode: 'streaming',
+      featureCache: cache,
+      freq: '1d',
+    });
+    const appendSpy = vi.spyOn(sharedRuntime, 'appendBar');
+
+    const ticks: StreamingBar[] = [
+      { asset: SPY, bar: bar('2024-06-03T12:00:00Z', 100) },
+      { asset: SPY, bar: bar('2024-06-04T01:00:00Z', 101) }, // boundary
+    ];
+    const strategy: Strategy<Features, void> = {
+      universe: () => [SPY],
+      features: async () => ({}),
+      build: () => [],
+    };
+    const history: BacktestResult<void> = {
+      snapshots: [],
+      finalPortfolio: { cash: 1000, positions: [], t: new Date('2024-06-03T00:00:00Z') },
+      finalState: undefined,
+      bars: new Map(),
+    };
+
+    for await (const _ev of runLive({
+      strategy,
+      history,
+      dataFeed: tickStream(ticks),
+      executor: { submit: vi.fn().mockResolvedValue([]) },
+      calendar,
+      streamingRuntime: sharedRuntime,
+    })) {
+      // drain
+      void _ev;
+    }
+
+    // Boundary at tick 2 → finalizeBars(day 1) → appendBar on the SHARED runtime.
+    expect(appendSpy).toHaveBeenCalled();
   });
 });
