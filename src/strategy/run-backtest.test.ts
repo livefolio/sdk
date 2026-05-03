@@ -1,8 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { runBacktest } from './run-backtest';
 import { NYSEExchangeCalendar } from '../calendars';
+import { FeatureRuntime } from '../features/runtime';
+import { MemoryFeatureCache } from '../reference/memory-feature-cache';
 import type { Strategy, Features } from './types';
-import type { Asset } from '../interfaces/types';
+import type { Asset, Bar } from '../interfaces/types';
 import type { DataFeed } from '../interfaces/data-feed';
 import type { Executor } from '../interfaces/executor';
 import type { Order, Fill } from '../orders/types';
@@ -194,5 +196,72 @@ describe('runBacktest state threading', () => {
 
     expect(result.snapshots).toHaveLength(0);
     expect(result.finalState).toEqual({ seeded: true });
+  });
+});
+
+describe('BacktestResult bar lineage', () => {
+  it('exposes per-asset bars accumulated during the run when featureRuntime is provided', async () => {
+    const SPY: Asset = { kind: 'equity', id: 'SPY', symbol: 'SPY' };
+    const fixtureBars: Bar[] = Array.from({ length: 5 }, (_, i) => ({
+      t: new Date(Date.UTC(2024, 5, i + 3)), // June 3-7 weekdays
+      open: 100 + i,
+      high: 100 + i,
+      low: 100 + i,
+      close: 100 + i,
+      volume: 0,
+    }));
+    const dataFeed: DataFeed = {
+      bars: vi.fn().mockImplementation(async function* () {
+        for (const b of fixtureBars) yield b;
+      }),
+    };
+    const featureCache = new MemoryFeatureCache();
+    const range = { from: new Date('2024-06-03'), to: new Date('2024-06-08') };
+    const runtime = new FeatureRuntime({ dataFeed, featureCache, range, freq: '1d' });
+
+    const strategy: Strategy<Features, void> = {
+      universe: () => [SPY],
+      features: async (universe) => {
+        await runtime.compute({ kind: 'sma', period: 3 }, universe[0]!);
+        return {};
+      },
+      build: () => [],
+    };
+
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: { cash: 1_000, positions: [] },
+      dataFeed,
+      executor: { submit: vi.fn().mockResolvedValue([]) },
+      calendar: new NYSEExchangeCalendar(),
+      featureCache,
+      featureRuntime: runtime,
+    });
+
+    expect(result.bars.size).toBe(1);
+    expect(result.bars.get('SPY')?.length).toBe(5);
+  });
+
+  it('returns empty bars map when no featureRuntime is provided', async () => {
+    const strategy: Strategy<Features, void> = {
+      universe: () => [],
+      features: async () => ({}),
+      build: () => [],
+    };
+    const calendar = new NYSEExchangeCalendar();
+    const range = { from: new Date('2024-01-02'), to: new Date('2024-01-09') };
+    const dataFeed: DataFeed = { bars: vi.fn().mockImplementation(async function* () {}) };
+
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: { cash: 1000, positions: [] },
+      dataFeed,
+      executor: { submit: vi.fn().mockResolvedValue([]) },
+      calendar,
+    });
+
+    expect(result.bars.size).toBe(0);
   });
 });

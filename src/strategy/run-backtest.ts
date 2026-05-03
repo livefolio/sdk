@@ -4,8 +4,9 @@ import type { DataFeed } from '../interfaces/data-feed';
 import type { Executor } from '../interfaces/executor';
 import type { Calendar } from '../interfaces/calendar';
 import type { FeatureCache } from '../interfaces/feature-cache';
-import type { DateRange, Frequency } from '../interfaces/types';
+import type { AssetId, Bar, DateRange, Frequency } from '../interfaces/types';
 import type { Order, Fill } from '../orders/types';
+import type { FeatureRuntime } from '../features/runtime';
 import { applyFills } from '../portfolio/apply';
 
 /**
@@ -69,6 +70,12 @@ export type RunBacktestOptions<F extends Features = Features, S = unknown> = {
    * Must match the granularity expected by the strategy's indicator specs.
    */
   freq?: Frequency;
+  /**
+   * Optional `FeatureRuntime` instance. When provided, its accumulated bar buffer
+   * is exported on `BacktestResult.bars` for use by `runLive` (lets the streaming
+   * runtime seed its buffer from the historical bars without refetching).
+   */
+  featureRuntime?: FeatureRuntime;
 };
 
 /**
@@ -111,6 +118,13 @@ export type BacktestResult<S = unknown> = {
    * from the exact state the historical run ended on.
    */
   finalState: S | undefined;
+  /**
+   * Per-asset bar buffer accumulated by the `FeatureRuntime` during this run.
+   * Empty `Map` when no `featureRuntime` was provided in `RunBacktestOptions`.
+   * Used by `runLive` to seed its streaming `FeatureRuntime` so indicators with
+   * warmup periods (SMA(200), etc.) work on the first live tick.
+   */
+  bars: ReadonlyMap<AssetId, ReadonlyArray<Bar>>;
 };
 
 /**
@@ -182,6 +196,7 @@ export async function runBacktest<F extends Features = Features, S = unknown>(
       snapshots: [],
       finalPortfolio: opts.initialPortfolio,
       finalState: initialStateValue,
+      bars: opts.featureRuntime?.getAllBars() ?? new Map<AssetId, ReadonlyArray<Bar>>(),
     };
   }
 
@@ -208,5 +223,6 @@ export async function runBacktest<F extends Features = Features, S = unknown>(
     snapshots.push({ t, portfolio, orders, fills });
   }
 
-  return { snapshots, finalPortfolio: portfolio, finalState: state };
+  const bars = opts.featureRuntime?.getAllBars() ?? new Map<AssetId, ReadonlyArray<Bar>>();
+  return { snapshots, finalPortfolio: portfolio, finalState: state, bars };
 }

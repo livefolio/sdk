@@ -193,3 +193,62 @@ describe('FeatureRuntime streaming mode', () => {
     expect(s2[s2.length - 1]?.v).toBeCloseTo(133.333, 2);
   });
 });
+
+describe('FeatureRuntime bar accessors', () => {
+  const SPY: Asset = { kind: 'equity', id: 'SPY', symbol: 'SPY' };
+  const TLT: Asset = { kind: 'equity', id: 'TLT', symbol: 'TLT' };
+
+  it('getBars returns the buffered bars for an asset (streaming)', () => {
+    const runtime = new FeatureRuntime({
+      mode: 'streaming',
+      featureCache: new MemoryFeatureCache(),
+      freq: '1d',
+    });
+    runtime.appendBar(SPY, { t: new Date('2024-06-01'), open: 1, high: 1, low: 1, close: 1, volume: 0 });
+    expect(runtime.getBars(SPY)).toHaveLength(1);
+  });
+
+  it('getBars returns empty array for an asset that has no bars', () => {
+    const runtime = new FeatureRuntime({
+      mode: 'streaming',
+      featureCache: new MemoryFeatureCache(),
+      freq: '1d',
+    });
+    expect(runtime.getBars(SPY)).toEqual([]);
+  });
+
+  it('getAllBars returns the full per-asset map (streaming)', () => {
+    const runtime = new FeatureRuntime({
+      mode: 'streaming',
+      featureCache: new MemoryFeatureCache(),
+      freq: '1d',
+    });
+    runtime.appendBar(SPY, { t: new Date('2024-06-01'), open: 1, high: 1, low: 1, close: 1, volume: 0 });
+    runtime.appendBar(TLT, { t: new Date('2024-06-01'), open: 2, high: 2, low: 2, close: 2, volume: 0 });
+    const all = runtime.getAllBars();
+    expect(all.size).toBe(2);
+    expect(all.get('SPY')).toHaveLength(1);
+    expect(all.get('TLT')).toHaveLength(1);
+  });
+
+  it('getBars returns historical-mode bars after compute fetches them', async () => {
+    const SPY_BARS: Bar[] = [
+      { t: new Date('2024-06-01'), open: 100, high: 100, low: 100, close: 100, volume: 0 },
+      { t: new Date('2024-06-02'), open: 101, high: 101, low: 101, close: 101, volume: 0 },
+    ];
+    const dataFeed: DataFeed = {
+      bars: vi.fn().mockImplementation(async function* () {
+        for (const b of SPY_BARS) yield b;
+      }),
+    };
+    const runtime = new FeatureRuntime({
+      dataFeed,
+      featureCache: new MemoryFeatureCache(),
+      range: { from: new Date('2024-06-01'), to: new Date('2024-06-03') },
+      freq: '1d',
+    });
+    expect(runtime.getBars(SPY)).toEqual([]); // no fetch yet
+    await runtime.compute({ kind: 'sma', period: 1 }, SPY);
+    expect(runtime.getBars(SPY)).toHaveLength(2); // fetched + cached
+  });
+});

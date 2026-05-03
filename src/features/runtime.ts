@@ -170,6 +170,8 @@ export class FeatureRuntime {
   private readonly field: BarField;
   /** Per-asset bar buffer used in streaming mode. */
   private readonly streamingBars: Map<AssetId, Bar[]>;
+  /** Per-asset bar buffer accumulated in historical mode after bars are fetched from DataFeed. */
+  private readonly historicalBars: Map<AssetId, Bar[]>;
   /** Per-asset in-flight Series promise — shared across concurrent `compute` calls
    *  for the same asset to avoid redundant bar fetching (historical) or rebuilding
    *  (streaming). Invalidated on `appendBar`. */
@@ -182,6 +184,7 @@ export class FeatureRuntime {
     this.field = opts.field ?? 'close';
     this.seriesCache = new Map();
     this.streamingBars = new Map();
+    this.historicalBars = new Map();
 
     if (opts.mode === 'streaming') {
       this.dataFeed = opts.dataFeed ?? STREAMING_STUB_FEED;
@@ -239,12 +242,39 @@ export class FeatureRuntime {
       // Historical mode: fetch from DataFeed and cache.
       p = (async () => {
         const bars = await collectBars(this.dataFeed.bars(asset, this.range!, this.freq));
+        this.historicalBars.set(asset.id, bars);
         return barsToSeries(bars, this.field);
       })();
     }
 
     this.seriesCache.set(asset.id, p);
     return p;
+  }
+
+  /**
+   * Returns the bar buffer for `asset`, or an empty array if none has been
+   * fetched/buffered yet.
+   *
+   * In historical mode this is populated after the first `compute` call that
+   * triggers a bar fetch for the asset. In streaming mode it reflects all bars
+   * pushed via `appendBar`.
+   */
+  getBars(asset: Asset): ReadonlyArray<Bar> {
+    return this.streamingBars.get(asset.id) ?? this.historicalBars.get(asset.id) ?? [];
+  }
+
+  /**
+   * Returns the full per-asset bar map (keyed by `AssetId`). Merges historical
+   * and streaming buffers (streaming wins on collision, but in practice an
+   * instance is in one mode at a time so collisions don't occur).
+   *
+   * Returns a fresh `Map` — callers cannot mutate the internal state.
+   */
+  getAllBars(): ReadonlyMap<AssetId, ReadonlyArray<Bar>> {
+    const merged = new Map<AssetId, ReadonlyArray<Bar>>();
+    for (const [id, bars] of this.historicalBars) merged.set(id, bars);
+    for (const [id, bars] of this.streamingBars) merged.set(id, bars);
+    return merged;
   }
 
   private cacheKey(spec: FeatureSpec, asset: Asset): FeatureKey {
