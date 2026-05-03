@@ -26,5 +26,6 @@ describe('Strategy<F, S>', () => {
       }),
     };
     expectTypeOf(s.initialState!).returns.toEqualTypeOf<S>();
+    expectTypeOf(s.build).returns.toEqualTypeOf<ReadonlyArray<Order> | { orders: ReadonlyArray<Order>; state: S }>();
   });
 });
