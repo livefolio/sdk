@@ -197,10 +197,14 @@ export async function* runLive<F extends Features = Features, S = unknown>(
   const anchorTime = history.snapshots.length > 0 ? history.snapshots[history.snapshots.length - 1]!.t : new Date(0);
   const universe = strategy.universe(anchorTime, portfolio);
 
-  // Track the current session being accumulated. Initialize from the last
-  // historical snapshot if present, else lazily from the first tick.
+  // Track the current session being accumulated. When history is non-empty,
+  // its last snapshot represents an already-committed session, so the next
+  // session to accumulate is `calendar.next(lastSnapshot.t)`. Without this
+  // advance, the first live tick whose session exceeds `lastSnapshot.t` would
+  // re-fire the boundary and emit a duplicate snapshot for the already-closed
+  // session. With empty history, we lazily adopt the first tick's session.
   let currentSession: Date | null =
-    history.snapshots.length > 0 ? history.snapshots[history.snapshots.length - 1]!.t : null;
+    history.snapshots.length > 0 ? calendar.next(history.snapshots[history.snapshots.length - 1]!.t) : null;
   let currentBarOpen = new Map<AssetId, number>();
   let currentBarHigh = new Map<AssetId, number>();
   let currentBarLow = new Map<AssetId, number>();
