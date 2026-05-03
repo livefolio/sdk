@@ -11,6 +11,7 @@ Reference implementations of the runtime interfaces declared in `src/interfaces/
 |------|-------------|
 | `memory-feature-cache.ts` | `MemoryFeatureCache implements FeatureCache` — in-process Map, no persistence |
 | `backtest-executor.ts` | `BacktestExecutor implements Executor` — fills orders at next-open price, tracks cash/positions, no slippage or fees |
+| `routing-data-feed.ts` | `RoutingDataFeed implements DataFeed` — dispatches calls to inner feeds by `asset.kind` (map form) or routing function. Pairs with `RoutingDataFeedError` |
 | `index.ts` | Barrel |
 
 ## For AI Agents

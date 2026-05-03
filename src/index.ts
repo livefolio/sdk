@@ -36,8 +36,8 @@ export type {
 } from './interfaces';
 
 // Reference implementations
-export { MemoryFeatureCache, BacktestExecutor } from './reference';
-export type { BacktestExecutorOptions, NextOpenFn } from './reference';
+export { MemoryFeatureCache, BacktestExecutor, RoutingDataFeed, RoutingDataFeedError } from './reference';
+export type { BacktestExecutorOptions, NextOpenFn, RoutingDataFeedRouteFn, RoutingDataFeedRouteMap } from './reference';
 
 // Calendars (exchange calendar framework)
 export {
