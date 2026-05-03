@@ -3,7 +3,7 @@
 # @livefolio/sdk
 
 ## Purpose
-TypeScript SDK for building tactical allocation strategies. Strategies are declared as `TacticalSpec` (universe, features, rebalance schedule, rule tree) and executed by `runBacktest` against pluggable runtime layers — `DataFeed` for market data, `Calendar` for trading-day arithmetic, `FeatureCache` for indicator memoization, `Executor` for order routing. Reference implementations (`NYSEExchangeCalendar`, `LSEExchangeCalendar`, `MemoryFeatureCache`, `BacktestExecutor`) ship in the box.
+TypeScript SDK for building tactical allocation strategies. Strategies are declared as `TacticalSpec` (universe, features, rebalance schedule, rule tree) and executed by `runBacktest` against pluggable runtime layers — `DataFeed` for market data, `Calendar` for trading-day arithmetic, `FeatureCache` for indicator memoization, `Executor` for order routing. The same strategy continues into live evaluation via `runLive` (an async generator emitting `LiveEvent<mark | snapshot>`) seeded from a `BacktestResult` and driven by a `StreamingDataFeed`. Reference implementations (`NYSEExchangeCalendar`, `LSEExchangeCalendar`, `Crypto24x7Calendar`, `MemoryFeatureCache`, `BacktestExecutor`) ship in the box.
 
 ## Key Files
 
@@ -31,7 +31,7 @@ TypeScript SDK for building tactical allocation strategies. Strategies are decla
 
 ### Working In This Directory
 - This is an ES module project (`"type": "module"`) — extensionless imports, bundled with tsup
-- The SDK exports `runBacktest`, `tactical.fromSpec`, `Strategy`/`DataFeed`/`Calendar`/`FeatureCache`/`Executor` types, plus reference impls
+- The SDK exports `runBacktest`, `runLive`, `tactical.fromSpec`, `Strategy`/`DataFeed`/`StreamingDataFeed`/`Calendar`/`FeatureCache`/`Executor` types, plus reference impls
 - Public API is v0.4 only. v0.3 (`createClient`, fluent handles) ships on npm as `@livefolio/sdk@0.3.7` and is consumed by the parity workspace via the `@livefolio/sdk-v3` alias — do not re-export from `src/index.ts`
 
 ### Testing Requirements
@@ -40,9 +40,10 @@ TypeScript SDK for building tactical allocation strategies. Strategies are decla
 - Reference impls (`MemoryFeatureCache`, `BacktestExecutor`) work as in-memory test fixtures — no external services needed
 
 ### Common Patterns
-- **Spec-driven strategies**: `TacticalSpec` is plain data. `tactical.fromSpec(spec, { runtime, calendar })` hydrates it into a `Strategy<F>` that `runBacktest` can drive
-- **Pluggable runtime layers**: `DataFeed`, `Executor`, `Calendar`, `FeatureCache` are interfaces. Reference impls ship; consumers swap any layer (e.g. `LiveBrokerExecutor`) without touching strategy code
+- **Spec-driven strategies**: `TacticalSpec` is plain data. `tactical.fromSpec(spec, { runtime, calendar })` hydrates it into a `Strategy<F, S>` that `runBacktest` can drive
+- **Pluggable runtime layers**: `DataFeed`, `StreamingDataFeed`, `Executor`, `Calendar`, `FeatureCache` are interfaces. Reference impls ship; consumers swap any layer (e.g. `LiveBrokerExecutor`, a WebSocket `StreamingDataFeed`) without touching strategy code
 - **Content-addressed feature cache**: indicator results are keyed by `(feature spec, asset, date)`. `MemoryFeatureCache` is the in-process default; cross-process caches plug in by implementing the interface
+- **Replay-then-stream**: `runBacktest` returns `{ snapshots, finalPortfolio, finalState, bars }`; `runLive(result, { strategy, calendar, executor, streamingDataFeed, ... })` continues from there, emitting `LiveEvent<mark | snapshot>` per tick / per session-close. For `fromSpec` strategies, share a `streamingRuntime: FeatureRuntime` between `fromSpec` and `runLive` so the captured runtime sees streaming bars (see `docs-site/recipes/replay-then-stream.md`)
 
 ## Dependencies
 

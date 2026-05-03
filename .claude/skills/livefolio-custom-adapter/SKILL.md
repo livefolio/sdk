@@ -5,7 +5,7 @@ description: Use when implementing a custom DataFeed, Executor, Calendar, or Fea
 
 # Implementing a custom runtime adapter
 
-The SDK's four pluggable interfaces (`DataFeed`, `Executor`, `Calendar`, `FeatureCache`) are how you swap any layer of the runtime without touching strategy code. Reference impls ship; build your own when you need a different vendor, broker, exchange, or cache backend.
+The SDK's pluggable interfaces (`DataFeed`, `StreamingDataFeed`, `Executor`, `Calendar`, `FeatureCache`) are how you swap any layer of the runtime without touching strategy code. Reference impls ship; build your own when you need a different vendor, broker, exchange, or cache backend. `DataFeed` is the historical (bounded-range) seam consumed by `runBacktest`; `StreamingDataFeed` is the additive sibling consumed by `runLive`.
 
 ## Per-interface contract summary
 
@@ -17,6 +17,45 @@ The SDK's four pluggable interfaces (`DataFeed`, `Executor`, `Calendar`, `Featur
 - Bars are total-return adjusted (splits + dividends baked in) — adapter is responsible for adjustment math.
 - Optional `fundamentals(asset)` and `events(asset, range)` methods. Don't stub them with throwers — leave them undefined so feature-detection (`'fundamentals' in feed`) works.
 - Reference: `@livefolio/datafeed-yfinance` (sibling repo `~/Documents/Personal/livefolio-2/yfinance/`).
+
+### StreamingDataFeed — `subscribe(assets) → AsyncIterable<StreamingBar>`
+
+- Sibling interface to `DataFeed`, NOT a union, NOT a backward-compat alias — implement separately when you need live evaluation via `runLive`.
+- `subscribe(assets)` returns an **open-ended** `AsyncIterable` — yields ticks as they arrive, never naturally completes (consumer breaks the loop).
+- `StreamingBar = { asset: Asset; bar: Bar }` — the tick shape; ascending `bar.t` per asset.
+- **No `freq` param.** The runtime owns aggregation; the `Calendar` defines session boundaries; `runLive` collapses ticks within a session and emits a `snapshot` event when the calendar advances. Your feed just emits raw ticks.
+- Ticks may arrive **outside session hours** — runtime handles filtering. Don't drop them at the adapter layer (mark events fire on every tick for chart continuity, even pre-open).
+- Typical shape: WebSocket adapter, polling adapter, message-queue consumer. Example skeleton:
+
+```ts
+import type { StreamingDataFeed, StreamingBar, Asset } from '@livefolio/sdk';
+
+class MyWebsocketFeed implements StreamingDataFeed {
+  async *subscribe(assets: ReadonlyArray<Asset>): AsyncIterable<StreamingBar> {
+    const ws = new WebSocket(this.url);
+    const queue: StreamingBar[] = [];
+    let resolve: (() => void) | null = null;
+    ws.onmessage = (m) => {
+      const tick = parseTick(m.data, assets);
+      if (tick) {
+        queue.push(tick);
+        resolve?.();
+        resolve = null;
+      }
+    };
+    try {
+      while (true) {
+        if (queue.length > 0) yield queue.shift()!;
+        else await new Promise<void>((r) => (resolve = r));
+      }
+    } finally {
+      ws.close();
+    }
+  }
+}
+```
+
+- For paper-trading or fixture playback, an in-memory generator that replays a `Bar[]` array with optional artificial delays works fine (see `src/strategy/run-live.test.ts` for a worked example).
 
 ### Executor — `submit(orders, t) → Promise<Fill[]>`
 
@@ -32,7 +71,7 @@ The SDK's four pluggable interfaces (`DataFeed`, `Executor`, `Calendar`, `Featur
 - Two paths:
   - Implement `Calendar` from scratch for non-exchange markets (crypto 24/7, custom session calendar).
   - Subclass `ExchangeCalendar` for exchange-style markets — get TZ-aware schedule resolution + per-year caching for free, just provide the 9 abstract hooks.
-- Reference: `NYSEExchangeCalendar` / `LSEExchangeCalendar` (faithful ports of `pandas_market_calendars`).
+- Reference: `NYSEExchangeCalendar` / `LSEExchangeCalendar` (faithful ports of `pandas_market_calendars`); `Crypto24x7Calendar` (every day a single midnight-UTC-to-next-midnight session) is the starting point for crypto / always-on markets — implements `Calendar` directly without going through `ExchangeCalendar`.
 
 ### FeatureCache — `get(key) | set(key, value) | invalidate(prefix)`
 
@@ -53,6 +92,8 @@ The SDK's four pluggable interfaces (`DataFeed`, `Executor`, `Calendar`, `Featur
 **Idempotency in Executor.** Live brokers love their order-IDs but the SDK's contract is that calling `submit(sameOrders)` twice should equal calling it once. If you can't guarantee that downstream, dedupe at the adapter layer using `Order.id`.
 
 **Eviction in FeatureCache.** `MemoryFeatureCache` doesn't evict — it grows unbounded for long backtests. If you wrap with LRU/TTL, document the eviction policy in your impl's class-level TSDoc.
+
+**Aggregation belongs to the runtime, not the StreamingDataFeed.** It's tempting to make `subscribe(assets, freq)` and emit aggregated 1d bars from raw ticks. Don't. The runtime collapses ticks per session driven by the `Calendar`; if you pre-aggregate, you fight the runtime. Spec: `docs/specs/2026-05-02-v0.4-phase-9-streaming-design.md`.
 
 ## Pre-ship checklist
 

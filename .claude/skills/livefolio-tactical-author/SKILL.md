@@ -5,7 +5,7 @@ description: Use when authoring or modifying a TacticalSpec for @livefolio/sdk �
 
 # Authoring a TacticalSpec
 
-`TacticalSpec` is the JSON-shaped strategy declaration that `tactical.fromSpec` hydrates into a runnable `Strategy<F>`. Same shape, every time. Get the shape right; the runtime takes care of execution.
+`TacticalSpec` is the JSON-shaped strategy declaration that `tactical.fromSpec` hydrates into a runnable `Strategy<F, S>` (state-threaded; `S` is `RuleTreeState` for hysteresis). Same shape, every time. Get the shape right; the runtime takes care of execution.
 
 ## Spec skeleton
 
@@ -45,6 +45,17 @@ const spec: TacticalSpec = {
 **Synthetics for leverage.** Declare `SyntheticAsset` to model leveraged ETFs without using a real ticker (`{ id: 'syn:SPY_2x', baseAsset: SPY, leverage: 2.0, expense: 0.0095 }`). Math: daily-reset leverage compounding × `(1 - expense/252)`.
 
 **Defensive fallback.** Wrap rule trees in `if/else` with an `else` branch allocating to a defensive asset (cash via `IEF` or similar). Strategies that emit no allocation on undefined features simply hold last targets — explicit fallback is clearer.
+
+## State-threaded Strategy API (Phase 9)
+
+`fromSpec` now returns a `Strategy<TacticalFeatures, RuleTreeState>` — state is threaded explicitly through `runBacktest`/`runLive` rather than living in the closure. **Spec authors don't need to do anything different**: `fromSpec(spec, { runtime, calendar })` still produces the strategy, and `runBacktest({ strategy, ... })` still drives it; the state plumbing is internal to `fromSpec`.
+
+If you handcraft a custom `Strategy` alongside `fromSpec`:
+- Implement optional `initialState?(): S` to seed the first session.
+- `build(features, portfolio, t, state)` takes `state: S` as the new fourth argument and may return either a bare `ReadonlyArray<Order>` (legacy, equivalent to `S = void`) or `{ orders, state }` to advance state.
+- This is the API `runBacktest` uses to thread `finalState` into `BacktestResult`, which `runLive` then consumes to continue uninterrupted.
+
+For live evaluation of a `fromSpec` strategy, see `docs-site/recipes/replay-then-stream.md` and `docs/specs/2026-05-02-v0.4-phase-9-streaming-design.md`. The key gotcha: pass an explicit `streamingRuntime: FeatureRuntime` (built in `'streaming'` mode with `initialBars: result.bars`) to **both** `fromSpec` AND `runLive` so the `features` closure inside the strategy captures the same runtime that `runLive` is feeding live ticks into.
 
 ## When in doubt
 

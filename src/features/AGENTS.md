@@ -12,7 +12,7 @@ The feature library. Pure indicator math operating on `Series`, content-addresse
 | `indicators/` | Pure indicator functions: `sma`, `ema`, `rsi`, `returnSeries`, `volatility`, `drawdown`. Each takes a `Series` and returns a `Series` |
 | `series-utils.ts` | `collectBars`, `barsToSeries`, `seriesAt` — helpers for `Bar[] ↔ Series` conversion |
 | `spec.ts` | `FeatureSpec` registry: `defineFeature`, `getFeatureCompute`, `paramsHash` (content-addressing) |
-| `runtime.ts` | `FeatureRuntime`: orchestrates `DataFeed → indicator → FeatureCache`. The bridge between strategy code and the data layer |
+| `runtime.ts` | `FeatureRuntime`: orchestrates `DataFeed → indicator → FeatureCache`. The bridge between strategy code and the data layer. `FeatureRuntimeOptions` is a discriminated union: `mode?: 'historical'` (default; original semantics) or `mode: 'streaming'` (open-ended, optional `initialBars`, persistent `FeatureCache` bypassed). Streaming mode adds `appendBar(asset, bar)`, `getBars(asset)`, `getAllBars()` accessors so `runLive` can feed live ticks into the same runtime that `fromSpec`'s `features` closure captured |
 | `index.ts` | Barrel — re-exports indicators, series utils, `FeatureRuntime`, `FeatureSpec` |
 
 ## For AI Agents
@@ -22,6 +22,7 @@ The feature library. Pure indicator math operating on `Series`, content-addresse
 - Indicators operate on `Series` (`{t, v}[]`), not `Bar[]`. Use `barsToSeries(bars, 'close')` to convert
 - New indicator? (a) write a pure function in `indicators/`, (b) register it via `defineFeature(...)` so spec-driven strategies can reference it by `kind`
 - `FeatureRuntime` memoizes per `(spec, asset)` for the lifetime of one runtime instance — not across runtime constructions
+- In streaming mode the in-memory bar buffer (seeded from `initialBars`, extended by `appendBar`) is the source of truth; `FeatureCache.get`/`set` are skipped so live ticks don't poison the persistent cache
 
 ### Testing Requirements
 - Indicator unit tests live in `indicators/<x>.test.ts`

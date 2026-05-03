@@ -39,6 +39,14 @@ Most strategy bugs in `@livefolio/sdk` cluster into a few patterns. Walk this ch
 - **Range alignment.** v0.3 is bar-driven; v0.4 is calendar-driven. Calendar changes (NYSE half-day handling, weekmask era boundary) can shift `compareTo`. See `docs/specs/2026-05-02-v0.4-parity-divergences.md`.
 - **Feature-undefined coercion.** Same root cause as the "always holds defensive" symptom above. Read the divergences spec for the codified allowance.
 
+### "Live mode (`runLive`) misbehaves"
+
+- **Stale features in `mark`/`snapshot` events.** Almost always: the `fromSpec` strategy's `features` closure captured a different `FeatureRuntime` than `runLive` is feeding. Fix: build one `FeatureRuntime` in `'streaming'` mode (`new FeatureRuntime({ ..., mode: 'streaming', initialBars: result.bars })`) and pass the **same instance** to both `fromSpec({ runtime, calendar })` and `runLive(result, { streamingRuntime, ... })`.
+- **Duplicate first `snapshot` after replay-then-stream handoff.** This was a bug fixed during Phase 9 — `currentSession` at startup must be `calendar.next(history.lastSnapshot.t)`, NOT `lastSnapshot.t` itself. If you see the last backtest snapshot replayed as the first live snapshot, regression check that logic.
+- **State doesn't carry from backtest into live.** `runLive` seeds from `result.finalState`; if it's `undefined`, your strategy probably returned bare `Order[]` from `build` instead of `{ orders, state }`. For `fromSpec` strategies, this happens automatically. For handcrafted strategies, ensure `initialState()` is defined and `build` returns the state-threaded shape.
+- **Preview-build throws "could not be cloned".** `runLive` runs `strategy.build` against a `structuredClone(state)` per tick to compute `previewOrders` without corrupting committed state. If state contains non-cloneable values (functions, class instances with private fields, DOM nodes), `structuredClone` throws. Keep state JSON-shaped.
+- **`runLive` never emits a `snapshot`.** Calendar mismatch — your `StreamingDataFeed` ticks are timestamped with `t` values that never cross a `calendar.next(currentSession)` boundary. Cross-check the calendar (Crypto24x7? NYSE?) against the tick timestamps.
+
 ### "NaN positions / cash"
 
 - **Synthetic asset misconfiguration.** `SyntheticAsset.expense` is a **decimal** (0.0095 for 95 bps), not a percent. A 95 instead of 0.0095 produces astronomical drag.

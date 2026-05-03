@@ -11,6 +11,7 @@ The v0.4 type surface. Pure type-only declarations — no runtime code. Defines 
 |------|-------------|
 | `types.ts` | Primitive types: `Asset`, `AssetId`, `Bar`, `DateRange`, `Frequency`, `Series` |
 | `data-feed.ts` | `DataFeed` interface (`bars(asset, range, freq) → AsyncIterable<Bar>`); also `Fundamentals`, `EventKind`, `DataEvent` for richer feeds |
+| `streaming-data-feed.ts` | `StreamingDataFeed` interface (`subscribe(assets) → AsyncIterable<StreamingBar>`) — sibling to `DataFeed`, purely additive (no union, no shared type with `DataFeed`). Consumed by `runLive`; aggregation/session boundaries are runtime concerns owned by `Calendar`, not the feed |
 | `executor.ts` | `Executor` interface (`submit(orders, t, portfolio) → Fill[]`) |
 | `calendar.ts` | `Calendar` interface (`isOpen`, `next`, `previous`, `sessions`) |
 | `feature-cache.ts` | `FeatureCache` interface plus `FeatureKey`, `FeatureScope` |
@@ -22,9 +23,10 @@ The v0.4 type surface. Pure type-only declarations — no runtime code. Defines 
 - Type-only — no runtime imports allowed. Every file should compile to nothing
 - This is the contract layer: changes here ripple through `src/strategy/`, `src/features/`, `src/reference/`, and downstream packages (`@livefolio/datafeed-yfinance`)
 - New interface? Add it here, export from `index.ts`, then implement in `src/reference/` (or a downstream package)
-- Tests: there aren't any — these are pure types. Conformance is verified by the implementations passing their own tests
+- Tests: mostly nonexistent — these are pure types. `streaming-data-feed.test.ts` is a tiny structural-conformance test for the `StreamingDataFeed` shape. Conformance is otherwise verified by the implementations passing their own tests
 
 ### Common Patterns
 - Interfaces use `readonly` aggressively; mutability is opt-in
-- `AsyncIterable` for `DataFeed.bars` (streamable, lazy)
+- `AsyncIterable` for `DataFeed.bars` (bounded, lazy) and `StreamingDataFeed.subscribe` (open-ended, push-shaped); the runtime treats `for await` over `subscribe` as the live loop
 - `Frequency = '1m' | '5m' | '15m' | '1h' | '1d'` — most strategies use `'1d'`; subdaily values exist in the type but reference impls today only handle daily
+- `StreamingDataFeed` is intentionally NOT a union with `DataFeed` and has NO backward-compat alias — additive sibling interface

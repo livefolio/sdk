@@ -1,9 +1,10 @@
 # @livefolio/sdk
 
-TypeScript SDK for building and backtesting tactical allocation strategies.
-Define a strategy declaratively as a `TacticalSpec`, plug in a `DataFeed`, run
-a backtest. The same spec is portable across runtimes — pass it to a
-backtester today, a paper-trader tomorrow.
+TypeScript SDK for building, backtesting, and live-evaluating tactical
+allocation strategies. Define a strategy declaratively as a `TacticalSpec`,
+plug in a `DataFeed`, run a backtest. Then continue the same strategy from
+the backtest's final state against a `StreamingDataFeed` with `runLive` —
+same spec, same rule tree, no hand-off seam between historical and live.
 
 > **Full documentation, guides, and API reference:** [livefolio.github.io/sdk](https://livefolio.github.io/sdk/) — VitePress site auto-generated from source TSDoc, with runnable code samples for every guide.
 
@@ -98,14 +99,17 @@ is plain data — serialize it, store it, version it, send it across a wire.
 The data-layer seam: anything that can answer "give me OHLCV bars for asset
 X over date range Y." `@livefolio/datafeed-yfinance` is one implementation;
 implement your own for proprietary feeds. The interface lives in the root
-barrel — `import type { DataFeed } from '@livefolio/sdk'`.
+barrel — `import type { DataFeed } from '@livefolio/sdk'`. For live
+evaluation, implement the sibling `StreamingDataFeed` interface
+(`subscribe(assets) → AsyncIterable<StreamingBar>`); `runLive` consumes it.
 
 ### `Calendar`
 
 Trading-day arithmetic: `isOpen`, `next`, `previous`, `sessions`.
-`NYSEExchangeCalendar` and `LSEExchangeCalendar` ship in the box. Select one
-via `getCalendar('NYSE' | 'LSE')` or instantiate directly. Pluggable — any
-class implementing `Calendar` works.
+`NYSEExchangeCalendar`, `LSEExchangeCalendar`, and `Crypto24x7Calendar`
+(every day a single midnight-UTC-to-next-midnight session) ship in the box.
+Select one via `getCalendar('NYSE' | 'LSE')` or instantiate directly.
+Pluggable — any class implementing `Calendar` works.
 
 ### `FeatureCache`
 
@@ -123,7 +127,23 @@ adapter in production — the strategy code stays identical.
 
 The runtime loop. Walks calendar sessions, computes features, evaluates the
 strategy's rule tree, submits orders to the executor, applies fills to the
-portfolio, records snapshots. Returns `{ snapshots, finalPortfolio }`.
+portfolio, records snapshots. Returns `{ snapshots, finalPortfolio,
+finalState, bars }` — `finalState` and `bars` are the seed inputs for
+`runLive`.
+
+### `runLive`
+
+The live evaluation loop. An async generator that takes a `BacktestResult`
+plus a `StreamingDataFeed` and emits `LiveEvent<mark | snapshot>` — `mark`
+events fire on every tick (current portfolio, prices, features,
+preview-build orders) for chart continuity, `snapshot` events fire on
+session close (identical shape to `BacktestSnapshot`). Calendar drives
+session boundaries; preview orders are computed by re-running
+`strategy.build` over a `structuredClone` of state, so the committed state
+is never corrupted between rebalances.
+
+See `docs-site/recipes/replay-then-stream.md` for the canonical
+backtest-then-stream workflow.
 
 ## Imports
 
@@ -132,7 +152,7 @@ Everything is at the root. There is no subpath surface — `@livefolio/sdk` is t
 ```ts
 import {
   // Runtime
-  runBacktest, reconcile,
+  runBacktest, runLive, reconcile,
   // Tactical dialect
   fromSpec, evaluateRuleTree, evaluateFeatureSpecs, withSynthetics, isRebalanceDay,
   // Indicator math
@@ -140,7 +160,7 @@ import {
   // Feature runtime
   FeatureRuntime, defineFeature,
   // Reference impls
-  NYSEExchangeCalendar, LSEExchangeCalendar, getCalendar, MemoryFeatureCache, BacktestExecutor,
+  NYSEExchangeCalendar, LSEExchangeCalendar, Crypto24x7Calendar, getCalendar, MemoryFeatureCache, BacktestExecutor,
   // Portfolio helpers
   applyFills, applyOrders,
 } from '@livefolio/sdk';
@@ -148,10 +168,11 @@ import {
 import type {
   // Strategy / runtime
   Strategy, BacktestResult, BacktestSnapshot, RunBacktestOptions,
+  RunLiveOptions, LiveEvent,
   // Tactical dialect
   TacticalSpec, RuleNode, AssetRef, RebalanceConfig,
   // Interfaces
-  Calendar, DataFeed, Executor, FeatureCache,
+  Calendar, DataFeed, StreamingDataFeed, StreamingBar, Executor, FeatureCache,
   // Primitives
   Asset, Bar, DateRange, Frequency, Series,
   // Orders / portfolio
