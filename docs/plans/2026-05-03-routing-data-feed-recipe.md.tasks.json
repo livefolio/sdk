@@ -4,23 +4,23 @@
     {
       "id": 10,
       "subject": "Task 1: Extend AssetRef + extract resolveAssetRef",
-      "status": "pending",
+      "status": "completed",
       "description": "Add optional kind to AssetRef. Extract triplicated resolveAsset into src/tactical/asset-ref.ts (resolveAssetRef). Update three call sites. Add 5 unit tests + a mixed-kind universe test in from-spec.test.ts.\n\n```json:metadata\n{\"files\":[\"src/tactical/types.ts\",\"src/tactical/asset-ref.ts\",\"src/tactical/asset-ref.test.ts\",\"src/tactical/from-spec.ts\",\"src/tactical/synthetics.ts\",\"src/tactical/evaluate-feature-specs.ts\",\"src/tactical/from-spec.test.ts\"],\"verifyCommand\":\"npm test && npm run build && npm run docs:check && npm run lint\",\"acceptanceCriteria\":[\"AssetRef.kind optional\",\"resolveAssetRef extracted\",\"3 call sites updated\",\"5 unit tests pass\",\"mixed-kind from-spec test\",\"backward-compat preserved\",\"pipeline green\"]}\n```"
     },
     {
       "id": 11,
       "subject": "Task 2: Add the runnable recipe script",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [10],
       "description": "Standalone TS script (scripts/docs/recipes/composing-data-feeds.ts) demonstrating tactical/v1 + RoutingDataFeed end-to-end with synthetic feeds. Type-checks via docs:check and runs offline via tsx.\n\n```json:metadata\n{\"files\":[\"scripts/docs/recipes/composing-data-feeds.ts\"],\"verifyCommand\":\"npx tsx scripts/docs/recipes/composing-data-feeds.ts && npm run docs:check\",\"acceptanceCriteria\":[\"Script runs offline\",\"docs:check clean\",\"DGS10 has kind=macro\",\"RoutingDataFeed used\",\"Both SPY+TLT sessions > 0\"]}\n```"
     },
     {
       "id": 12,
       "subject": "Task 3: Recipe markdown + sidebar + guide cross-link",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [11],
       "description": "Author the recipe markdown, register sidebar entry, add cross-link section in custom-data-feed.md guide. Embed the runnable verbatim and paste actual console output.\n\n```json:metadata\n{\"files\":[\"docs-site/recipes/composing-data-feeds.md\",\"docs-site/.vitepress/config.ts\",\"docs-site/guides/runtime/custom-data-feed.md\"],\"verifyCommand\":\"npm run docs:check\",\"acceptanceCriteria\":[\"Recipe page complete\",\"Runnable embedded\",\"Output captured\",\"Sidebar updated\",\"Guide cross-link added\",\"docs:check passes\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-04T03:00:00Z"
+  "lastUpdated": "2026-05-04T04:00:00Z"
 }

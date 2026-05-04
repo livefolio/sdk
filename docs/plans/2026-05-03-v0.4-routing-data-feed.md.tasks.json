@@ -4,23 +4,23 @@
     {
       "id": 1,
       "subject": "Task 1: Promote Asset to discriminated union",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Replace single-variant `Asset` with `EquityAsset | MacroAsset` so consumers can declare non-equity assets without type errors. Purely additive.\n\n**Files:**\n- Modify: `src/interfaces/types.ts:6-32`\n\n**Verify:** `npm test && npm run build && npm run docs:check`\n\n```json:metadata\n{\"files\":[\"src/interfaces/types.ts\"],\"verifyCommand\":\"npm test && npm run build && npm run docs:check\",\"acceptanceCriteria\":[\"Asset exported as EquityAsset | MacroAsset\",\"EquityAsset preserves prior shape\",\"MacroAsset has kind/id/symbol/source?\",\"npm test passes\",\"npm run build succeeds\",\"npm run docs:check succeeds\"]}\n```"
     },
     {
       "id": 2,
       "subject": "Task 2: Implement RoutingDataFeed + RoutingDataFeedError (TDD)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "**Goal:** Ship the routing reference impl with co-located unit tests covering all 9 behavioral guarantees from the spec.\n\n**Files:**\n- Create: `src/reference/routing-data-feed.ts`\n- Create: `src/reference/routing-data-feed.test.ts`\n\n**Verify:** `npm test -- src/reference/routing-data-feed && npm run lint`\n\n```json:metadata\n{\"files\":[\"src/reference/routing-data-feed.ts\",\"src/reference/routing-data-feed.test.ts\"],\"verifyCommand\":\"npm test -- src/reference/routing-data-feed && npm run lint\",\"acceptanceCriteria\":[\"RoutingDataFeed implements DataFeed\",\"Constructor accepts map or function\",\"bars routes and throws on missing\",\"fundamentals routes and throws on missing or unsupported\",\"events not on prototype\",\"9 tests pass\",\"lint clean\"]}\n```"
     },
     {
       "id": 3,
       "subject": "Task 3: Wire public exports + AGENTS.md",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [2],
       "description": "**Goal:** Make `RoutingDataFeed` and `RoutingDataFeedError` importable from `@livefolio/sdk`. Document in AGENTS.md.\n\n**Files:**\n- Modify: `src/reference/index.ts`\n- Modify: `src/index.ts`\n- Modify: `src/reference/AGENTS.md`\n\n**Verify:** `npm run lint && npm test && npm run build && npm run docs:check`\n\n```json:metadata\n{\"files\":[\"src/reference/index.ts\",\"src/index.ts\",\"src/reference/AGENTS.md\"],\"verifyCommand\":\"npm run lint && npm test && npm run build && npm run docs:check\",\"acceptanceCriteria\":[\"Public import works\",\"AGENTS.md updated\",\"build succeeds\",\"docs:check succeeds\",\"full test suite passes\",\"lint clean\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-03T22:57:00Z"
+  "lastUpdated": "2026-05-03T23:45:00Z"
 }
