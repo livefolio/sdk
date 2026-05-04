@@ -1,0 +1,47 @@
+{
+  "planPath": "docs/plans/2026-05-03-fred-adapter.md",
+  "tasks": [
+    {
+      "id": 4,
+      "subject": "Task 1: Scaffold @livefolio/fred repo",
+      "status": "pending",
+      "description": "Create /Users/raksi/Documents/Personal/livefolio-2/fred/ with all config files, docs scaffolding, and an empty src/. Init as git repo on main and verify npm install works against the local SDK.\n\n```json:metadata\n{\"files\":[\"fred/package.json\",\"fred/tsconfig.json\",\"fred/tsup.config.ts\",\"fred/vitest.config.ts\",\"fred/eslint.config.js\",\"fred/.prettierrc\",\"fred/.gitignore\",\"fred/LICENSE\",\"fred/README.md\",\"fred/AGENTS.md\",\"fred/CLAUDE.md\",\"fred/docs/AGENTS.md\",\"fred/docs/specs/2026-05-03-fred-adapter-design.md\"],\"verifyCommand\":\"cd /Users/raksi/Documents/Personal/livefolio-2/fred && npm install && npm test && npm run lint\",\"acceptanceCriteria\":[\"fred/ directory exists with subdirs\",\"All config files mirror yfinance template\",\"npm install succeeds\",\"npm test passes (zero tests)\",\"npm run lint clean\",\"git initialized on main with initial commit\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 2: Implement assetToFredSeriesId (TDD)",
+      "status": "pending",
+      "blockedBy": [4],
+      "description": "Pure function narrowing Asset to MacroAsset, returns asset.id. Throws on non-macro with kind+id in message.\n\n```json:metadata\n{\"files\":[\"fred/src/asset.ts\",\"fred/src/asset.test.ts\"],\"verifyCommand\":\"cd /Users/raksi/Documents/Personal/livefolio-2/fred && npm test -- src/asset && npm run lint\",\"acceptanceCriteria\":[\"Returns asset.id for macro\",\"Throws with kind+id for equity\",\"Throws for unknown kind\",\"Lint clean\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 3: Add BarCache (port from yfinance)",
+      "status": "pending",
+      "blockedBy": [4],
+      "description": "Range-aware in-memory cache, keyed by (seriesId, freq). Verbatim port from yfinance.\n\n```json:metadata\n{\"files\":[\"fred/src/cache.ts\",\"fred/src/cache.test.ts\"],\"verifyCommand\":\"cd /Users/raksi/Documents/Personal/livefolio-2/fred && npm test -- src/cache && npm run lint\",\"acceptanceCriteria\":[\"7 tests pass\",\"BarCache port from yfinance\",\"Lint clean\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 4: Implement fetchFredObservations HTTP client (TDD)",
+      "status": "pending",
+      "blockedBy": [4],
+      "description": "Native fetch HTTP transport for FRED's series/observations. Drops missing-value rows, maps to Bar.\n\n```json:metadata\n{\"files\":[\"fred/src/fred-client.ts\",\"fred/src/fred-client.test.ts\"],\"verifyCommand\":\"cd /Users/raksi/Documents/Personal/livefolio-2/fred && npm test -- src/fred-client && npm run lint\",\"acceptanceCriteria\":[\"URL params correct including observation_end = range.to - 1d\",\"Happy path maps to Bar\",\"Drops value === '.'\",\"HTTP non-2xx throws\",\"FRED 200 error_message throws\",\"Network errors propagate\",\"Lint clean\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 5: Implement FredDataFeed class (TDD)",
+      "status": "pending",
+      "blockedBy": [5, 6, 7],
+      "description": "Public DataFeed class composing assetToFredSeriesId + BarCache + inflight dedup + fetcher. Async generator bars(); throws on freq != '1d'.\n\n```json:metadata\n{\"files\":[\"fred/src/fred-data-feed.ts\",\"fred/src/fred-data-feed.test.ts\"],\"verifyCommand\":\"cd /Users/raksi/Documents/Personal/livefolio-2/fred && npm test -- src/fred-data-feed && npm run lint\",\"acceptanceCriteria\":[\"Routes via injected fetcher\",\"Cache dedup\",\"Inflight dedup\",\"Throws on non-macro\",\"Throws on freq != 1d\",\"fundamentals absent\",\"events absent\",\"Lint clean\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 6: Wire barrel + integration test + final verification",
+      "status": "pending",
+      "blockedBy": [8],
+      "description": "Public index.ts barrel + gated integration test + full pipeline (lint + test + build).\n\n```json:metadata\n{\"files\":[\"fred/src/index.ts\",\"fred/src/integration.test.ts\"],\"verifyCommand\":\"cd /Users/raksi/Documents/Personal/livefolio-2/fred && npm run lint && npm test && npm run build\",\"acceptanceCriteria\":[\"Public imports resolve\",\"Integration test skips without FRED_API_KEY\",\"Build succeeds\",\"dist/index.d.ts mentions FredDataFeed >=2\",\"Full pipeline green\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-04T00:10:00Z"
+}
