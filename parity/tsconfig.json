@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@livefolio/sdk": ["../src/index.ts"],
+      "@livefolio/sdk/interfaces": ["../src/interfaces/index.ts"],
+      "@livefolio/sdk/strategy": ["../src/strategy/index.ts"],
+      "@livefolio/sdk/features": ["../src/features/index.ts"],
+      "@livefolio/sdk/tactical": ["../src/tactical/index.ts"],
+      "@livefolio/sdk/reference": ["../src/reference/index.ts"],
+      "@livefolio/sdk/portfolio": ["../src/portfolio/index.ts"],
+      "@livefolio/sdk/orders": ["../src/orders/index.ts"]
+    }
+  },
+  "include": ["src/**/*", "fixtures/**/*.json"],
+  "exclude": ["src/v3/**/*.test.ts"]
+}

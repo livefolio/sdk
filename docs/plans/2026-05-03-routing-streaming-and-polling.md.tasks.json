@@ -1,0 +1,30 @@
+{
+  "plan": "docs/plans/2026-05-03-routing-streaming-and-polling.md",
+  "lastUpdated": "2026-05-04T00:25:00Z",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "RoutingStreamingDataFeed (TDD)",
+      "status": "completed",
+      "commit": "f920356"
+    },
+    {
+      "id": 2,
+      "subject": "pollingStreamFromHistorical (TDD)",
+      "status": "completed",
+      "commit": "d713ea0"
+    },
+    {
+      "id": 3,
+      "subject": "Wire public exports + AGENTS.md",
+      "status": "completed",
+      "commit": "c0a4dfc"
+    },
+    {
+      "id": 4,
+      "subject": "Docs-site recipe + cross-links",
+      "status": "completed",
+      "commit": "808fe6a"
+    }
+  ]
+}

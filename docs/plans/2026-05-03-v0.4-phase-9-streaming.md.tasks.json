@@ -1,0 +1,72 @@
+{
+  "planPath": "docs/plans/2026-05-03-v0.4-phase-9-streaming.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Strategy<F, S> state-threaded interface",
+      "status": "completed",
+      "description": "**Goal:** Extend `Strategy<F>` to `Strategy<F, S = void>` with `initialState()` and threaded state in `build()`. Existing state-less strategies compile unchanged because `S` defaults to `void`.\n\n**Files:**\n- Modify: `src/strategy/types.ts`\n- Modify: `src/strategy/types.test.ts`\n\n**Verify:** `npm test -- src/strategy/types.test.ts`\n\n```json:metadata\n{\"files\":[\"src/strategy/types.ts\",\"src/strategy/types.test.ts\"],\"verifyCommand\":\"npm test -- src/strategy/types.test.ts\",\"planTaskNumber\":1}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: runBacktest threads state through the loop",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** `runBacktest` calls `strategy.initialState?.()` once, then threads state through every `build()` call. `BacktestResult` exposes `finalState`. Both legacy `Order[]` returns and new `{ orders, state }` returns are normalized.\n\n**Files:**\n- Modify: `src/strategy/run-backtest.ts`\n- Modify: `src/strategy/run-backtest.test.ts`\n\n**Verify:** `npm test -- src/strategy/run-backtest.test.ts`\n\n```json:metadata\n{\"files\":[\"src/strategy/run-backtest.ts\",\"src/strategy/run-backtest.test.ts\"],\"verifyCommand\":\"npm test -- src/strategy/run-backtest.test.ts\",\"planTaskNumber\":2}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Refactor fromSpec to thread RuleTreeState",
+      "status": "completed",
+      "blockedBy": [1, 2],
+      "description": "**Goal:** Drop the `let state` closure inside `fromSpec`. Return `Strategy<TacticalFeatures, RuleTreeState>` with `initialState()` returning empty Map and `build()` reading + returning state explicitly.\n\n**Files:**\n- Modify: `src/tactical/from-spec.ts`\n- Modify: `src/tactical/from-spec.test.ts`\n\n**Verify:** `npm test -- src/tactical/from-spec.test.ts src/tactical/integration.test.ts`\n\n```json:metadata\n{\"files\":[\"src/tactical/from-spec.ts\",\"src/tactical/from-spec.test.ts\"],\"verifyCommand\":\"npm test -- src/tactical/from-spec.test.ts src/tactical/integration.test.ts\",\"planTaskNumber\":3}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: StreamingDataFeed interface",
+      "status": "completed",
+      "description": "**Goal:** Add `StreamingDataFeed` sibling interface to `DataFeed`. Purely additive — no changes to `DataFeed` or any existing caller.\n\n**Files:**\n- Create: `src/interfaces/streaming-data-feed.ts`\n- Create: `src/interfaces/streaming-data-feed.test.ts`\n- Modify: `src/interfaces/index.ts`\n- Modify: `src/index.ts`\n\n**Verify:** `npm test -- src/interfaces/streaming-data-feed.test.ts && npm run build`\n\n```json:metadata\n{\"files\":[\"src/interfaces/streaming-data-feed.ts\",\"src/interfaces/streaming-data-feed.test.ts\",\"src/interfaces/index.ts\",\"src/index.ts\"],\"verifyCommand\":\"npm test -- src/interfaces/streaming-data-feed.test.ts && npm run build\",\"planTaskNumber\":4}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Crypto24x7Calendar reference impl",
+      "status": "completed",
+      "description": "**Goal:** 24/7 calendar where every day is a single session running midnight UTC to next midnight UTC. Suitable for crypto and any always-on market.\n\n**Files:**\n- Create: `src/calendars/crypto-24x7.ts`\n- Create: `src/calendars/crypto-24x7.test.ts`\n- Modify: `src/calendars/index.ts`\n- Modify: `src/index.ts`\n\n**Verify:** `npm test -- src/calendars/crypto-24x7.test.ts`\n\n```json:metadata\n{\"files\":[\"src/calendars/crypto-24x7.ts\",\"src/calendars/crypto-24x7.test.ts\",\"src/calendars/index.ts\",\"src/index.ts\"],\"verifyCommand\":\"npm test -- src/calendars/crypto-24x7.test.ts\",\"planTaskNumber\":5}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: FeatureRuntime streaming mode",
+      "status": "completed",
+      "description": "**Goal:** Add streaming mode to `FeatureRuntime` accepting open-ended construction (no fixed `range`) and exposing `appendBar(asset, bar)` for incremental tick ingestion. Indicators compute against the growing buffer.\n\n**Files:**\n- Modify: `src/features/runtime.ts`\n- Modify: `src/features/runtime.test.ts`\n\n**Verify:** `npm test -- src/features/runtime.test.ts`\n\n```json:metadata\n{\"files\":[\"src/features/runtime.ts\",\"src/features/runtime.test.ts\"],\"verifyCommand\":\"npm test -- src/features/runtime.test.ts\",\"planTaskNumber\":6}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: BacktestResult exposes per-asset bar buffer",
+      "status": "completed",
+      "blockedBy": [2, 6],
+      "description": "**Goal:** Extend `BacktestResult` to carry the per-asset bar buffer the historical FeatureRuntime accumulated. This is what `runLive` reads to seed its streaming runtime so SMA(200) doesn't return empty on the first live tick.\n\n**Files:**\n- Modify: `src/strategy/run-backtest.ts`\n- Modify: `src/strategy/run-backtest.test.ts`\n- Modify: `src/features/runtime.ts`\n\n**Verify:** `npm test -- src/strategy/run-backtest.test.ts src/features/runtime.test.ts`\n\n```json:metadata\n{\"files\":[\"src/strategy/run-backtest.ts\",\"src/strategy/run-backtest.test.ts\",\"src/features/runtime.ts\",\"src/features/runtime.test.ts\"],\"verifyCommand\":\"npm test -- src/strategy/run-backtest.test.ts src/features/runtime.test.ts\",\"planTaskNumber\":7}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: runLive + LiveEvent (mark/snapshot demux + preview-build)",
+      "status": "completed",
+      "blockedBy": [1, 2, 3, 4, 6, 7],
+      "description": "**Goal:** Implement `runLive` as async generator consuming `StreamingDataFeed.subscribe`, owning tick→bar aggregation via calendar, running preview-build with state snapshot/restore on every tick, yielding unified `AsyncIterable<LiveEvent>` with `mark` and `snapshot` variants.\n\n**Files:**\n- Create: `src/strategy/run-live.ts`\n- Create: `src/strategy/run-live.test.ts`\n- Modify: `src/strategy/index.ts`\n- Modify: `src/index.ts`\n\n**Verify:** `npm test -- src/strategy/run-live.test.ts`\n\n```json:metadata\n{\"files\":[\"src/strategy/run-live.ts\",\"src/strategy/run-live.test.ts\",\"src/strategy/index.ts\",\"src/index.ts\"],\"verifyCommand\":\"npm test -- src/strategy/run-live.test.ts\",\"planTaskNumber\":8}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: Integration test — replay → live continuity",
+      "status": "completed",
+      "blockedBy": [5, 8],
+      "description": "**Goal:** End-to-end verification: `runBacktest` for first 2 weeks + `runLive` for week 3 produces snapshots byte-equivalent to `runBacktest` over the full 3 weeks.\n\n**Files:**\n- Modify: `src/strategy/integration.test.ts`\n\n**Verify:** `npm test -- src/strategy/integration.test.ts`\n\n```json:metadata\n{\"files\":[\"src/strategy/integration.test.ts\"],\"verifyCommand\":\"npm test -- src/strategy/integration.test.ts\",\"planTaskNumber\":9}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 10: Docs site recipe — replay-then-stream",
+      "status": "completed",
+      "blockedBy": [8],
+      "description": "**Goal:** User-facing recipe in docs site showing canonical `runBacktest` → `runLive` workflow with chart wiring.\n\n**Files:**\n- Create: `docs-site/guide/replay-then-stream.md`\n- Modify: `docs-site/.vitepress/config.ts`\n\n**Verify:** `cd docs-site && npm run build`\n\n```json:metadata\n{\"files\":[\"docs-site/guide/replay-then-stream.md\",\"docs-site/.vitepress/config.ts\"],\"verifyCommand\":\"cd docs-site && npm run build\",\"planTaskNumber\":10}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-03T23:30:00Z"
+}

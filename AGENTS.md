@@ -1,18 +1,18 @@
-<!-- Generated: 2026-04-01 | Updated: 2026-04-01 -->
+<!-- Generated: 2026-04-01 | Updated: 2026-05-02 -->
 
 # @livefolio/sdk
 
 ## Purpose
-TypeScript SDK for building tactical allocation strategies. Provides a fluent API to define tickers, technical indicators, comparison signals, allocation rules, and complete strategies — backed by a Supabase database for persistence and time-series storage. Includes a backtesting simulation engine.
+TypeScript SDK for building tactical allocation strategies. Strategies are declared as `TacticalSpec` (universe, features, rebalance schedule, rule tree) and executed by `runBacktest` against pluggable runtime layers — `DataFeed` for market data, `Calendar` for trading-day arithmetic, `FeatureCache` for indicator memoization, `Executor` for order routing. The same strategy continues into live evaluation via `runLive` (an async generator emitting `LiveEvent<mark | snapshot>`) seeded from a `BacktestResult` and driven by a `StreamingDataFeed`. Reference implementations (`NYSEExchangeCalendar`, `LSEExchangeCalendar`, `Crypto24x7Calendar`, `MemoryFeatureCache`, `BacktestExecutor`) ship in the box.
 
 ## Key Files
 
 | File | Description |
 |------|-------------|
-| `package.json` | Project manifest — `@livefolio/sdk`, ES module, Node >=20 |
+| `package.json` | Project manifest — `@livefolio/sdk@0.4.0`, ES module, Node >=20 |
 | `tsconfig.json` | TypeScript strict mode, ES2022 target, bundler module resolution |
 | `tsup.config.ts` | tsup bundler configuration |
-| `vitest.config.ts` | Vitest test runner configuration |
+| `vitest.config.ts` | Vitest test runner configuration with `@livefolio/sdk/*` subpath aliases |
 | `eslint.config.js` | ESLint flat config with typescript-eslint and Prettier |
 | `.prettierrc` | Prettier formatting rules |
 
@@ -20,34 +20,44 @@ TypeScript SDK for building tactical allocation strategies. Provides a fluent AP
 
 | Directory | Purpose |
 |-----------|---------|
-| `src/` | All TypeScript source code (see `src/AGENTS.md`) |
+| `src/` | v0.4 SDK source (see `src/AGENTS.md`) |
 | `docs/` | Design specs and implementation plans (see `docs/AGENTS.md`) |
+| `docs-site/` | VitePress + TypeDoc documentation site published to GitHub Pages |
+| `parity/` | Regression workspace: consumes the published `@livefolio/sdk@0.3.7` (aliased as `@livefolio/sdk-v3`) and runs the v0.4↔v0.3 parity gate against it |
+| `scripts/` | Standalone demo and verification scripts; `scripts/docs/` holds runnable code samples embedded in the docs site |
+| `.claude/skills/` | Claude Code skills for SDK authoring (`livefolio-tactical-author`, `livefolio-custom-adapter`, `livefolio-debug-strategy`) |
 
 ## For AI Agents
 
 ### Working In This Directory
 - This is an ES module project (`"type": "module"`) — extensionless imports, bundled with tsup
-- The SDK exports a `createClient(options)` factory that returns a `LivefolioClient` interface
+- The SDK exports `runBacktest`, `runLive`, `tactical.fromSpec`, `Strategy`/`DataFeed`/`StreamingDataFeed`/`Calendar`/`FeatureCache`/`Executor` types, plus reference impls
+- Public API is v0.4 only. v0.3 (`createClient`, fluent handles) ships on npm as `@livefolio/sdk@0.3.7` and is consumed by the parity workspace via the `@livefolio/sdk-v3` alias — do not re-export from `src/index.ts`
+
 ### Testing Requirements
-- Run `npm test` to execute all Vitest tests
-- Tests use Vitest's `vi.fn()` for mocking — no real database connection needed
+- Run `npm test` to execute all Vitest tests (sdk + parity workspaces via aliases)
+- Tests use Vitest's `vi.fn()` for mocking external boundaries
+- Reference impls (`MemoryFeatureCache`, `BacktestExecutor`) work as in-memory test fixtures — no external services needed
 
 ### Common Patterns
-- **Handle pattern**: Core abstractions (`TickerHandle`, `IndicatorHandle`, etc.) are lazy — they defer database resolution until `.resolve()` is called
-- **Fluent builder API**: `createClient` returns methods like `.ticker()`, `.sma()`, `.gt()`, `.strategy()` that compose handles together
-- **Upsert-on-resolve**: Handles upsert their identity rows on first resolve, returning existing rows if they match
+- **Spec-driven strategies**: `TacticalSpec` is plain data. `tactical.fromSpec(spec, { runtime, calendar })` hydrates it into a `Strategy<F, S>` that `runBacktest` can drive
+- **Pluggable runtime layers**: `DataFeed`, `StreamingDataFeed`, `Executor`, `Calendar`, `FeatureCache` are interfaces. Reference impls ship; consumers swap any layer (e.g. `LiveBrokerExecutor`, a WebSocket `StreamingDataFeed`) without touching strategy code
+- **Content-addressed feature cache**: indicator results are keyed by `(feature spec, asset, date)`. `MemoryFeatureCache` is the in-process default; cross-process caches plug in by implementing the interface
+- **Replay-then-stream**: `runBacktest` returns `{ snapshots, finalPortfolio, finalState, bars }`; `runLive(result, { strategy, calendar, executor, streamingDataFeed, ... })` continues from there, emitting `LiveEvent<mark | snapshot>` per tick / per session-close. For `fromSpec` strategies, share a `streamingRuntime: FeatureRuntime` between `fromSpec` and `runLive` so the captured runtime sees streaming bars (see `docs-site/recipes/replay-then-stream.md`)
 
 ## Dependencies
 
 ### External
-- `nanoid` — Short unique IDs for strategy link URLs
+- `luxon` — TZ-aware datetime arithmetic for `ExchangeCalendar` (NYSE/LSE schedule resolution)
 
 ### Dev
 - `tsup` — Bundler
 - `vitest` — Test runner
+- `tsx` — Dev script runner
 - `typescript` — Compiler
 - `eslint` + `typescript-eslint` — Linting
 - `prettier` — Formatting
 - `husky` + `lint-staged` — Pre-commit hooks
+- `vitepress` + `typedoc` + `typedoc-plugin-markdown` + `typedoc-vitepress-theme` — Docs site generation
 
 <!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->

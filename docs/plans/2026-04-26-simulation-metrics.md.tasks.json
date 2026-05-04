@@ -1,0 +1,71 @@
+{
+  "planPath": "docs/plans/2026-04-26-simulation-metrics.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Types + module skeleton",
+      "status": "completed",
+      "description": "**Goal:** Set up `src/metrics/` with types, an empty `compute.ts` stub, and a barrel export. Locks the public API shape before any math.\n\n**Files:**\n- Create: `src/metrics/types.ts`\n- Create: `src/metrics/compute.ts`\n- Create: `src/metrics/index.ts`\n- Create: `src/metrics/types.test.ts`\n\n**Verify:** `npm test -- src/metrics/types.test.ts`\n\n```json:metadata\n{\"files\":[\"src/metrics/types.ts\",\"src/metrics/compute.ts\",\"src/metrics/index.ts\",\"src/metrics/types.test.ts\"],\"verifyCommand\":\"npm test -- src/metrics/types.test.ts\",\"planTaskNumber\":1}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: returns.ts — daily/monthly/yearly",
+      "status": "completed",
+      "description": "**Goal:** Pure helpers turning `DailyBar[]` into return arrays and period buckets.\n\n**Verify:** `npm test -- src/metrics/returns.test.ts`\n\n```json:metadata\n{\"files\":[\"src/metrics/returns.ts\",\"src/metrics/returns.test.ts\"],\"verifyCommand\":\"npm test -- src/metrics/returns.test.ts\",\"planTaskNumber\":2}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: summary.ts — totalReturn, CAGR, best/worst, %positive",
+      "status": "completed",
+      "blockedBy": [2],
+      "description": "**Goal:** Period-summary helpers using `returns.ts`. Filter out partial buckets in best/worst stats.\n\n**Verify:** `npm test -- src/metrics/summary.test.ts`\n\n```json:metadata\n{\"files\":[\"src/metrics/summary.ts\",\"src/metrics/summary.test.ts\"],\"verifyCommand\":\"npm test -- src/metrics/summary.test.ts\",\"planTaskNumber\":3}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: risk.ts — vol/downside/skew/kurtosis/VaR/CVaR/Ulcer",
+      "status": "completed",
+      "description": "**Goal:** Daily-return-based scalar risk stats. Pure functions over number[]. Annualization at boundary (× √252).\n\n**Verify:** `npm test -- src/metrics/risk.test.ts`\n\n```json:metadata\n{\"files\":[\"src/metrics/risk.ts\",\"src/metrics/risk.test.ts\"],\"verifyCommand\":\"npm test -- src/metrics/risk.test.ts\",\"planTaskNumber\":4}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: drawdown.ts — max DD, current DD, top-N table",
+      "status": "completed",
+      "description": "**Goal:** Drawdown table from a NAV series. Single pass; emits ongoing DDs with recoveryDate=null.\n\n**Verify:** `npm test -- src/metrics/drawdown.test.ts`\n\n```json:metadata\n{\"files\":[\"src/metrics/drawdown.ts\",\"src/metrics/drawdown.test.ts\"],\"verifyCommand\":\"npm test -- src/metrics/drawdown.test.ts\",\"planTaskNumber\":5}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: riskAdjusted.ts — Sharpe, Sortino, Calmar",
+      "status": "completed",
+      "blockedBy": [4],
+      "description": "**Goal:** Risk-adjusted ratios. Annual rf converted to daily inside the module.\n\n**Verify:** `npm test -- src/metrics/riskAdjusted.test.ts`\n\n```json:metadata\n{\"files\":[\"src/metrics/riskAdjusted.ts\",\"src/metrics/riskAdjusted.test.ts\"],\"verifyCommand\":\"npm test -- src/metrics/riskAdjusted.test.ts\",\"planTaskNumber\":6}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: activity.ts — rebalances, trades, turnover, win rate",
+      "status": "completed",
+      "description": "**Goal:** Activity stats from `Trade[]` plus `DailyBar[]`. Skip CASHX legs in turnover. Win rate measured between rebalance boundaries.\n\n**Verify:** `npm test -- src/metrics/activity.test.ts`\n\n```json:metadata\n{\"files\":[\"src/metrics/activity.ts\",\"src/metrics/activity.test.ts\"],\"verifyCommand\":\"npm test -- src/metrics/activity.test.ts\",\"planTaskNumber\":7}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: tables.ts — monthly grid, yearly list",
+      "status": "completed",
+      "blockedBy": [2],
+      "description": "**Goal:** Reshape monthly/yearly returns into the spec's table types.\n\n**Verify:** `npm test -- src/metrics/tables.test.ts`\n\n```json:metadata\n{\"files\":[\"src/metrics/tables.ts\",\"src/metrics/tables.test.ts\"],\"verifyCommand\":\"npm test -- src/metrics/tables.test.ts\",\"planTaskNumber\":8}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: compute.ts — orchestrator + free helper exports",
+      "status": "completed",
+      "blockedBy": [1, 2, 3, 4, 5, 6, 7, 8],
+      "description": "**Goal:** Wire all helpers into `computeMetrics(series, trades, options?) → MetricsResult`. Replace Task 1 stub. Export free helpers from `index.ts`.\n\n**Verify:** `npm test -- src/metrics/`\n\n```json:metadata\n{\"files\":[\"src/metrics/compute.ts\",\"src/metrics/index.ts\",\"src/metrics/compute.test.ts\"],\"verifyCommand\":\"npm test -- src/metrics/\",\"planTaskNumber\":9}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 10: SimulationHandle.metrics() + public exports",
+      "status": "completed",
+      "blockedBy": [9],
+      "description": "**Goal:** Add `metrics()` method to `SimulationHandle`. Add metrics types and helpers to the public SDK barrel. End-to-end test.\n\n**Verify:** `npm test && npm run lint && npm run build`\n\n```json:metadata\n{\"files\":[\"src/backtest/types.ts\",\"src/index.ts\",\"docs/AGENTS.md\",\"src/metrics/integration.test.ts\"],\"verifyCommand\":\"npm test && npm run lint && npm run build\",\"planTaskNumber\":10}\n```"
+    }
+  ],
+  "lastUpdated": "2026-04-26T20:30:00-05:00"
+}
