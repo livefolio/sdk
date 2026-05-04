@@ -76,6 +76,7 @@ export default defineConfig({
             { text: 'Backtest with realistic slippage', link: '/recipes/realistic-slippage' },
             { text: 'Replay-then-stream (live)', link: '/recipes/replay-then-stream' },
             { text: 'Composing data feeds', link: '/recipes/composing-data-feeds' },
+            { text: 'Composing streaming data feeds', link: '/recipes/composing-streaming-data-feeds' },
           ],
         },
       ],

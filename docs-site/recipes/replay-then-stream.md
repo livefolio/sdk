@@ -202,6 +202,7 @@ const calendar = new Crypto24x7Calendar();
 
 ## See also
 
+- [Composing streaming data feeds](/recipes/composing-streaming-data-feeds) — extend the live runtime to multi-vendor (equity push + macro polling)
 - Design spec: [docs/specs/2026-05-02-v0.4-phase-9-streaming-design.md](https://github.com/livefolio/sdk/blob/main/docs/specs/2026-05-02-v0.4-phase-9-streaming-design.md)
 - [`runBacktest`](/api/functions/runBacktest)
 - [`runLive`](/api/functions/runLive)

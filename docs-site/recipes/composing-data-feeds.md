@@ -294,6 +294,7 @@ cash + basis         : $103550.90
 
 ## See also
 
+- [Composing streaming data feeds](/recipes/composing-streaming-data-feeds) — the live counterpart of this recipe
 - [`RoutingDataFeed` API](/api/classes/RoutingDataFeed)
 - [Custom DataFeed](/guides/runtime/custom-data-feed)
 - [Anatomy of a TacticalSpec](/guides/authoring/anatomy-of-a-tactical-spec)
