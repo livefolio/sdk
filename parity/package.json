@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "description": "v0.4 parity gate — proves tactical/v1 produces the same allocation history as v0.3 on yfinance fixtures.",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
@@ -16,6 +18,8 @@
   "dependencies": {
     "@livefolio/sdk": "file:..",
     "@livefolio/sdk-v3": "npm:@livefolio/sdk@0.3.7",
+    "@livefolio/yfinance": "file:../../yfinance",
+    "@livefolio/yfinance-browser": "file:../../yfinance/browser",
     "nanoid": "^5.1.7"
   },
   "devDependencies": {
