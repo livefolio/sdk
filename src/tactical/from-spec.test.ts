@@ -168,6 +168,28 @@ describe('fromSpec', () => {
     expect(orders.length).toBeGreaterThan(0);
   });
 
+  it('honors AssetRef.kind by producing a mixed-kind universe', () => {
+    const equity = { id: 'us:SPY', symbol: 'SPY' };
+    const macro = { kind: 'macro' as const, id: 'DGS10', symbol: '10Y Treasury' };
+
+    const spec: TacticalSpec = {
+      kind: 'tactical/v1',
+      universe: [equity, macro],
+      rebalance: { frequency: 'Monthly' },
+      features: [],
+      rules: { op: 'allocate', weights: { 'us:SPY': 1.0 } },
+    };
+
+    const { feed } = feedFor([100, 101, 102, 103, 104]);
+    const runtime = new FeatureRuntime({ dataFeed: feed, featureCache: new MemoryFeatureCache(), range, freq: '1d' });
+    const strategy = fromSpec(spec, { runtime, calendar });
+    const universe = strategy.universe(utc('2024-06-03'), initialPortfolio);
+
+    expect(universe).toHaveLength(2);
+    expect(universe.find((a) => a.id === 'us:SPY')?.kind).toBe('equity');
+    expect(universe.find((a) => a.id === 'DGS10')?.kind).toBe('macro');
+  });
+
   it('throws on synthetic id colliding with a non-underlying universe ref', () => {
     const conflicting: TacticalSpec = {
       kind: 'tactical/v1',

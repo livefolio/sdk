@@ -4,7 +4,8 @@ import type { Strategy } from '../strategy/types';
 import { reconcile } from '../strategy/reconcile';
 import type { FeatureRuntime } from '../features/runtime';
 import { seriesAt } from '../features/series-utils';
-import type { AssetRef, RebalanceFrequency, RuleTreeState, TacticalSpec } from './types';
+import type { RebalanceFrequency, RuleTreeState, TacticalSpec } from './types';
+import { resolveAssetRef } from './asset-ref';
 import { evaluateRuleTree } from './evaluate-rule-tree';
 import { evaluateFeatureSpecs } from './evaluate-feature-specs';
 
@@ -41,12 +42,6 @@ export type FromSpecOptions = {
   /** Exchange calendar used to gate rebalance days via {@link isRebalanceDay}. */
   calendar: Calendar;
 };
-
-function resolveAsset(ref: AssetRef): Asset {
-  return ref.exchange !== undefined
-    ? { kind: 'equity', id: ref.id, symbol: ref.symbol, exchange: ref.exchange }
-    : { kind: 'equity', id: ref.id, symbol: ref.symbol };
-}
 
 function validateSynthetics(spec: TacticalSpec): void {
   const synths = spec.synthetics ?? [];
@@ -163,7 +158,7 @@ export function fromSpec(spec: TacticalSpec, opts: FromSpecOptions): Strategy<Ta
     );
   }
   validateSynthetics(spec);
-  const universe: ReadonlyArray<Asset> = spec.universe.map(resolveAsset);
+  const universe: ReadonlyArray<Asset> = spec.universe.map(resolveAssetRef);
   const { runtime, calendar } = opts;
   const cadence: RebalanceFrequency = spec.rebalance?.frequency ?? 'Daily';
 

@@ -1,12 +1,7 @@
 import type { Asset, Bar, DateRange, Frequency } from '../interfaces/types';
 import type { DataFeed } from '../interfaces/data-feed';
-import type { AssetRef, SyntheticAsset } from './types';
-
-function resolveAsset(ref: AssetRef): Asset {
-  return ref.exchange !== undefined
-    ? { kind: 'equity', id: ref.id, symbol: ref.symbol, exchange: ref.exchange }
-    : { kind: 'equity', id: ref.id, symbol: ref.symbol };
-}
+import type { SyntheticAsset } from './types';
+import { resolveAssetRef } from './asset-ref';
 
 const TRADING_DAYS_PER_YEAR = 252;
 
@@ -91,7 +86,7 @@ export function withSynthetics(dataFeed: DataFeed, synthetics: ReadonlyArray<Syn
     bars(asset: Asset, range: DateRange, freq: Frequency): AsyncIterable<Bar> {
       const synth = byId.get(asset.id);
       if (!synth) return dataFeed.bars(asset, range, freq);
-      const underlying = resolveAsset(synth.underlying);
+      const underlying = resolveAssetRef(synth.underlying);
       return synthesize(dataFeed.bars(underlying, range, freq), synth.leverage, synth.expense);
     },
   };

@@ -2,20 +2,29 @@ import type { AssetId } from '../interfaces/types';
 import type { ReturnMode } from '../features/indicators/return';
 
 /**
- * A lightweight reference to an asset within a {@link TacticalSpec}. Used in
- * the `universe` array, as the `asset` field of each {@link TacticalFeatureSpec},
- * and as the `underlying` / `tradeAs` fields of a {@link SyntheticAsset}.
+ * A reference to an asset within a {@link TacticalSpec}. Unlike the runtime
+ * {@link Asset} type, `AssetRef` is the spec-form representation: it lives
+ * inside serialized JSON specs and carries only the fields a spec author
+ * needs to declare.
  *
  * `id` is the stable opaque identifier (see {@link AssetId}); `symbol` is the
- * human-readable ticker; `exchange` is optional and accepted but not required.
+ * human-readable ticker; `exchange` is optional. `kind` selects the asset
+ * variant; absent `kind` defaults to `'equity'` for backward compatibility
+ * with v0.4 specs authored before macro support landed.
  */
 export type AssetRef = {
   /** Stable opaque asset identifier matching {@link AssetId}. */
   id: AssetId;
   /** Human-readable ticker symbol, e.g. `'AAPL'`. */
   symbol: string;
-  /** Optional MIC or common exchange name, e.g. `'NYSE'`. */
+  /** Optional MIC or common exchange name, e.g. `'NYSE'`. Equity-only. */
   exchange?: string;
+  /**
+   * Asset class. Defaults to `'equity'` when omitted. Set to `'macro'` to
+   * author FRED-style time-series assets that route to a non-equity
+   * `DataFeed` (typically via `RoutingDataFeed`).
+   */
+  kind?: 'equity' | 'macro';
 };
 
 /**

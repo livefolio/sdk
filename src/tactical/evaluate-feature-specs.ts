@@ -1,13 +1,8 @@
-import type { Asset, Series } from '../interfaces/types';
+import type { Series } from '../interfaces/types';
 import type { FeatureSpec } from '../features/spec';
 import type { FeatureRuntime } from '../features/runtime';
-import type { AssetRef, TacticalFeatureSpec } from './types';
-
-function resolveAsset(ref: AssetRef): Asset {
-  return ref.exchange !== undefined
-    ? { kind: 'equity', id: ref.id, symbol: ref.symbol, exchange: ref.exchange }
-    : { kind: 'equity', id: ref.id, symbol: ref.symbol };
-}
+import type { TacticalFeatureSpec } from './types';
+import { resolveAssetRef } from './asset-ref';
 
 function toFeatureSpec(spec: TacticalFeatureSpec): FeatureSpec {
   switch (spec.kind) {
@@ -107,7 +102,7 @@ export async function evaluateFeatureSpecs(
 
   const entries = await Promise.all(
     specs.map(async (spec) => {
-      const series = await runtime.compute(toFeatureSpec(spec), resolveAsset(spec.asset));
+      const series = await runtime.compute(toFeatureSpec(spec), resolveAssetRef(spec.asset));
       const delay = spec.delay ?? 0;
       return [spec.id, readDelayed(series, t, delay)] as const;
     }),
