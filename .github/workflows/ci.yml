@@ -70,27 +70,29 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Check if version changed
-        id: version
-        run: |
-          CURRENT=$(node -p "require('./package.json').version")
-          PREVIOUS=$(git show HEAD^:package.json | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).version")
-          if [ "$CURRENT" = "$PREVIOUS" ]; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "Version unchanged ($CURRENT); skipping release."
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "Version changed: $PREVIOUS -> $CURRENT"
-          fi
 
       - uses: actions/setup-node@v4
-        if: steps.version.outputs.changed == 'true'
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
+
+      # Compare against the version actually on npm, not git history. The
+      # HEAD-vs-HEAD^ heuristic is fooled by orphaned merge commits (e.g. a
+      # GitHub merge that errors mid-flight and gets re-merged at the same
+      # version), and silently skips publishing. `npm view` is the source of
+      # truth: if package.json is ahead of npm, publish; otherwise skip.
+      - name: Check if version needs publishing
+        id: version
+        run: |
+          CURRENT=$(node -p "require('./package.json').version")
+          PUBLISHED=$(npm view @livefolio/sdk version 2>/dev/null || echo "none")
+          if [ "$CURRENT" = "$PUBLISHED" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Version $CURRENT already on npm; skipping release."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Version to publish: $CURRENT (last on npm: $PUBLISHED)"
+          fi
 
       - run: npm ci
         if: steps.version.outputs.changed == 'true'
