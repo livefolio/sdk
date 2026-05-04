@@ -66,7 +66,8 @@ export type Features = Readonly<Record<string, unknown>>;
  * };
  * ```
  *
- * @example State-bearing strategy (S = { lastBar: number }):
+ * @example
+ * State-bearing strategy (`S = { lastBar: number }`):
  * ```ts
  * import type { Strategy, Features } from '@livefolio/sdk';
  *

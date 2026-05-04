@@ -39,7 +39,17 @@ export type FeatureSpec =
  */
 export type FeatureKind = FeatureSpec['kind'];
 
-type ComputeFn = (series: Series, spec: FeatureSpec) => Series;
+/**
+ * A pure function that computes a feature `Series` from an input price `Series` and the typed
+ * `FeatureSpec` describing the indicator's parameters. Implementations must be deterministic and
+ * side-effect free — the SDK uses the function as a content-addressed dispatch token via
+ * {@link getFeatureCompute} and as the registration target for {@link defineFeature}.
+ *
+ * @param series - Input price series (typically the asset's close prices).
+ * @param spec   - Typed indicator spec carrying the parameters relevant to `kind`.
+ * @returns The computed feature series, aligned to `series` on `t`.
+ */
+export type ComputeFn = (series: Series, spec: FeatureSpec) => Series;
 
 const registry = new Map<FeatureKind, ComputeFn>();
 

@@ -97,7 +97,7 @@ export {
   barsToSeries,
   seriesAt,
 } from './features';
-export type { FeatureSpec, FeatureKind, FeatureRuntimeOptions, BarField, ReturnMode } from './features';
+export type { FeatureSpec, FeatureKind, FeatureRuntimeOptions, BarField, ReturnMode, ComputeFn } from './features';
 export * as features from './features';
 
 // Orders

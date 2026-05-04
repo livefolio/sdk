@@ -3,8 +3,6 @@ import type { Asset } from '../interfaces/types';
 import type { PositionId } from '../portfolio/types';
 export type { PositionId };
 
-type OrderBase = { id: string };
-
 /**
  * Opens a new position in `asset`. The executor creates a fresh {@link Position}
  * entry and debits cash by `quantity * fillPrice + fees`.
@@ -23,7 +21,9 @@ type OrderBase = { id: string };
  * };
  * ```
  */
-export type OpenOrder = OrderBase & {
+export type OpenOrder = {
+  /** Caller-supplied identifier carried back on the resulting {@link Fill} via `orderRef`. */
+  id: string;
   kind: 'open';
   /** The instrument to buy (long) or sell short. */
   asset: Asset;
@@ -51,7 +51,9 @@ export type OpenOrder = OrderBase & {
  * };
  * ```
  */
-export type CloseOrder = OrderBase & {
+export type CloseOrder = {
+  /** Caller-supplied identifier carried back on the resulting {@link Fill} via `orderRef`. */
+  id: string;
   kind: 'close';
   /** ID of the {@link Position} to close. */
   positionId: PositionId;
@@ -79,7 +81,9 @@ export type CloseOrder = OrderBase & {
  * };
  * ```
  */
-export type AdjustOrder = OrderBase & {
+export type AdjustOrder = {
+  /** Caller-supplied identifier carried back on the resulting {@link Fill} via `orderRef`. */
+  id: string;
   kind: 'adjust';
   /** ID of the {@link Position} to modify. */
   positionId: PositionId;
@@ -110,7 +114,9 @@ export type AdjustOrder = OrderBase & {
  * };
  * ```
  */
-export type RebalanceOrder = OrderBase & {
+export type RebalanceOrder = {
+  /** Caller-supplied identifier carried back on the resulting {@link Fill} via `orderRef`. */
+  id: string;
   kind: 'rebalance';
   /** The instrument whose long position is being adjusted. */
   asset: Asset;
