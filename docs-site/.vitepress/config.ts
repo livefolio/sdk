@@ -71,6 +71,7 @@ export default defineConfig({
           text: 'Recipes',
           items: [
             { text: 'Replicating a v0.3 strategy', link: '/recipes/v3-replication' },
+            { text: 'Featured strategies', link: '/recipes/featured-strategies' },
             { text: 'Multi-asset trend-following', link: '/recipes/multi-asset-trend' },
             { text: 'Mean-reversion with hysteresis', link: '/recipes/mean-reversion' },
             { text: 'Backtest with realistic slippage', link: '/recipes/realistic-slippage' },
