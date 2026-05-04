@@ -112,8 +112,12 @@ async function runScenario(label: string, slippageBps: number, perShareFee: numb
   const sessions = result.snapshots.length;
   const rebalances = result.snapshots.filter((s) => s.orders.length > 0).length;
   const final = result.snapshots.at(-1);
-  const posValue = (final?.portfolio.positions ?? []).reduce((sum, p) => sum + p.quantity * p.basis, 0);
-  const nav = (final?.portfolio.cash ?? 0) + posValue;
+  // Position.basis is the total cost basis of the position (already quantity * price + fees),
+  // not per-share. Sum it directly for invested capital. Cost-basis estimate, not
+  // mark-to-market — but that's fine for the slippage comparison since slippage shows up as
+  // higher entry-cost basis in the costs run vs. the ideal run.
+  const investedBasis = (final?.portfolio.positions ?? []).reduce((sum, p) => sum + p.basis, 0);
+  const cashPlusBasis = (final?.portfolio.cash ?? 0) + investedBasis;
 
   console.log(`\n--- ${label} ---`);
   console.log(`  slippage     : ${slippageBps} bps`);
@@ -121,21 +125,21 @@ async function runScenario(label: string, slippageBps: number, perShareFee: numb
   console.log(`  sessions     : ${sessions}`);
   console.log(`  rebalances   : ${rebalances}`);
   console.log(`  final cash   : $${(final?.portfolio.cash ?? 0).toFixed(2)}`);
-  console.log(`  est. nav     : $${nav.toFixed(2)}`);
+  console.log(`  cash + basis : $${cashPlusBasis.toFixed(2)}`);
 
-  return nav;
+  return cashPlusBasis;
 }
 
 // --- 4. Run both scenarios and compare ------------------------------------
 
 console.log('=== realistic-slippage recipe ===');
-const navIdeal = await runScenario('Run A — zero costs (default)', 0, 0);
-const navReal = await runScenario('Run B — realistic costs (10 bps + $0.01/share)', 10, 0.01);
+const idealValue = await runScenario('Run A — zero costs (default)', 0, 0);
+const realValue = await runScenario('Run B — realistic costs (10 bps + $0.01/share)', 10, 0.01);
 
-const drag = navIdeal - navReal;
-const dragPct = (drag / navIdeal) * 100;
+const drag = idealValue - realValue;
+const dragPct = (drag / idealValue) * 100;
 
 console.log('\n=== comparison ===');
-console.log(`  NAV without costs : $${navIdeal.toFixed(2)}`);
-console.log(`  NAV with costs    : $${navReal.toFixed(2)}`);
-console.log(`  execution drag    : $${drag.toFixed(2)} (${dragPct.toFixed(2)}% of gross NAV)`);
+console.log(`  cash + basis (no costs)  : $${idealValue.toFixed(2)}`);
+console.log(`  cash + basis (with costs): $${realValue.toFixed(2)}`);
+console.log(`  execution drag           : $${drag.toFixed(2)} (${dragPct.toFixed(2)}% of gross)`);

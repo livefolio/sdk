@@ -141,8 +141,10 @@ const sessions = result.snapshots.length;
 const rebalanceSessions = result.snapshots.filter((s) => s.orders.length > 0);
 const rebalances = rebalanceSessions.length;
 const final = result.snapshots.at(-1);
-const posValue = (final?.portfolio.positions ?? []).reduce((sum, p) => sum + p.quantity * p.basis, 0);
-const nav = (final?.portfolio.cash ?? 0) + posValue;
+// Position.basis is the total cost basis of the position (already quantity * price + fees),
+// not per-share. Sum it directly for invested capital. Cost-basis estimate, not mark-to-market.
+const investedBasis = (final?.portfolio.positions ?? []).reduce((sum, p) => sum + p.basis, 0);
+const cashPlusBasis = (final?.portfolio.cash ?? 0) + investedBasis;
 
 // Count regime flips (transitions between SPY and IEF allocation)
 let flips = 0;
@@ -158,7 +160,7 @@ console.log(`sessions         : ${sessions}`);
 console.log(`rebalances       : ${rebalances}`);
 console.log(`regime flips     : ${flips}  (hysteresis reduces whipsaw)`);
 console.log(`final cash       : $${(final?.portfolio.cash ?? 0).toFixed(2)}`);
-console.log(`est. nav         : $${nav.toFixed(2)}`);
+console.log(`cash + basis     : $${cashPlusBasis.toFixed(2)}`);
 console.log('final positions:');
 for (const p of final?.portfolio.positions ?? []) {
   console.log(`  ${p.asset.symbol.padEnd(4)} qty=${p.quantity} basis=$${p.basis.toFixed(2)}`);

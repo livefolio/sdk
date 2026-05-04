@@ -133,25 +133,30 @@ async function runScenario(label: string, slippageBps: number, perShareFee: numb
     dataFeed, executor, calendar,
   });
 
-  const final    = result.snapshots.at(-1);
-  const posValue = (final?.portfolio.positions ?? []).reduce((s, p) => s + p.quantity * p.basis, 0);
-  const nav      = (final?.portfolio.cash ?? 0) + posValue;
-  console.log(`${label}: rebalances=${result.snapshots.filter(s => s.orders.length > 0).length}, nav=$${nav.toFixed(2)}`);
-  return nav;
+  const final         = result.snapshots.at(-1);
+  // Position.basis is the total cost of the position (already qty * price + fees).
+  // Sum it directly. This is a cost-basis estimate, not mark-to-market.
+  const investedBasis = (final?.portfolio.positions ?? []).reduce((s, p) => s + p.basis, 0);
+  const cashPlusBasis = (final?.portfolio.cash ?? 0) + investedBasis;
+  console.log(`${label}: rebalances=${result.snapshots.filter(s => s.orders.length > 0).length}, value=$${cashPlusBasis.toFixed(2)}`);
+  return cashPlusBasis;
 }
 
-const navIdeal = await runScenario('Run A (zero costs)', 0, 0);
-const navReal  = await runScenario('Run B (10 bps + $0.01/share)', 10, 0.01);
-const drag     = navIdeal - navReal;
-console.log(`execution drag: $${drag.toFixed(2)} (${((drag / navIdeal) * 100).toFixed(2)}%)`);
+const idealValue = await runScenario('Run A (zero costs)', 0, 0);
+const realValue  = await runScenario('Run B (10 bps + $0.01/share)', 10, 0.01);
+const drag       = idealValue - realValue;
+console.log(`execution drag: $${drag.toFixed(2)} (${((drag / idealValue) * 100).toFixed(2)}%)`);
 ```
 
 ## What to notice in the output
 
 - **Rebalance count**: Daily rebalance + short SMA produces a high number of
   trades. Each trade in Run B incurs slippage and fee costs.
-- **NAV difference**: the execution drag printed at the end shows the dollar and
+- **Drag**: the execution drag printed at the end shows the dollar and
   percentage cost of realistic execution vs a theoretical zero-cost benchmark.
+  Both runs report `cash + basis` (a cost-basis estimate of invested capital,
+  not a mark-to-market NAV) — the comparison is still meaningful because
+  slippage and fees inflate the basis in Run B.
 - **Different rebalance counts**: Run B may show slightly more or fewer rebalances
   than Run A. This is normal — slippage changes the fill prices, which slightly
   alters the reconciliation logic that decides whether a rebalance is needed.

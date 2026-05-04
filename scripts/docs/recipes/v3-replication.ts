@@ -127,14 +127,16 @@ const result = await runBacktest({
 const sessions = result.snapshots.length;
 const rebalances = result.snapshots.filter((s) => s.orders.length > 0).length;
 const final = result.snapshots.at(-1);
-const totalValue =
-  (final?.portfolio.cash ?? 0) + (final?.portfolio.positions ?? []).reduce((sum, p) => sum + p.quantity * p.basis, 0);
+// Position.basis is the total cost basis of the position (already quantity * price + fees),
+// not per-share. Sum it directly for invested capital. Cost-basis estimate, not mark-to-market.
+const investedBasis = (final?.portfolio.positions ?? []).reduce((sum, p) => sum + p.basis, 0);
+const cashPlusBasis = (final?.portfolio.cash ?? 0) + investedBasis;
 
 console.log('=== v3-replication recipe ===');
 console.log(`sessions      : ${sessions}`);
 console.log(`rebalances    : ${rebalances}`);
 console.log(`final cash    : $${(final?.portfolio.cash ?? 0).toFixed(2)}`);
-console.log(`est. nav      : $${totalValue.toFixed(2)}`);
+console.log(`cash + basis  : $${cashPlusBasis.toFixed(2)}`);
 console.log('positions:');
 for (const p of final?.portfolio.positions ?? []) {
   console.log(`  ${p.asset.symbol.padEnd(4)} qty=${p.quantity} basis=$${p.basis.toFixed(2)}`);
