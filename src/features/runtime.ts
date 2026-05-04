@@ -203,15 +203,19 @@ export class FeatureRuntime {
   /**
    * Appends a bar to the streaming buffer for the given asset.
    *
-   * Bars must be provided in strictly ascending `t` order per asset. If a bar
-   * is out of order (i.e. its `t` is ≤ the last buffered bar's `t`), this
-   * method throws with an `"ascending"` message.
+   * Bars must be provided in non-decreasing `t` order per asset. A bar with
+   * the same `t` as the most recent buffered bar replaces it in place — this
+   * is the mark-to-market wiggle path used by `runLive`, where each incoming
+   * tick updates the running open/high/low/close of the in-flight session bar.
+   * A bar with `t` strictly greater than the buffered tail starts a fresh
+   * in-flight bar (e.g. at session boundaries). A bar with `t` strictly less
+   * than the buffered tail throws.
    *
    * Also invalidates the in-memory series cache for the asset so the next
    * `compute` call rebuilds the series from the updated buffer.
    *
    * @throws If called on a historical-mode runtime.
-   * @throws If `bar.t` is not strictly greater than the last buffered bar's `t`.
+   * @throws If `bar.t` is strictly less than the last buffered bar's `t`.
    */
   appendBar(asset: Asset, bar: Bar): void {
     if (this.mode !== 'streaming') {
@@ -219,12 +223,19 @@ export class FeatureRuntime {
     }
     const buf = this.streamingBars.get(asset.id) ?? [];
     const last = buf[buf.length - 1];
-    if (last !== undefined && bar.t.getTime() <= last.t.getTime()) {
+    if (last !== undefined && bar.t.getTime() < last.t.getTime()) {
       throw new Error(
-        `appendBar: bars must be in ascending t order; got ${bar.t.toISOString()} after ${last.t.toISOString()}`,
+        `appendBar: bars must be in non-decreasing t order; got ${bar.t.toISOString()} after ${last.t.toISOString()}`,
       );
     }
-    buf.push(bar);
+    if (last !== undefined && bar.t.getTime() === last.t.getTime()) {
+      // Same-t mark-to-market wiggle: replace the in-flight bar in place.
+      // Used by `runLive` to update the running OHLC of today's bar on each
+      // tick so feature computation sees the live close.
+      buf[buf.length - 1] = bar;
+    } else {
+      buf.push(bar);
+    }
     this.streamingBars.set(asset.id, buf);
     // Invalidate cached series so next compute rebuilds from updated buffer.
     this.seriesCache.delete(asset.id);

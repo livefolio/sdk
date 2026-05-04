@@ -83,7 +83,7 @@ describe('FeatureRuntime streaming mode', () => {
     expect(runtime).toBeDefined();
   });
 
-  it('appendBar adds bars to the buffer in ascending order', () => {
+  it('appendBar throws when bar.t is strictly less than the buffered tail', () => {
     const runtime = new FeatureRuntime({
       featureCache: new MemoryFeatureCache(),
       mode: 'streaming',
@@ -100,7 +100,34 @@ describe('FeatureRuntime streaming mode', () => {
         close: 99,
         volume: 0,
       }),
-    ).toThrow(/ascending/);
+    ).toThrow(/non-decreasing/);
+  });
+
+  it('appendBar with same-t replaces the buffered tail in place (wiggle)', async () => {
+    const runtime = new FeatureRuntime({
+      featureCache: new MemoryFeatureCache(),
+      mode: 'streaming',
+      freq: '1d',
+    });
+    const t1 = new Date('2024-06-01');
+    const t2 = new Date('2024-06-02');
+    runtime.appendBar(SPY, { t: t1, open: 100, high: 100, low: 100, close: 100, volume: 0 });
+    runtime.appendBar(SPY, { t: t2, open: 101, high: 101, low: 101, close: 101, volume: 0 });
+    // Wiggle the in-flight bar at t2 — same t, updated close.
+    runtime.appendBar(SPY, { t: t2, open: 101, high: 105, low: 100, close: 104, volume: 0 });
+    runtime.appendBar(SPY, { t: t2, open: 101, high: 105, low: 99, close: 103, volume: 0 });
+
+    const bars = runtime.getBars(SPY);
+    expect(bars).toHaveLength(2);
+    expect(bars[1]!.close).toBe(103);
+    expect(bars[1]!.high).toBe(105);
+    expect(bars[1]!.low).toBe(99);
+
+    // SMA(2) over [100, 103] = 101.5. Confirms the cache invalidation path
+    // fires after each replacement so compute reads the wiggled close.
+    const series = await runtime.compute({ kind: 'sma', period: 2 }, SPY);
+    expect(series.length).toBe(1);
+    expect(series[0]!.v).toBe(101.5);
   });
 
   it('compute reads from the in-memory buffer, not dataFeed.bars', async () => {

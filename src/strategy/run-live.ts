@@ -273,6 +273,27 @@ export async function* runLive<F extends Features = Features, S = unknown>(
     // Record the tick into the current session's accumulating bar.
     recordTick(tick.asset, tick.bar);
 
+    // Wiggle: push the in-flight session bar into the streaming runtime so
+    // feature computations see the running close. `runtime.appendBar` allows
+    // same-t replacement, so subsequent ticks within the session overwrite
+    // the in-flight bar in place. Without this step, features would be
+    // pinned to yesterday's close — preview decisions would be stable
+    // through the session and only refresh at session-close finalization,
+    // which contradicts the model that every tick is "as if the session
+    // closed at this price."
+    for (const asset of universe) {
+      const close = currentBarClose.get(asset.id);
+      if (close === undefined) continue;
+      runtime.appendBar(asset, {
+        t: currentSession,
+        open: currentBarOpen.get(asset.id)!,
+        high: currentBarHigh.get(asset.id)!,
+        low: currentBarLow.get(asset.id)!,
+        close,
+        volume: 0,
+      });
+    }
+
     // Preview: snapshot state, recompute features, run build with the snapshot,
     // discard the returned state. Committed `state` is never touched here.
     const prices = new Map(currentBarClose);
