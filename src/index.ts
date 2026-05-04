@@ -38,8 +38,25 @@ export type {
 } from './interfaces';
 
 // Reference implementations
-export { MemoryFeatureCache, BacktestExecutor, RoutingDataFeed, RoutingDataFeedError } from './reference';
-export type { BacktestExecutorOptions, NextOpenFn, RoutingDataFeedRouteFn, RoutingDataFeedRouteMap } from './reference';
+export {
+  MemoryFeatureCache,
+  BacktestExecutor,
+  RoutingDataFeed,
+  RoutingDataFeedError,
+  RoutingStreamingDataFeed,
+  RoutingStreamingDataFeedError,
+  pollingStreamFromHistorical,
+} from './reference';
+export type {
+  BacktestExecutorOptions,
+  NextOpenFn,
+  RoutingDataFeedRouteFn,
+  RoutingDataFeedRouteMap,
+  RoutingStreamingDataFeedRouteFn,
+  RoutingStreamingDataFeedRouteMap,
+  PollingStreamOptions,
+  PollingSchedule,
+} from './reference';
 
 // Calendars (exchange calendar framework)
 export {
