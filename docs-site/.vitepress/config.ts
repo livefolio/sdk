@@ -75,6 +75,7 @@ export default defineConfig({
             { text: 'Mean-reversion with hysteresis', link: '/recipes/mean-reversion' },
             { text: 'Backtest with realistic slippage', link: '/recipes/realistic-slippage' },
             { text: 'Replay-then-stream (live)', link: '/recipes/replay-then-stream' },
+            { text: 'Composing data feeds', link: '/recipes/composing-data-feeds' },
           ],
         },
       ],

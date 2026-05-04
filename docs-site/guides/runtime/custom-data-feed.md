@@ -2,6 +2,21 @@
 
 A `DataFeed` is the source of truth for all price bars, fundamentals, and corporate events consumed by a strategy. The SDK ships without a built-in live data adapter by design — you plug in the data source that suits your deployment, whether that is Yahoo Finance, a broker API, a CSV file, or an in-memory fixture. This page explains the contract, common implementation patterns, and how to wire a custom feed into a real backtest.
 
+## Composing multiple feeds
+
+You don't always have one vendor for everything. A single tactical strategy might pull equity bars from Yahoo, macro time series from FRED, and (eventually) options chains from a third source. The SDK ships a reference [`RoutingDataFeed`](/api/classes/RoutingDataFeed) that dispatches each `bars()` call to the right inner feed based on `asset.kind`:
+
+```ts
+import { RoutingDataFeed } from '@livefolio/sdk';
+
+const feed = new RoutingDataFeed({
+  equity: new YfinanceDataFeed(),
+  macro:  new FredDataFeed({ apiKey: process.env.FRED_API_KEY! }),
+});
+```
+
+`RoutingDataFeed` itself implements `DataFeed`, so the rest of the runtime sees it as a regular feed. See the [Composing data feeds](/recipes/composing-data-feeds) recipe for an end-to-end example with a tactical/v1 spec.
+
 ## Contract
 
 The [`DataFeed`](/api/interfaces/DataFeed) interface has one required method and two optional ones.
