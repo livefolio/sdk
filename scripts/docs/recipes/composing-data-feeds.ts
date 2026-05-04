@@ -172,13 +172,18 @@ const spySessions = result.snapshots.filter((s) =>
   s.portfolio.positions.some((p) => p.asset.id === 'us:SPY' && p.quantity > 0),
 ).length;
 const final = result.snapshots.at(-1);
-const posValue = (final?.portfolio.positions ?? []).reduce((sum, p) => sum + p.quantity * p.basis, 0);
-const nav = (final?.portfolio.cash ?? 0) + posValue;
+// Position.basis is the total cost basis of the position (fill price * shares + fees),
+// not per-share. We sum it to estimate invested capital. This is a cost-basis estimate,
+// not mark-to-market — for an exact NAV the strategy would need to mark each position
+// against the latest available bar.
+const investedBasis = (final?.portfolio.positions ?? []).reduce((sum, p) => sum + p.basis, 0);
+const investedCash = (final?.portfolio.cash ?? 0) + investedBasis;
 
 console.log('=== composing-data-feeds recipe ===');
-console.log(`sessions      : ${sessions}`);
-console.log(`rebalances    : ${rebalances}`);
-console.log(`SPY sessions  : ${spySessions}  (yield <= 4.5% -- risk-on)`);
-console.log(`TLT sessions  : ${tltSessions}  (yield > 4.5% -- defensive)`);
-console.log(`final cash    : $${(final?.portfolio.cash ?? 0).toFixed(2)}`);
-console.log(`est. nav      : $${nav.toFixed(2)}`);
+console.log(`sessions             : ${sessions}`);
+console.log(`rebalances           : ${rebalances}`);
+console.log(`SPY sessions         : ${spySessions}  (yield <= 4.5% -- risk-on)`);
+console.log(`TLT sessions         : ${tltSessions}  (yield > 4.5% -- defensive)`);
+console.log(`final cash           : $${(final?.portfolio.cash ?? 0).toFixed(2)}`);
+console.log(`final position basis : $${investedBasis.toFixed(2)}`);
+console.log(`cash + basis         : $${investedCash.toFixed(2)}`);
