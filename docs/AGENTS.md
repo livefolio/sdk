@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-04-01 | Updated: 2026-05-02 -->
+<!-- Generated: 2026-04-01 | Updated: 2026-05-03 -->
 
 # docs
 
@@ -30,11 +30,17 @@ The v0.4 rollout is structured as numbered phases, each with a spec and a plan i
 - Phase 6 — relocate v0.3 to `parity/src/v3/`, flip `src/index.ts` to v0.4-only
 - Phase 7 — documentation refresh (this round)
 - Phase 8 — comprehensive user wiki / hosted docs site (VitePress + TypeDoc), runnable code samples under `scripts/docs/`, and focused agent skills (`livefolio-tactical-author`, `livefolio-custom-adapter`, optional `livefolio-debug-strategy`). See `specs/2026-05-02-v0.4-phase-8-wiki-docs-design.md` and `plans/2026-05-02-v0.4-phase-8-wiki-docs.md`.
-- Phase 9 (draft) — streaming runtime + live evaluation + chart continuity. Splits `DataFeed` into `HistoricalDataFeed`/`StreamingDataFeed`, adds `runLive`, ships `Crypto24x7Calendar`. See `specs/2026-05-02-v0.4-phase-9-streaming-design.md`. No companion plan yet — design discussion captured, implementation deferred.
+- Phase 9 — streaming runtime + live evaluation + chart continuity. Adds `StreamingDataFeed` as a sibling of `DataFeed` (not a union), `runLive`, mark/snapshot `LiveEvent`, the strategy state API, and `Crypto24x7Calendar`. See `specs/2026-05-02-v0.4-phase-9-streaming-design.md` and `plans/2026-05-03-v0.4-phase-9-streaming.md` (all 10 tasks shipped).
 
 `specs/2026-05-02-v0.4-parity-divergences.md` codifies the structural allowances the parity gate accepts.
 
 `plans/2026-05-02-calendars-module.md` (companion spec `specs/2026-05-02-calendars-module-design.md`) — multi-exchange calendar framework: `ExchangeCalendar` base + `NYSEExchangeCalendar` + `LSEExchangeCalendar`. Supersedes the deferred `plans/2026-05-02-nyse-calendar.md` brainstorm.
+
+### Follow-up specs (post-Phase-9)
+
+- `specs/2026-05-03-v0.4-routing-data-feed-design.md` + `plans/2026-05-03-v0.4-routing-data-feed.md` — `RoutingDataFeed` reference impl for composing multiple historical feeds (Yahoo equity + FRED macro) behind a single `DataFeed`. Promotes `Asset` to a discriminated union (`EquityAsset | MacroAsset`).
+- `specs/2026-05-03-routing-data-feed-recipe-design.md` + `plans/2026-05-03-routing-data-feed-recipe.md` — docs-site recipe (`Composing data feeds`) and the `tactical/v1` macro-asset support that recipe relies on.
+- `specs/2026-05-03-routing-streaming-and-polling-design.md` + `plans/2026-05-03-routing-streaming-and-polling.md` — live-side counterpart: `RoutingStreamingDataFeed` (sibling of `RoutingDataFeed`) and `pollingStreamFromHistorical` (generic adapter that wraps a `DataFeed` as a `StreamingDataFeed` via scheduled REST polls). Targets the equity-push + macro-poll mix that motivated `RoutingDataFeed` in the first place.
 
 ## For AI Agents
 
