@@ -43,7 +43,7 @@ TypeScript SDK for building tactical allocation strategies. Strategies are decla
 - **Spec-driven strategies**: `TacticalSpec` is plain data. `tactical.fromSpec(spec, { runtime, calendar })` hydrates it into a `Strategy<F, S>` that `runBacktest` can drive
 - **Pluggable runtime layers**: `DataFeed`, `StreamingDataFeed`, `Executor`, `Calendar`, `FeatureCache` are interfaces. Reference impls ship; consumers swap any layer (e.g. `LiveBrokerExecutor`, a WebSocket `StreamingDataFeed`) without touching strategy code
 - **Content-addressed feature cache**: indicator results are keyed by `(feature spec, asset, date)`. `MemoryFeatureCache` is the in-process default; cross-process caches plug in by implementing the interface
-- **Replay-then-stream**: `runBacktest` returns `{ snapshots, finalPortfolio, finalState, bars }`; `runLive(result, { strategy, calendar, executor, streamingDataFeed, ... })` continues from there, emitting `LiveEvent<mark | snapshot>` per tick / per session-close. For `fromSpec` strategies, share a `streamingRuntime: FeatureRuntime` between `fromSpec` and `runLive` so the captured runtime sees streaming bars (see `docs-site/recipes/replay-then-stream.md`)
+- **Replay-then-stream**: `runBacktest` returns `{ snapshots, finalPortfolio, finalState, bars }`; `runLive({ strategy, history: result, dataFeed, executor, calendar, streamingRuntime? })` continues from there, emitting `LiveEvent<mark | snapshot>` per tick / per session-close. (Single options object, not positional — `dataFeed` is the `StreamingDataFeed`.) For `fromSpec` strategies, share a `streamingRuntime: FeatureRuntime` between `fromSpec` and `runLive` so the captured runtime sees streaming bars (see `docs-site/recipes/replay-then-stream.md`).
 
 ## Dependencies
 
