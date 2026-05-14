@@ -9,7 +9,8 @@ coverage
 .omc
 .railguard
 .vscode
-.claude
+.claude/*
+!.claude/skills/
 
 # VitePress + TypeDoc generated output
 docs-site/.vitepress/cache
