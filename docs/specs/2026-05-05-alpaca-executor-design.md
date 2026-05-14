@@ -171,6 +171,8 @@ export type AlpacaExecutorOptions = {
    * Type matches the standard fetch signature.
    */
   fetchImpl?: typeof fetch;
+  /** Per-order error callback (skip-and-continue semantics). Auth/network errors still abort. */
+  onOrderError?: (err: AlpacaExecutorError, order: Order) => void;
 };
 
 export class AlpacaExecutor implements Executor {
@@ -192,7 +194,8 @@ export class AlpacaExecutorError extends Error {
     | 'poll_timeout'
     | 'rate_limited'
     | 'http_error'
-    | 'network_error';
+    | 'network_error'
+    | 'unsupported_asset';
   readonly orderRef?: string;
   readonly httpStatus?: number;
   readonly cause?: unknown;
@@ -361,7 +364,7 @@ Mock `fetchImpl`. Cover:
 - Poll timeout on stuck `new` → throws `poll_timeout`, DELETE issued.
 - `paper: false` constructor → URLs flip to live endpoints. (Verify via mock; never actually hit live.)
 
-### Integration test (`alpaca-executor.live.test.ts`)
+### Integration test (`integration.test.ts`)
 
 Skipped unless `ALPACA_PAPER_KEY_ID` and `ALPACA_PAPER_SECRET_KEY` env vars are set. Hits Alpaca's paper endpoint:
 
