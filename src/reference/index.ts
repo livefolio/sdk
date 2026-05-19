@@ -5,5 +5,7 @@ export { RoutingDataFeed, RoutingDataFeedError } from './routing-data-feed';
 export type { RoutingDataFeedRouteFn, RoutingDataFeedRouteMap } from './routing-data-feed';
 export { RoutingStreamingDataFeed, RoutingStreamingDataFeedError } from './routing-streaming-data-feed';
 export type { RoutingStreamingDataFeedRouteFn, RoutingStreamingDataFeedRouteMap } from './routing-streaming-data-feed';
+export { RoutingQuoteFeed, RoutingQuoteFeedError } from './routing-quote-feed';
+export type { RoutingQuoteFeedRouteFn, RoutingQuoteFeedRouteMap } from './routing-quote-feed';
 export { pollingStreamFromHistorical } from './polling-stream-from-historical';
 export type { PollingStreamOptions, PollingSchedule } from './polling-stream-from-historical';

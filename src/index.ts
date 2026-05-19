@@ -47,6 +47,8 @@ export {
   RoutingDataFeedError,
   RoutingStreamingDataFeed,
   RoutingStreamingDataFeedError,
+  RoutingQuoteFeed,
+  RoutingQuoteFeedError,
   pollingStreamFromHistorical,
 } from './reference';
 export type {
@@ -56,6 +58,8 @@ export type {
   RoutingDataFeedRouteMap,
   RoutingStreamingDataFeedRouteFn,
   RoutingStreamingDataFeedRouteMap,
+  RoutingQuoteFeedRouteFn,
+  RoutingQuoteFeedRouteMap,
   PollingStreamOptions,
   PollingSchedule,
 } from './reference';

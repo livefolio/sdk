@@ -13,6 +13,7 @@ Reference implementations of the runtime interfaces declared in `src/interfaces/
 | `backtest-executor.ts` | `BacktestExecutor implements Executor` — fills orders at next-open price, tracks cash/positions, no slippage or fees |
 | `routing-data-feed.ts` | `RoutingDataFeed implements DataFeed` — dispatches calls to inner feeds by `asset.kind` (map form) or routing function. Pairs with `RoutingDataFeedError` |
 | `routing-streaming-data-feed.ts` | `RoutingStreamingDataFeed implements StreamingDataFeed` — sibling of `RoutingDataFeed`; merges per-route subscriptions via k-way async merge |
+| `routing-quote-feed.ts` | `RoutingQuoteFeed implements QuoteFeed` — third sibling router. `quote()` is direct dispatch; `quoteBatch()` groups by route, dispatches per-bucket in parallel (falls back to per-asset `quote` when an inner feed lacks `quoteBatch`), re-collects preserving request order. Pairs with `RoutingQuoteFeedError` |
 | `polling-stream-from-historical.ts` | `pollingStreamFromHistorical(opts)` — wraps a `DataFeed` as a `StreamingDataFeed` via scheduled REST polls + per-asset `lastSeenT` dedup |
 | `index.ts` | Barrel |
 
