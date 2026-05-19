@@ -28,6 +28,8 @@ export type {
   DataEvent,
   StreamingDataFeed,
   StreamingBar,
+  QuoteFeed,
+  Quote,
   Executor,
   Calendar,
   Session,
