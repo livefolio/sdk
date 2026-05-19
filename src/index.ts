@@ -80,6 +80,7 @@ export {
   evaluateRuleTree,
   evaluateFeatureSpecs,
   withSynthetics,
+  withStreamingSynthetics,
   isRebalanceDay,
   periodKey,
 } from './tactical';
@@ -101,6 +102,7 @@ export type {
   RebalanceFrequency,
   SyntheticAsset,
   AssetRef,
+  WithStreamingSyntheticsOptions,
 } from './tactical';
 export * as tactical from './tactical';
 
