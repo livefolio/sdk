@@ -16,5 +16,6 @@
       "@livefolio/alpaca": ["../alpaca/src/index.ts"]
     }
   },
-  "include": ["./**/*.ts"]
+  "include": ["./**/*.ts"],
+  "exclude": ["./replay-then-stream-alpaca.ts"]
 }
