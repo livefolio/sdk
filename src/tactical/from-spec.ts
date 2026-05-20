@@ -159,6 +159,13 @@ export function fromSpec(spec: TacticalSpec, opts: FromSpecOptions): Strategy<Ta
   }
   validateSynthetics(spec);
   const universe: ReadonlyArray<Asset> = spec.universe.map(resolveAssetRef);
+  const assetsById = new Map<AssetId, Asset>();
+  for (const a of universe) assetsById.set(a.id, a);
+  for (const s of spec.synthetics ?? []) {
+    if (!assetsById.has(s.id)) {
+      assetsById.set(s.id, { kind: 'equity', id: s.id, symbol: s.symbol });
+    }
+  }
   const { runtime, calendar } = opts;
   const cadence: RebalanceFrequency = spec.rebalance?.frequency ?? 'Daily';
 
@@ -208,7 +215,7 @@ export function fromSpec(spec: TacticalSpec, opts: FromSpecOptions): Strategy<Ta
         }
       }
       return {
-        orders: reconcile(evaluated.weights, portfolio, features.prices),
+        orders: reconcile(evaluated.weights, portfolio, features.prices, assetsById),
         state: evaluated.state,
       };
     },

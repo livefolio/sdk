@@ -38,6 +38,11 @@ export type PriceMap = ReadonlyMap<AssetId, number>;
  *   value and existing share counts.
  * @param prices - Current prices for all assets that appear in `targets` or are
  *   currently held. Throws `Error` if a target asset is missing from this map.
+ * @param assets - Optional canonical {@link Asset} metadata keyed by id. When
+ *   `reconcile` needs to emit an order for an asset that is not yet held in the
+ *   portfolio, it consults this map for the proper `symbol`/`kind`. If the
+ *   asset is missing here too, the order falls back to a synthesized
+ *   `{ kind: 'equity', id, symbol: id }` — lossless but display-unfriendly.
  * @returns A readonly array of `RebalanceOrder` objects. The array may be empty
  *   if the portfolio is already at the target allocation. Order IDs are
  *   deterministic within a single call (`rebal_<assetId>_<counter>`).
@@ -68,6 +73,7 @@ export function reconcile(
   targets: TargetWeights,
   portfolio: Portfolio,
   prices: PriceMap,
+  assets?: ReadonlyMap<AssetId, Asset>,
 ): ReadonlyArray<RebalanceOrder> {
   const longByAsset = new Map<AssetId, { asset: Asset; quantity: number }>();
   for (const p of portfolio.positions) {
@@ -100,11 +106,12 @@ export function reconcile(
     const delta = targetShares - currentShares;
     seen.add(assetId);
     if (delta !== 0) {
-      const asset: Asset = held?.asset ?? {
-        kind: 'equity',
-        id: assetId,
-        symbol: assetId.split(':').pop() ?? assetId,
-      };
+      const asset: Asset = held?.asset ??
+        assets?.get(assetId) ?? {
+          kind: 'equity',
+          id: assetId,
+          symbol: assetId,
+        };
       orders.push({ id: nextId(assetId), kind: 'rebalance', asset, delta });
     }
   }
