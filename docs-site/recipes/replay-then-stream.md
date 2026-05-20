@@ -200,6 +200,56 @@ const calendar = new Crypto24x7Calendar();
 // Session boundaries fire at UTC midnight every calendar day.
 ```
 
+## Live execution with Alpaca paper
+
+The sections above show the wiring pattern with generic interfaces. This section
+shows the same pipeline end-to-end against **Alpaca paper trading**, wiring all
+three classes from [`@livefolio/alpaca`](https://github.com/livefolio/alpaca):
+`AlpacaDataFeed` for historical bars, `AlpacaStreamingDataFeed` for live ticks,
+and `AlpacaExecutor` for order routing — all pointed at the paper environment.
+
+```ts
+import { fromSpec, runBacktest, runLive, FeatureRuntime, MemoryFeatureCache, NYSEExchangeCalendar } from '@livefolio/sdk';
+import { AlpacaDataFeed, AlpacaStreamingDataFeed, AlpacaExecutor } from '@livefolio/alpaca';
+
+const calendar = new NYSEExchangeCalendar();
+
+// Historical leg: AlpacaDataFeed fetches bars from Alpaca REST and caches them in-process.
+const historicalFeed = new AlpacaDataFeed({ keyId: KEY_ID, secretKey: SECRET_KEY, paper: true });
+// Live leg: AlpacaStreamingDataFeed subscribes to Alpaca's WebSocket trade stream.
+const streamingFeed = new AlpacaStreamingDataFeed({ keyId: KEY_ID, secretKey: SECRET_KEY });
+// Execution leg: AlpacaExecutor submits market orders to paper and polls for fills.
+const executor = new AlpacaExecutor({ keyId: KEY_ID, secretKey: SECRET_KEY, paper: true });
+
+const history = await runBacktest({ strategy: historicalStrategy, range, ... });
+
+// Seed the streaming runtime from history.bars so SMA warmup works on tick 1.
+const streamingRuntime = new FeatureRuntime({
+  mode: 'streaming', featureCache: new MemoryFeatureCache(),
+  freq: '1d', initialBars: history.bars,
+});
+const liveStrategy = fromSpec(spec, { runtime: streamingRuntime, calendar });
+
+for await (const event of runLive({
+  strategy: liveStrategy,
+  history,
+  dataFeed: streamingFeed,   // AlpacaStreamingDataFeed
+  executor,                  // AlpacaExecutor
+  calendar,
+  streamingRuntime,          // share with fromSpec — keeps bar buffer in sync
+})) {
+  if (event.type === 'mark') { /* intra-session tick */ }
+  else { /* session closed, orders settled */ }
+}
+```
+
+For the complete, compile-checked version with a full `TacticalSpec` and
+`runBacktest` setup, see
+[`scripts/docs/replay-then-stream-alpaca.ts`](https://github.com/livefolio/sdk/blob/main/scripts/docs/replay-then-stream-alpaca.ts).
+Set `ALPACA_PAPER_KEY_ID` and `ALPACA_PAPER_SECRET_KEY` to run it against a
+real paper account; without them the script throws at construction time (by
+design — missing credentials are a programmer error, not a silent no-op).
+
 ## See also
 
 - [Composing streaming data feeds](/recipes/composing-streaming-data-feeds) — extend the live runtime to multi-vendor (equity push + macro polling)

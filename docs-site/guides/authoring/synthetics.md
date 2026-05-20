@@ -107,8 +107,47 @@ The sample below defines an SSO synthetic (2× SPY, 0.91 % expense), runs a full
 
 ---
 
+## Live streaming with `withStreamingSynthetics`
+
+`withSynthetics` only knows about the historical `DataFeed.bars()` path. A real `StreamingDataFeed` will not recognise a synthetic id like `us:SSO`, so under a naive `runLive` setup the streaming `FeatureRuntime` never receives an `appendBar` for the synthetic — every indicator that reads from its series stays frozen at the last historical close.
+
+`withStreamingSynthetics` is the streaming counterpart: it wraps a `StreamingDataFeed`, subscribes upstream to each synthetic's `underlying`, and re-emits a synthesised tick on the synthetic's id using the same `(1 + leverage × r) × (1 − expense/252)` formula. The two wrappers share a single helper internally so the live path cannot drift from the historical one.
+
+```ts
+import { withSynthetics, withStreamingSynthetics, runBacktest, runLive } from '@livefolio/sdk';
+import type { AssetId } from '@livefolio/sdk';
+
+const histFeed   = withSynthetics(rawHistoricalFeed, spec.synthetics ?? []);
+const history    = await runBacktest({ strategy, dataFeed: histFeed, executor, calendar, range, freq: '1d' });
+
+// Build the seed map from the historical result so the first live tick of the
+// synthetic continues smoothly from where the backtest left off — without a
+// seed, the first synthesised tick would land on the underlying's price and
+// produce a visible jump on the chart.
+const seedLastCloses = new Map<AssetId, number>();
+for (const [id, bars] of history.bars) {
+  const last = bars.at(-1)?.close;
+  if (last !== undefined) seedLastCloses.set(id, last);
+}
+
+const liveFeed = withStreamingSynthetics(rawStreamingFeed, spec.synthetics ?? [], { seedLastCloses });
+
+for await (const event of runLive({ strategy, history, dataFeed: liveFeed, executor, calendar })) {
+  // each tick on `us:SPY` now produces a synthesised tick on `us:SSO` too.
+}
+```
+
+A few details worth knowing:
+
+- Underlyings the caller did not explicitly subscribe to are subscribed silently — only the synthesised ticks are yielded back.
+- Underlyings the caller _did_ subscribe to pass through unchanged in addition to producing synthetics.
+- Without a seed entry for a synthetic, the wrapper cold-starts that synthetic at the underlying's first tick (matching how `withSynthetics` anchors the first historical bar). Seeding is what avoids the live jump.
+- See **[Replay-then-stream](/recipes/replay-then-stream)** for the broader pattern of carrying state from backtest into live.
+
+---
+
 ## What's next
 
 - **[Rule trees](/guides/authoring/rule-trees)** — use synthetic feature values in comparisons (e.g. compare the synthetic's RSI against the underlying's RSI).
 - **[Anatomy of a TacticalSpec](/guides/authoring/anatomy-of-a-tactical-spec)** — `synthetics` field in context.
-- **API:** [`SyntheticAsset`](/api/type-aliases/SyntheticAsset), [`withSynthetics`](/api/functions/withSynthetics)
+- **API:** [`SyntheticAsset`](/api/type-aliases/SyntheticAsset), [`withSynthetics`](/api/functions/withSynthetics), [`withStreamingSynthetics`](/api/functions/withStreamingSynthetics)

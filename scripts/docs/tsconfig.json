@@ -12,8 +12,10 @@
     "baseUrl": "../..",
     "paths": {
       "@livefolio/sdk": ["src/index.ts"],
-      "@livefolio/sdk/*": ["src/*"]
+      "@livefolio/sdk/*": ["src/*"],
+      "@livefolio/alpaca": ["../alpaca/src/index.ts"]
     }
   },
-  "include": ["./**/*.ts"]
+  "include": ["./**/*.ts"],
+  "exclude": ["./replay-then-stream-alpaca.ts"]
 }

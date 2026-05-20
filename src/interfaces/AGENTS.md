@@ -12,6 +12,7 @@ The v0.4 type surface. Pure type-only declarations — no runtime code. Defines 
 | `types.ts` | Primitive types: `Asset`, `AssetId`, `Bar`, `DateRange`, `Frequency`, `Series` |
 | `data-feed.ts` | `DataFeed` interface (`bars(asset, range, freq) → AsyncIterable<Bar>`); also `Fundamentals`, `EventKind`, `DataEvent` for richer feeds |
 | `streaming-data-feed.ts` | `StreamingDataFeed` interface (`subscribe(assets) → AsyncIterable<StreamingBar>`) — sibling to `DataFeed`, purely additive (no union, no shared type with `DataFeed`). Consumed by `runLive`; aggregation/session boundaries are runtime concerns owned by `Calendar`, not the feed |
+| `quote-feed.ts` | `QuoteFeed` interface (`quote(asset) → Promise<Quote>`, optional `quoteBatch`) — sibling to `DataFeed` and `StreamingDataFeed`. Covers one-shot pull quotes (UI refresh, pre-trade sizing, ad-hoc CLI). Not consumed by `runBacktest` / `runLive`; app-side seam |
 | `executor.ts` | `Executor` interface (`submit(orders, t, portfolio) → Fill[]`) |
 | `calendar.ts` | `Calendar` interface (`isOpen`, `next`, `previous`, `sessions`) |
 | `feature-cache.ts` | `FeatureCache` interface plus `FeatureKey`, `FeatureScope` |
@@ -29,4 +30,4 @@ The v0.4 type surface. Pure type-only declarations — no runtime code. Defines 
 - Interfaces use `readonly` aggressively; mutability is opt-in
 - `AsyncIterable` for `DataFeed.bars` (bounded, lazy) and `StreamingDataFeed.subscribe` (open-ended, push-shaped); the runtime treats `for await` over `subscribe` as the live loop
 - `Frequency = '1m' | '5m' | '15m' | '1h' | '1d'` — most strategies use `'1d'`; subdaily values exist in the type but reference impls today only handle daily
-- `StreamingDataFeed` is intentionally NOT a union with `DataFeed` and has NO backward-compat alias — additive sibling interface
+- `DataFeed`, `StreamingDataFeed`, and `QuoteFeed` are sibling interfaces — NOT a union, NO composition helper, NO backward-compat aliases. Vendors implement whichever subset matches their surface; combined vendors (Alpaca, Polygon) implement all three on one class

@@ -17,7 +17,7 @@ export type {
 } from './types';
 export { evaluateRuleTree } from './evaluate-rule-tree';
 export { evaluateFeatureSpecs } from './evaluate-feature-specs';
-export { withSynthetics } from './synthetics';
+export { withSynthetics, withStreamingSynthetics, type WithStreamingSyntheticsOptions } from './synthetics';
 export {
   fromSpec,
   isRebalanceDay,

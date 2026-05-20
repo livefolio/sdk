@@ -28,6 +28,8 @@ export type {
   DataEvent,
   StreamingDataFeed,
   StreamingBar,
+  QuoteFeed,
+  Quote,
   Executor,
   Calendar,
   Session,
@@ -45,6 +47,8 @@ export {
   RoutingDataFeedError,
   RoutingStreamingDataFeed,
   RoutingStreamingDataFeedError,
+  RoutingQuoteFeed,
+  RoutingQuoteFeedError,
   pollingStreamFromHistorical,
 } from './reference';
 export type {
@@ -54,6 +58,8 @@ export type {
   RoutingDataFeedRouteMap,
   RoutingStreamingDataFeedRouteFn,
   RoutingStreamingDataFeedRouteMap,
+  RoutingQuoteFeedRouteFn,
+  RoutingQuoteFeedRouteMap,
   PollingStreamOptions,
   PollingSchedule,
 } from './reference';
@@ -74,6 +80,7 @@ export {
   evaluateRuleTree,
   evaluateFeatureSpecs,
   withSynthetics,
+  withStreamingSynthetics,
   isRebalanceDay,
   periodKey,
 } from './tactical';
@@ -95,6 +102,7 @@ export type {
   RebalanceFrequency,
   SyntheticAsset,
   AssetRef,
+  WithStreamingSyntheticsOptions,
 } from './tactical';
 export * as tactical from './tactical';
 
