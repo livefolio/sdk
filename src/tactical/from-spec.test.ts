@@ -67,6 +67,29 @@ describe('fromSpec', () => {
     expect(orders[0]!.kind).toBe('rebalance');
   });
 
+  it('preserves canonical asset symbols on fabricated rebalance orders for namespaced ids (#33)', async () => {
+    const spec: TacticalSpec = {
+      kind: 'tactical/v1',
+      universe: [
+        { id: 'QQQ:L2', symbol: 'QQQ2X' },
+        { id: 'GLD:L2', symbol: 'GLD2X' },
+      ],
+      features: [],
+      rules: { op: 'allocate', weights: { 'QQQ:L2': 0.5, 'GLD:L2': 0.5 } },
+    };
+    const { feed } = feedFor([100, 101, 102, 103, 104]);
+    const runtime = new FeatureRuntime({ dataFeed: feed, featureCache: new MemoryFeatureCache(), range, freq: '1d' });
+    const strategy = fromSpec(spec, { runtime, calendar });
+    const t = utc('2026-01-09');
+    const features = await strategy.features(strategy.universe(t, initialPortfolio), initialPortfolio, t);
+    const { orders } = strategy.build(features, initialPortfolio, strategy.initialState!(), t);
+    const symbolById = Object.fromEntries(
+      orders.filter((o) => o.kind === 'rebalance').map((o) => [o.asset.id, o.asset.symbol]),
+    );
+    expect(symbolById['QQQ:L2']).toBe('QQQ2X');
+    expect(symbolById['GLD:L2']).toBe('GLD2X');
+  });
+
   it('warmup → no orders', async () => {
     const { feed } = feedFor([100, 101, 102, 103, 104]);
     const runtime = new FeatureRuntime({ dataFeed: feed, featureCache: new MemoryFeatureCache(), range, freq: '1d' });

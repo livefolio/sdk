@@ -72,4 +72,44 @@ describe('reconcile', () => {
   it('throws when a target lacks a price', () => {
     expect(() => reconcile(new Map([['us:SPY', 1]]), cashOnly(1000), new Map())).toThrow(/price/);
   });
+
+  it('uses the assetId as the symbol when fabricating an Asset without an assets map', () => {
+    const orders = reconcile(
+      new Map([
+        ['QQQ:L2', 0.5],
+        ['GLD:L2', 0.5],
+      ]),
+      cashOnly(10_000),
+      new Map([
+        ['QQQ:L2', 1620.56],
+        ['GLD:L2', 1878.34],
+      ]),
+    );
+    const symbolById = Object.fromEntries(orders.map((o) => [o.asset.id, o.asset.symbol]));
+    expect(symbolById['QQQ:L2']).toBe('QQQ:L2');
+    expect(symbolById['GLD:L2']).toBe('GLD:L2');
+  });
+
+  it('looks up the canonical symbol from the assets map for never-held ids', () => {
+    const QQQ_L2: Asset = { kind: 'equity', id: 'QQQ:L2', symbol: 'QQQ2X' };
+    const GLD_L2: Asset = { kind: 'equity', id: 'GLD:L2', symbol: 'GLD2X' };
+    const orders = reconcile(
+      new Map([
+        ['QQQ:L2', 0.5],
+        ['GLD:L2', 0.5],
+      ]),
+      cashOnly(10_000),
+      new Map([
+        ['QQQ:L2', 1620.56],
+        ['GLD:L2', 1878.34],
+      ]),
+      new Map([
+        [QQQ_L2.id, QQQ_L2],
+        [GLD_L2.id, GLD_L2],
+      ]),
+    );
+    const symbolById = Object.fromEntries(orders.map((o) => [o.asset.id, o.asset.symbol]));
+    expect(symbolById['QQQ:L2']).toBe('QQQ2X');
+    expect(symbolById['GLD:L2']).toBe('GLD2X');
+  });
 });
