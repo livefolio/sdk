@@ -90,6 +90,42 @@ describe('reconcile', () => {
     expect(symbolById['GLD:L2']).toBe('GLD:L2');
   });
 
+  // Regression for #37: a held leveraged-synthetic position priced negatively
+  // (a pathology of `prevSynthClose * (1 + leverage * r)` when underlying
+  // drops below -1/leverage in a single bar) used to drag `totalValue`
+  // below zero, producing a spurious negative `targetShares` for any
+  // positive-weight target — and a rebalance-reduce order on assets not
+  // currently held. `reconcile` now clamps `targetShares` at 0.
+  it('clamps targetShares at 0 when totalValue is negative (long-only invariant)', () => {
+    const NVDA_L3: Asset = { kind: 'equity', id: 'NVDA:L3', symbol: 'NVDA3X' };
+    const CASHX: Asset = { kind: 'equity', id: 'CASHX', symbol: 'CASHX' };
+    const portfolio: Portfolio = {
+      cash: 100,
+      t: T,
+      positions: [
+        {
+          id: 'p1',
+          asset: NVDA_L3,
+          side: 'long',
+          quantity: 100,
+          entry: { date: T, price: 10 },
+          basis: 1000,
+        },
+      ],
+    };
+    const orders = reconcile(
+      new Map([['CASHX', 1]]),
+      portfolio,
+      new Map([
+        ['NVDA:L3', -5],
+        ['CASHX', 100],
+      ]),
+      new Map([[CASHX.id, CASHX]]),
+    );
+    const cashxOrder = orders.find((o) => o.asset.id === 'CASHX');
+    if (cashxOrder) expect(cashxOrder.delta).toBeGreaterThanOrEqual(0);
+  });
+
   it('looks up the canonical symbol from the assets map for never-held ids', () => {
     const QQQ_L2: Asset = { kind: 'equity', id: 'QQQ:L2', symbol: 'QQQ2X' };
     const GLD_L2: Asset = { kind: 'equity', id: 'GLD:L2', symbol: 'GLD2X' };

@@ -21,7 +21,10 @@ function findOrder(orders: ReadonlyArray<Order>, id: string): Order | undefined 
  * - `'close'`     — removes shares from an existing position and credits cash.
  * - `'adjust'`    — updates the position's `quantity`; only fees are debited.
  * - `'rebalance'` — buys or sells shares in the long position for `asset`;
- *                   creates or removes the position as needed.
+ *                   creates the position on a positive `delta`, removes it
+ *                   when fully reduced. A reduce against a non-existent
+ *                   long position is silently ignored (matching the same
+ *                   case in {@link applyOrders}).
  *
  * The returned `portfolio.t` is updated to the maximum fill timestamp.
  *
@@ -122,10 +125,7 @@ export function applyFills(portfolio: Portfolio, fills: ReadonlyArray<Fill>, ord
               basis: prev.basis + cost,
             };
           }
-        } else {
-          if (idx < 0) {
-            throw new Error(`applyFills: rebalance reduce on ${order.asset.id} but no long position exists`);
-          }
+        } else if (idx >= 0) {
           const prev = positions[idx]!;
           cash += fill.quantity * fill.price - fill.fees;
           const remaining = prev.quantity - fill.quantity;
@@ -140,6 +140,12 @@ export function applyFills(portfolio: Portfolio, fills: ReadonlyArray<Fill>, ord
             };
           }
         }
+        // No-op when reducing a non-existent long position. This matches the
+        // contract of `applyOrders` (same case in the structural projection
+        // also no-ops) and avoids destabilising a backtest on a stray reduce.
+        // The defence in depth here pairs with the `targetShares` clamp in
+        // `reconcile`, which is the primary path that previously produced
+        // such reduces. See #37.
         break;
       }
     }

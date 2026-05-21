@@ -100,7 +100,14 @@ export function reconcile(
     if (price === undefined) {
       throw new Error(`reconcile: missing price for target asset ${assetId}`);
     }
-    const targetShares = Math.floor((totalValue * weight) / price);
+    // Clamp at 0: long-only reconcile must never emit a negative target.
+    // A negative `targetShares` can otherwise arise when `totalValue` goes
+    // below zero (e.g. a held leveraged-synthetic position takes a negative
+    // close price after an extreme single-bar underlying move, where
+    // `1 + leverage * r < 0`). Without this clamp, the resulting negative
+    // `delta` on a non-held target produces a rebalance-reduce order with
+    // no position to reduce, which `applyFills` then rejects. See #37.
+    const targetShares = Math.max(0, Math.floor((totalValue * weight) / price));
     const held = longByAsset.get(assetId);
     const currentShares = held?.quantity ?? 0;
     const delta = targetShares - currentShares;
