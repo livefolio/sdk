@@ -68,6 +68,18 @@ describe('applyFills', () => {
     expect(next.positions[0]!.quantity).toBe(7);
   });
 
+  // Regression for #37: a stray rebalance-reduce on an asset with no long
+  // position used to hard-throw; the contract now matches `applyOrders` and
+  // no-ops, since `reconcile` clamps `targetShares` at 0 to prevent the bad
+  // order from being generated in the first place.
+  it('silently ignores a negative RebalanceOrder when no long position exists', () => {
+    const order: Order = { id: 'r1', kind: 'rebalance', asset: SPY, delta: -5 };
+    const fill: Fill = { orderRef: 'r1', t: T1, quantity: 5, price: 400, fees: 0 };
+    const next = applyFills(empty, [fill], [order]);
+    expect(next.positions).toHaveLength(0);
+    expect(next.cash).toBe(10_000);
+  });
+
   it('throws when a fill references no known order', () => {
     expect(() => applyFills(empty, [{ orderRef: 'unknown', t: T1, quantity: 1, price: 1, fees: 0 }], [])).toThrow(
       /orderRef/,
