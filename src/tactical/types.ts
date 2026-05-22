@@ -140,16 +140,28 @@ export type FeatureRef = { ref: string };
  * - `'lt'`  — strictly less than (`l < r`)
  * - `'gte'` — greater than or equal to (`l >= r`)
  * - `'lte'` — less than or equal to (`l <= r`)
- * - `'eq'`  — strict equality (`l === r`); no epsilon. Intended for comparing
- *   integer-valued features (e.g. calendar features like `dayOfWeek`) against
- *   integer literals. Not compatible with {@link Tolerance}.
+ * - `'eq'`  — equality. Without {@link Tolerance}, this is strict `l === r`
+ *   (no epsilon) — intended for comparing integer-valued features (e.g.
+ *   calendar features like `dayOfWeek`) against integer literals. With
+ *   {@link Tolerance}, this is "within the symmetric band around `r`" —
+ *   `true` while `l ∈ [r − tol, r + tol]`, `false` outside. State is still
+ *   persisted via {@link RuleTreeState} but, because entry and exit share
+ *   the same band edges, the per-step result is effectively stateless.
  */
 export type ComparisonOp = 'gt' | 'lt' | 'gte' | 'lte' | 'eq';
 
 /**
- * Hysteresis band applied to a {@link Comparison} with `op: 'gt'` or `op: 'lt'`.
- * Once the comparison has flipped, it will not flip back until the left operand
- * exits the tolerance band around the right operand.
+ * Tolerance band applied to a {@link Comparison} with `op: 'gt'`, `op: 'lt'`,
+ * or `op: 'eq'`.
+ *
+ * For `gt` / `lt`, the band implements **hysteresis**: once the comparison
+ * has flipped, it will not flip back until the left operand exits the band
+ * around the right operand. Entry and exit thresholds differ.
+ *
+ * For `eq`, the band defines a **symmetric range** around `right`: the
+ * comparison is `true` while `l ∈ [r − value, r + value]`. Entry and exit
+ * share the same edges, so behavior is stateless in practice even though the
+ * outcome is still recorded in {@link RuleTreeState}.
  *
  * `mode: 'absolute'` defines a ±`value` band around `right`.
  * `mode: 'relative'` defines a ±`value`% band (i.e. `value` is a percentage).
@@ -158,7 +170,7 @@ export type ComparisonOp = 'gt' | 'lt' | 'gte' | 'lte' | 'eq';
  * so the runtime can persist the last-known state across rebalance periods.
  */
 export type Tolerance = {
-  /** Half-width of the hysteresis band. */
+  /** Half-width of the band. */
   value: number;
   /** `'absolute'` uses raw units; `'relative'` uses a percentage of `right`. */
   mode: 'absolute' | 'relative';
@@ -194,8 +206,9 @@ export type Comparison = {
   /** Right-hand operand — a feature reference or a literal number. */
   right: FeatureRef | number;
   /**
-   * Optional hysteresis band. Requires `op` to be `'gt'` or `'lt'` and
-   * requires `id` to be set.
+   * Optional tolerance band. Requires `op` to be `'gt'`, `'lt'`, or `'eq'`,
+   * and requires `id` to be set. For `gt`/`lt` the band implements
+   * hysteresis; for `eq` it defines a symmetric range around `right`.
    */
   tolerance?: Tolerance;
   /**

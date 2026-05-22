@@ -246,8 +246,56 @@ describe('evaluateRuleTree (tolerant / hysteresis)', () => {
     expect(() => evaluateRuleTree(rule, new Map([['a', 1]]))).toThrow(/tolerance requires id/);
   });
 
-  it('throws on tolerance with gte/lte/eq', () => {
-    const mk = (op: 'gte' | 'lte' | 'eq'): RuleNode => ({
+  describe('eq with tolerance (symmetric band)', () => {
+    const tolEq = (cmpId: string, value: number, mode: 'absolute' | 'relative', right: number): RuleNode => ({
+      op: 'if',
+      cond: {
+        op: 'eq',
+        left: { ref: 'x' },
+        right,
+        tolerance: { value, mode },
+        id: cmpId,
+      },
+      then: allocate({ 'us:X': 1 }),
+      else: allocate({}),
+    });
+
+    it('is true inside the absolute band, false outside, inclusive at edges', () => {
+      const rule = tolEq('px_near_100', 5, 'absolute', 100);
+      const at = (x: number) => evaluateRuleTree(rule, new Map([['x', x]])).weights.has('us:X');
+      expect(at(100)).toBe(true);
+      expect(at(95)).toBe(true);
+      expect(at(105)).toBe(true);
+      expect(at(94.999)).toBe(false);
+      expect(at(105.001)).toBe(false);
+    });
+
+    it('records the outcome bit in state (1 inside, 0 outside)', () => {
+      const rule = tolEq('px_near_100', 5, 'absolute', 100);
+      expect(evaluateRuleTree(rule, new Map([['x', 100]])).state.get('px_near_100')).toBe(1);
+      expect(evaluateRuleTree(rule, new Map([['x', 200]])).state.get('px_near_100')).toBe(0);
+    });
+
+    it('is stateless: prev=1 does not hold the signal when outside the band', () => {
+      const rule = tolEq('px_near_100', 5, 'absolute', 100);
+      const state: RuleTreeState = new Map([['px_near_100', 1]]);
+      const out = evaluateRuleTree(rule, new Map([['x', 110]]), state);
+      expect(out.weights.has('us:X')).toBe(false);
+      expect(out.state.get('px_near_100')).toBe(0);
+    });
+
+    it('relative mode scales the band by percentage', () => {
+      const rule = tolEq('px_near_100', 5, 'relative', 100);
+      const at = (x: number) => evaluateRuleTree(rule, new Map([['x', x]])).weights.has('us:X');
+      expect(at(96)).toBe(true);
+      expect(at(104)).toBe(true);
+      expect(at(94)).toBe(false);
+      expect(at(106)).toBe(false);
+    });
+  });
+
+  it('throws on tolerance with gte/lte', () => {
+    const mk = (op: 'gte' | 'lte'): RuleNode => ({
       op: 'if',
       cond: {
         op,
@@ -260,9 +308,8 @@ describe('evaluateRuleTree (tolerant / hysteresis)', () => {
       else: allocate({}),
     });
     const values = new Map([['a', 1]]);
-    expect(() => evaluateRuleTree(mk('gte'), values)).toThrow(/only supported for op gt\/lt/);
-    expect(() => evaluateRuleTree(mk('lte'), values)).toThrow(/only supported for op gt\/lt/);
-    expect(() => evaluateRuleTree(mk('eq'), values)).toThrow(/only supported for op gt\/lt/);
+    expect(() => evaluateRuleTree(mk('gte'), values)).toThrow(/only supported for op gt\/lt\/eq/);
+    expect(() => evaluateRuleTree(mk('lte'), values)).toThrow(/only supported for op gt\/lt\/eq/);
   });
 
   it('does not mutate input state', () => {
