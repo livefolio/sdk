@@ -47,7 +47,7 @@ type Comparison = {
   id?: string;
 };
 
-type ComparisonOp = 'gt' | 'lt' | 'gte' | 'lte';
+type ComparisonOp = 'gt' | 'lt' | 'gte' | 'lte' | 'eq';
 
 type FeatureRef = { ref: string };
 ```
@@ -60,6 +60,7 @@ Both `left` and `right` can be a feature reference (`{ ref: 'feature_id' }`) or 
 | `'lt'` | `left < right` |
 | `'gte'` | `left >= right` |
 | `'lte'` | `left <= right` |
+| `'eq'` | `left === right` (strict, no epsilon — intended for integer-valued features compared against integer literals; not compatible with `tolerance`) |
 
 **Feature references** look up the named feature in the value map built from `TacticalSpec.features`. If a referenced feature has no value (e.g. insufficient history for an SMA), the entire rule tree evaluation is skipped for that session — the portfolio is left unchanged rather than generating an error.
 

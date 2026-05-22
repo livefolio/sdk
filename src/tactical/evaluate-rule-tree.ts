@@ -25,6 +25,8 @@ function rawCompare(op: Comparison['op'], l: number, r: number): boolean {
       return l >= r;
     case 'lte':
       return l <= r;
+    case 'eq':
+      return l === r;
   }
 }
 

@@ -140,8 +140,11 @@ export type FeatureRef = { ref: string };
  * - `'lt'`  — strictly less than (`l < r`)
  * - `'gte'` — greater than or equal to (`l >= r`)
  * - `'lte'` — less than or equal to (`l <= r`)
+ * - `'eq'`  — strict equality (`l === r`); no epsilon. Intended for comparing
+ *   integer-valued features (e.g. calendar features like `dayOfWeek`) against
+ *   integer literals. Not compatible with {@link Tolerance}.
  */
-export type ComparisonOp = 'gt' | 'lt' | 'gte' | 'lte';
+export type ComparisonOp = 'gt' | 'lt' | 'gte' | 'lte' | 'eq';
 
 /**
  * Hysteresis band applied to a {@link Comparison} with `op: 'gt'` or `op: 'lt'`.
