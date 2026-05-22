@@ -47,7 +47,7 @@ type Comparison = {
   id?: string;
 };
 
-type ComparisonOp = 'gt' | 'lt' | 'gte' | 'lte';
+type ComparisonOp = 'gt' | 'lt' | 'gte' | 'lte' | 'eq';
 
 type FeatureRef = { ref: string };
 ```
@@ -60,6 +60,7 @@ Both `left` and `right` can be a feature reference (`{ ref: 'feature_id' }`) or 
 | `'lt'` | `left < right` |
 | `'gte'` | `left >= right` |
 | `'lte'` | `left <= right` |
+| `'eq'` | `left === right` (strict, no epsilon — intended for integer-valued features compared against integer literals). With `tolerance`, becomes `left ∈ [right − tol, right + tol]` (symmetric range band). |
 
 **Feature references** look up the named feature in the value map built from `TacticalSpec.features`. If a referenced feature has no value (e.g. insufficient history for an SMA), the entire rule tree evaluation is skipped for that session — the portfolio is left unchanged rather than generating an error.
 
@@ -102,8 +103,10 @@ When `tolerance` is set, `id` is **required**. The `id` string keys the state en
 Pick a descriptive, stable string — e.g. `'spy_trend'`. Changing an `id` mid-backtest is equivalent to losing the prior state bit: the comparison initialises as if it had never been evaluated before.
 :::
 
-::: warning Tolerance only works with `gt` / `lt`
-Using `tolerance` with `'gte'` or `'lte'` is an error. The `>=` and `<=` operators are used for exact-threshold comparisons where hysteresis does not make semantic sense.
+::: warning Tolerance only works with `gt` / `lt` / `eq`
+Using `tolerance` with `'gte'` or `'lte'` is an error — those operators are exact-threshold comparisons where hysteresis does not make semantic sense.
+
+For `'eq'`, `tolerance` defines a **symmetric range band**: the signal is `true` while `left ∈ [right − tol, right + tol]` and `false` outside. Entry and exit thresholds share the same edges, so the result is effectively stateless (no whipsaw protection — for that, use `'gt'` / `'lt'`). The state bit is still persisted via `id`, so `eq` slots into the same `RuleTreeState` pipeline as `gt`/`lt`.
 :::
 
 ---

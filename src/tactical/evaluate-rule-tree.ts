@@ -25,6 +25,8 @@ function rawCompare(op: Comparison['op'], l: number, r: number): boolean {
       return l >= r;
     case 'lte':
       return l <= r;
+    case 'eq':
+      return l === r;
   }
 }
 
@@ -51,15 +53,17 @@ function evalComparison(
   if (cond.id === undefined) {
     throw new Error('evaluateRuleTree: comparison with tolerance requires id');
   }
-  if (cond.op !== 'gt' && cond.op !== 'lt') {
-    throw new Error(`evaluateRuleTree: tolerance is only supported for op gt/lt, got ${cond.op}`);
+  if (cond.op !== 'gt' && cond.op !== 'lt' && cond.op !== 'eq') {
+    throw new Error(`evaluateRuleTree: tolerance is only supported for op gt/lt/eq, got ${cond.op}`);
   }
 
   const prev = state.get(cond.id);
   const { lower, upper } = band(r, cond.tolerance);
   let result: 0 | 1;
 
-  if (prev === undefined) {
+  if (cond.op === 'eq') {
+    result = l >= lower && l <= upper ? 1 : 0;
+  } else if (prev === undefined) {
     result = rawCompare(cond.op, l, r) ? 1 : 0;
   } else if (cond.op === 'gt') {
     if (prev === 1) result = l < lower ? 0 : 1;
