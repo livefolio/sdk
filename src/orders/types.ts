@@ -185,9 +185,9 @@ export type Fill = {
   fees: number;
   /**
    * Optional id of the specific {@link Lot} this fill draws from on a sell.
-   * Set by `BacktestExecutor` when a `lotMethod` is configured so `applyFills`
-   * consumes the chosen lot rather than defaulting to FIFO. Absent on buys and
-   * on default-FIFO sells.
+   * Set by {@link BacktestExecutor} when a `lotMethod` is configured so
+   * {@link applyFills} consumes the chosen lot rather than defaulting to FIFO.
+   * Absent on buys and on default-FIFO sells.
    */
   lotId?: string;
 };
