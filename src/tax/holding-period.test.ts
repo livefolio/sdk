@@ -37,4 +37,12 @@ describe('holding-period', () => {
     expect(() => realize(lot, 101, 500, new Date('2024-06-15'))).toThrow(/cannot sell/);
     expect(() => realize(lot, 0, 500, new Date('2024-06-15'))).toThrow(/positive/);
   });
+  it('realize classifies the 365/366-day boundary correctly end-to-end', () => {
+    const open = new Date('2024-01-15T00:00:00Z');
+    const lotB: Lot = { ...lot, openDate: open };
+    const at365 = new Date(open.getTime() + 365 * 86_400_000);
+    const at366 = new Date(open.getTime() + 366 * 86_400_000);
+    expect(realize(lotB, 10, 500, at365).event.termType).toBe('short');
+    expect(realize(lotB, 10, 500, at366).event.termType).toBe('long');
+  });
 });
