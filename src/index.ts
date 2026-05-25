@@ -130,4 +130,4 @@ export type { Order, OpenOrder, CloseOrder, AdjustOrder, RebalanceOrder, Fill } 
 
 // Portfolio
 export { applyFills, applyOrders } from './portfolio';
-export type { Position, Portfolio, PositionId } from './portfolio';
+export type { Position, Portfolio, PositionId, Lot, RealizedEvent, IncomeKind } from './portfolio';
