@@ -266,6 +266,11 @@ export function applyFills(portfolio: Portfolio, fills: ReadonlyArray<Fill>, ord
  * - `cash` is left unchanged (no price is available at projection time).
  * - Newly opened positions have `basis: 0` and `entry.price: 0` as
  *   provisional values. A price-aware projection is planned for a later phase.
+ * - The long-side tax ledger (`lots` / `realized`) is **not** advanced — it is
+ *   carried through unchanged, so it will be stale relative to the projected
+ *   `positions`. Use {@link applyFills} to settle the ledger after confirmed
+ *   execution; do not read `lots` from an `applyOrders` result expecting it to
+ *   reflect the projected positions.
  *
  * Use {@link applyFills} (not this function) to settle the portfolio after
  * confirmed execution.
