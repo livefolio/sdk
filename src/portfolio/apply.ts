@@ -1,6 +1,7 @@
 import type { Portfolio, Position, PositionId, Lot, RealizedEvent } from './types';
 import type { Order, Fill } from '../orders/types';
 import { nextLotId } from './ids';
+import { holdingPeriodDays, isLongTerm } from '../tax/holding-period';
 
 const newPositionId = (() => {
   let n = 0;
@@ -10,11 +11,6 @@ const newPositionId = (() => {
 function findOrder(orders: ReadonlyArray<Order>, id: string): Order | undefined {
   return orders.find((o) => o.id === id);
 }
-
-const MS_PER_DAY = 86_400_000;
-// TODO(Task 5): replace with isLongTerm/holdingPeriodDays from ../tax/holding-period once that module exists (same >365-day rule).
-const isLong = (openDate: Date, closeDate: Date): boolean =>
-  (closeDate.getTime() - openDate.getTime()) / MS_PER_DAY > 365;
 
 /**
  * Consume `qty` long shares of `assetId` from `lots`, oldest-first unless
@@ -62,7 +58,7 @@ function consumeLots(
       closeDate,
       proceeds,
       basis: consumedBasis,
-      termType: isLong(l.openDate, closeDate) ? 'long' : 'short',
+      termType: isLongTerm(holdingPeriodDays(l, closeDate)) ? 'long' : 'short',
       gain: proceeds - consumedBasis,
       incomeKind: 'capital-gain',
     });
