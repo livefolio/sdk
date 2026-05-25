@@ -129,5 +129,5 @@ export * as features from './features';
 export type { Order, OpenOrder, CloseOrder, AdjustOrder, RebalanceOrder, Fill } from './orders';
 
 // Portfolio
-export { applyFills, applyOrders } from './portfolio';
-export type { Position, Portfolio, PositionId } from './portfolio';
+export { applyFills, applyOrders, positionsByAsset } from './portfolio';
+export type { Position, Portfolio, PositionId, Lot, RealizedEvent, IncomeKind } from './portfolio';

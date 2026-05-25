@@ -183,4 +183,11 @@ export type Fill = {
   price: number;
   /** Total transaction fees in the portfolio's base currency. */
   fees: number;
+  /**
+   * Optional id of the specific {@link Lot} this fill draws from on a sell.
+   * Set by {@link BacktestExecutor} when a `lotMethod` is configured so
+   * {@link applyFills} consumes the chosen lot rather than defaulting to FIFO.
+   * Absent on buys and on default-FIFO sells.
+   */
+  lotId?: string;
 };

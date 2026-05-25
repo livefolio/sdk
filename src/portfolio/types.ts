@@ -48,6 +48,57 @@ export type Position = {
 };
 
 /**
+ * Tax classification of a {@link RealizedEvent}. Drives which rate bucket the
+ * income falls into during year-level tax aggregation.
+ */
+export type IncomeKind = 'capital-gain' | 'qualified-dividend' | 'ordinary-dividend' | 'interest';
+
+/**
+ * A single tax lot — one acquisition of `quantity` shares of `asset` at a
+ * point in time. The cost-basis source of truth for long holdings. Partial
+ * sales reduce `quantity` and pro-rate `basis`.
+ */
+export type Lot = {
+  /** Opaque id assigned by {@link nextLotId} on creation. */
+  id: string;
+  asset: Asset;
+  /** Shares remaining in this lot after any partial sales. */
+  quantity: number;
+  /** Date the lot was opened (a DRIP lot's clock starts at its pay date). */
+  openDate: Date;
+  /** Per-share open price, excluding fees. */
+  openPrice: number;
+  /** Total cost basis for `quantity` shares incl. entry fees; pro-rated on partial sale and bumped by wash-sale §1091. */
+  basis: number;
+  /** Running total of disallowed wash-sale losses absorbed into `basis`. */
+  washSaleAdjustment?: number;
+  /** Set when this lot was created via dividend reinvestment; references the lot whose dividend funded it. */
+  dripParent?: string;
+};
+
+/**
+ * An append-only record of realized taxable activity: a capital gain/loss from
+ * closing (part of) a lot, or dividend/interest income. `quantity` is `0` for
+ * income events (dividends, interest), which carry `basis: 0` and `gain = proceeds`.
+ */
+export type RealizedEvent = {
+  asset: Asset;
+  /** The lot this event closed against. For income events, a reference token (e.g. the paying lot, or `'cash'` for interest). */
+  lotId: string;
+  /** Shares closed; `0` for dividend and interest income events. */
+  quantity: number;
+  openDate: Date;
+  closeDate: Date;
+  proceeds: number;
+  basis: number;
+  termType: 'short' | 'long';
+  gain: number;
+  incomeKind: IncomeKind;
+  /** When `> 0`, this much of a (negative) capital gain was disallowed by the wash-sale rule and rolled into a replacement lot's basis. */
+  washSaleDisallowed?: number;
+};
+
+/**
  * A point-in-time snapshot of the full portfolio state.
  *
  * `t` advances to the latest fill timestamp each time {@link applyFills} is
@@ -70,6 +121,17 @@ export type Portfolio = {
   cash: number;
   /** All currently open positions. Immutable array — replaced (not mutated) by apply functions. */
   positions: ReadonlyArray<Position>;
+  /**
+   * Long-side tax ledger — the cost-basis source of truth for lot accounting.
+   * Maintained in parallel with `positions` by `applyFills`; defaults to `[]`
+   * when absent. Short positions and `adjust` orders do not participate.
+   */
+  lots?: ReadonlyArray<Lot>;
+  /**
+   * Append-only log of realized capital gains and dividend/interest income
+   * accumulated during a run. Defaults to `[]` when absent.
+   */
+  realized?: ReadonlyArray<RealizedEvent>;
   /** Logical timestamp of the most recent fill (or the portfolio's start date). */
   t: Date;
 };

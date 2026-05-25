@@ -1,5 +1,6 @@
-import type { Portfolio, Position, PositionId } from './types';
+import type { Portfolio, Position, PositionId, Lot, RealizedEvent } from './types';
 import type { Order, Fill } from '../orders/types';
+import { nextLotId } from './ids';
 
 const newPositionId = (() => {
   let n = 0;
@@ -8,6 +9,67 @@ const newPositionId = (() => {
 
 function findOrder(orders: ReadonlyArray<Order>, id: string): Order | undefined {
   return orders.find((o) => o.id === id);
+}
+
+const MS_PER_DAY = 86_400_000;
+// TODO(Task 5): replace with isLongTerm/holdingPeriodDays from ../tax/holding-period once that module exists (same >365-day rule).
+const isLong = (openDate: Date, closeDate: Date): boolean =>
+  (closeDate.getTime() - openDate.getTime()) / MS_PER_DAY > 365;
+
+/**
+ * Consume `qty` long shares of `assetId` from `lots`, oldest-first unless
+ * `preferLotId` selects a specific lot first. Mutates the passed `lots` array
+ * (caller owns a fresh copy) and pushes one {@link RealizedEvent} per slice to
+ * `realized`. Throws {@link RangeError} if the ledger holds fewer shares than
+ * requested.
+ */
+function consumeLots(
+  lots: Lot[],
+  realized: RealizedEvent[],
+  assetId: string,
+  qty: number,
+  price: number,
+  fees: number,
+  closeDate: Date,
+  preferLotId?: string,
+): void {
+  const sortedLots = lots
+    .filter((l) => l.asset.id === assetId && l.quantity > 0)
+    .sort((a, b) => {
+      if (preferLotId) {
+        if (a.id === preferLotId) return -1;
+        if (b.id === preferLotId) return 1;
+      }
+      return a.openDate.getTime() - b.openDate.getTime();
+    });
+  const held = sortedLots.reduce((s, x) => s + x.quantity, 0);
+  if (held < qty) {
+    throw new RangeError(`applyFills: cannot sell ${qty} of ${assetId} — lot ledger holds ${held}`);
+  }
+  let need = qty;
+  const totalQty = qty;
+  for (const l of sortedLots) {
+    if (need <= 0) break;
+    const take = Math.min(l.quantity, need);
+    const basisPerShare = l.basis / l.quantity;
+    const consumedBasis = basisPerShare * take;
+    const proceeds = take * price - (take / totalQty) * fees;
+    realized.push({
+      asset: l.asset,
+      lotId: l.id,
+      quantity: take,
+      openDate: l.openDate,
+      closeDate,
+      proceeds,
+      basis: consumedBasis,
+      termType: isLong(l.openDate, closeDate) ? 'long' : 'short',
+      gain: proceeds - consumedBasis,
+      incomeKind: 'capital-gain',
+    });
+    l.quantity -= take;
+    l.basis -= consumedBasis;
+    need -= take;
+  }
 }
 
 /**
@@ -27,6 +89,14 @@ function findOrder(orders: ReadonlyArray<Order>, id: string): Order | undefined 
  *                   case in {@link applyOrders}).
  *
  * The returned `portfolio.t` is updated to the maximum fill timestamp.
+ *
+ * In parallel with `positions`/`cash`, a long-side tax ledger is maintained:
+ * buys (`open` long, `rebalance` delta>0) append a {@link Lot}; sells
+ * (`close` of a long, `rebalance` delta<0) consume lots — by `fill.lotId` if
+ * present, else FIFO oldest-first — pro-rating basis and appending one
+ * {@link RealizedEvent} per consumed slice. Short positions and `adjust`
+ * orders do not participate. The `positions`/`cash` outputs are unaffected by
+ * this ledger.
  *
  * @param portfolio - The current portfolio state before this batch.
  * @param fills     - Execution confirmations returned by {@link Executor.submit}.
@@ -58,6 +128,11 @@ export function applyFills(portfolio: Portfolio, fills: ReadonlyArray<Fill>, ord
   let positions: Position[] = [...portfolio.positions];
   let cash = portfolio.cash;
   let t = portfolio.t;
+  // Parallel long-side tax ledger. Work on copies so the input is not mutated;
+  // consumeLots mutates Lot objects in place, and filter/sort preserve object
+  // identity, so reductions land back in `lots`.
+  const lots: Lot[] = (portfolio.lots ?? []).map((l) => ({ ...l }));
+  const realized: RealizedEvent[] = [...(portfolio.realized ?? [])];
 
   for (const fill of fills) {
     const order = findOrder(orders, fill.orderRef);
@@ -78,6 +153,16 @@ export function applyFills(portfolio: Portfolio, fills: ReadonlyArray<Fill>, ord
         };
         positions.push(pos);
         cash -= fill.quantity * fill.price + fill.fees;
+        if (order.side === 'long') {
+          lots.push({
+            id: nextLotId(),
+            asset: order.asset,
+            quantity: fill.quantity,
+            openDate: fill.t,
+            openPrice: fill.price,
+            basis: fill.quantity * fill.price + fill.fees,
+          });
+        }
         break;
       }
       case 'close': {
@@ -91,6 +176,9 @@ export function applyFills(portfolio: Portfolio, fills: ReadonlyArray<Fill>, ord
           positions = positions.filter((_, i) => i !== idx);
         } else {
           positions[idx] = { ...pos, quantity: remaining };
+        }
+        if (pos.side === 'long') {
+          consumeLots(lots, realized, pos.asset.id, fill.quantity, fill.price, fill.fees, fill.t, fill.lotId);
         }
         break;
       }
@@ -125,6 +213,14 @@ export function applyFills(portfolio: Portfolio, fills: ReadonlyArray<Fill>, ord
               basis: prev.basis + cost,
             };
           }
+          lots.push({
+            id: nextLotId(),
+            asset: order.asset,
+            quantity: fill.quantity,
+            openDate: fill.t,
+            openPrice: fill.price,
+            basis: cost,
+          });
         } else if (idx >= 0) {
           const prev = positions[idx]!;
           cash += fill.quantity * fill.price - fill.fees;
@@ -139,6 +235,7 @@ export function applyFills(portfolio: Portfolio, fills: ReadonlyArray<Fill>, ord
               basis: basisPerShare * remaining,
             };
           }
+          consumeLots(lots, realized, order.asset.id, fill.quantity, fill.price, fill.fees, fill.t, fill.lotId);
         }
         // No-op when reducing a non-existent long position. This matches the
         // contract of `applyOrders` (same case in the structural projection
@@ -149,9 +246,14 @@ export function applyFills(portfolio: Portfolio, fills: ReadonlyArray<Fill>, ord
         break;
       }
     }
+
+    // Prune fully-consumed lots after each fill.
+    for (let i = lots.length - 1; i >= 0; i--) {
+      if (lots[i]!.quantity <= 1e-9) lots.splice(i, 1);
+    }
   }
 
-  return { cash, positions, t };
+  return { cash, positions, lots, realized, t };
 }
 
 /**
@@ -164,6 +266,11 @@ export function applyFills(portfolio: Portfolio, fills: ReadonlyArray<Fill>, ord
  * - `cash` is left unchanged (no price is available at projection time).
  * - Newly opened positions have `basis: 0` and `entry.price: 0` as
  *   provisional values. A price-aware projection is planned for a later phase.
+ * - The long-side tax ledger (`lots` / `realized`) is **not** advanced — it is
+ *   carried through unchanged, so it will be stale relative to the projected
+ *   `positions`. Use {@link applyFills} to settle the ledger after confirmed
+ *   execution; do not read `lots` from an `applyOrders` result expecting it to
+ *   reflect the projected positions.
  *
  * Use {@link applyFills} (not this function) to settle the portfolio after
  * confirmed execution.
