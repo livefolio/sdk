@@ -139,6 +139,13 @@ export function crossOffset(
  * - `ordinary-dividend`: adds `proceeds` to `ordinaryDividends`.
  * - `interest`: adds `proceeds` to `interestIncome`.
  *
+ * Year boundaries use **UTC**. Backtests are unambiguous (daily bars are
+ * UTC-midnight-anchored). Live-mode callers should normalize `closeDate` to the
+ * tax jurisdiction's local time before passing events here if they need
+ * calendar-year precision around year-end — e.g. a US fill on Dec 31 evening
+ * Eastern has a UTC `closeDate` of Jan 1, which belongs to the *prior* US tax
+ * year but would otherwise be counted in the next year.
+ *
  * @param events - Full sequence of realized events (multiple years OK).
  * @returns `Map<year, TaxableIncome>` with one entry per UTC calendar year.
  */

@@ -87,6 +87,13 @@ export function selectHIFO(lots: readonly Lot[], qty: number): LotSlice[] {
  * `ctx.rates` is accepted for forward-compatibility and signature stability
  * (the executor's min-tax `lotMethod` passes it through); the current 4-tier
  * ranking does not read the rate magnitudes.
+ *
+ * NOTE: this is a conservative, IRS-aligned *ordering* heuristic, not a literal
+ * rate-weighted per-share tax minimum. The two can diverge: a $100/share LT gain
+ * (tier 2, $20 tax at a 20% LT rate) is selected before a $50/share ST gain
+ * (tier 3, $18.50 tax at a 37% ST rate), even though the ST lot realizes less
+ * tax. The tier order favors the lower-rate bucket and sidesteps marginal-bracket
+ * complexity; it does not compute `gain × rate` per lot.
  */
 export function selectMinTax(
   lots: readonly Lot[],
