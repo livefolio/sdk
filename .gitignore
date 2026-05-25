@@ -16,3 +16,6 @@ coverage
 docs-site/.vitepress/cache
 docs-site/.vitepress/dist
 docs-site/api
+
+# Git worktrees
+.worktrees
