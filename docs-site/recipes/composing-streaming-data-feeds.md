@@ -219,7 +219,7 @@ for await (const ev of runLive({
   streamingRuntime,  // share with fromSpec strategy so appendBar reaches the right runtime
 })) {
   if (ev.type === 'mark') { /* intra-session tick preview */ }
-  else { /* ev.type === 'snapshot': session closed */ }
+  else if (ev.type === 'snapshot') { /* session closed */ }
   if (++eventCount >= MAX_EVENTS) break;
 }
 ```

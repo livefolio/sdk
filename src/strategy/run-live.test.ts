@@ -330,6 +330,49 @@ describe('runLive', () => {
     expect(snapshot?.type === 'snapshot' && snapshot.portfolio.cash).toBe(1500);
   });
 
+  it('sums a seeded cash event and a queued one due at the same session close', async () => {
+    const calendar = new Crypto24x7Calendar();
+    const ticks: StreamingBar[] = [
+      { asset: SPY, bar: bar('2024-06-03T23:00:00Z', 100) },
+      { asset: SPY, bar: bar('2024-06-04T01:00:00Z', 105) }, // closes day 1
+    ];
+    const strategy: Strategy<Features, void> = {
+      universe: () => [SPY],
+      features: async () => ({}),
+      build: () => [],
+    };
+    const history: BacktestResult<void> = {
+      snapshots: [],
+      finalPortfolio: { cash: 1000, positions: [], t: new Date('2024-06-03T00:00:00Z') },
+      finalState: undefined,
+      bars: new Map(),
+    };
+
+    const queue = new CashEventQueue();
+    queue.push({ t: new Date('2024-06-03T00:00:00Z'), delta: 250, reason: 'dividend' });
+
+    const events = [];
+    for await (const ev of runLive({
+      strategy,
+      history,
+      dataFeed: tickStream(ticks),
+      executor: { submit: vi.fn().mockResolvedValue([]) },
+      calendar,
+      // Both the seed and the queued event are due by the day-1 session close.
+      cashEvents: [{ t: new Date('2024-06-03T00:00:00Z'), delta: 1000, reason: 'deposit' }],
+      cashEventQueue: queue,
+    })) {
+      events.push(ev);
+    }
+
+    const cashEvents = events.filter((e) => e.type === 'cash');
+    // A SINGLE cash event with the SUMMED delta (1000 + 250).
+    expect(cashEvents).toHaveLength(1);
+    expect(cashEvents[0]?.type === 'cash' && cashEvents[0].delta).toBe(1250);
+    const snapshot = events.find((e) => e.type === 'snapshot');
+    expect(snapshot?.type === 'snapshot' && snapshot.portfolio.cash).toBe(2250);
+  });
+
   it('does NOT emit a cash event on plain mark ticks when nothing is due', async () => {
     const calendar = new Crypto24x7Calendar();
     const ticks: StreamingBar[] = [

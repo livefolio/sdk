@@ -85,7 +85,12 @@ export type LiveEvent<F extends Features = Features, _S = unknown> =
       t: Date;
       /** Net cash delta applied (sum of all due events). Positive = deposit. */
       delta: number;
-      /** Attribution tag of the first contributing event, if any. */
+      /**
+       * Attribution tag of the FIRST contributing event. When multiple cash
+       * events are due at the same session close they are summed into one delta
+       * and the other reasons are dropped — use `cashEventQueue` and drain
+       * manually if you need per-event attribution.
+       */
       reason?: CashEvent['reason'];
     }
   | (BacktestSnapshot & { type: 'snapshot' });
@@ -318,6 +323,7 @@ export async function* runLive<F extends Features = Features, S = unknown>(
       // queue at this session close (never on a mark tick — that would
       // double-apply). Apply the net delta to the committed portfolio BEFORE
       // the snapshot so the snapshot reports the cash-adjusted balance.
+      // Cash events apply post-fills here (unlike runBacktest, which applies pre-universe): the live session's orders were already submitted, so same-session cash can't influence this session's sizing.
       const dueCash = [...seedQueue.drainDue(currentSession), ...(opts.cashEventQueue?.drainDue(currentSession) ?? [])];
       const cashDelta = dueCash.reduce((s, e) => s + e.delta, 0);
       if (cashDelta !== 0) {
