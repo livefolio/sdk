@@ -213,7 +213,7 @@ for await (const ev of runLive({
     console.log(
       `mark      t=${ev.t.toISOString().slice(0, 10)}  SPY=$${spyPrice !== undefined ? spyPrice.toFixed(2) : 'n/a'}  previewOrders=${ev.previewOrders.length}`,
     );
-  } else {
+  } else if (ev.type === 'snapshot') {
     snapshotCount++;
     const positions = ev.portfolio.positions.map((p) => `${p.asset.symbol}×${p.quantity.toFixed(0)}`).join(' ');
     console.log(

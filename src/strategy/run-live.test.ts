@@ -3,7 +3,7 @@ import type { Asset, Bar } from '../interfaces/types';
 import type { StreamingDataFeed, StreamingBar } from '../interfaces/streaming-data-feed';
 import type { Strategy, Features } from './types';
 import type { BacktestResult } from './run-backtest';
-import { runLive } from './run-live';
+import { runLive, CashEventQueue } from './run-live';
 import { Crypto24x7Calendar } from '../calendars/crypto-24x7';
 import { NYSEExchangeCalendar } from '../calendars/nyse';
 import { FeatureRuntime } from '../features/runtime';
@@ -243,5 +243,128 @@ describe('runLive', () => {
 
     // Boundary at tick 2 → finalizeBars(day 1) → appendBar on the SHARED runtime.
     expect(appendSpy).toHaveBeenCalled();
+  });
+
+  it('applies a seeded cash event at session close, before the snapshot', async () => {
+    const calendar = new Crypto24x7Calendar();
+    const ticks: StreamingBar[] = [
+      { asset: SPY, bar: bar('2024-06-03T23:00:00Z', 100) }, // day 1 (session = 2024-06-03)
+      { asset: SPY, bar: bar('2024-06-04T01:00:00Z', 105) }, // day 2 → closes day 1
+    ];
+    const strategy: Strategy<Features, void> = {
+      universe: () => [SPY],
+      features: async () => ({}),
+      build: () => [],
+    };
+    const history: BacktestResult<void> = {
+      snapshots: [],
+      finalPortfolio: { cash: 1000, positions: [], t: new Date('2024-06-03T00:00:00Z') },
+      finalState: undefined,
+      bars: new Map(),
+    };
+
+    const events = [];
+    for await (const ev of runLive({
+      strategy,
+      history,
+      dataFeed: tickStream(ticks),
+      executor: { submit: vi.fn().mockResolvedValue([]) },
+      calendar,
+      // Due by the day-1 session close (2024-06-03T00:00:00Z).
+      cashEvents: [{ t: new Date('2024-06-03T00:00:00Z'), delta: 1000, reason: 'deposit' }],
+    })) {
+      events.push(ev);
+    }
+
+    const cashEvents = events.filter((e) => e.type === 'cash');
+    expect(cashEvents).toHaveLength(1);
+    expect(cashEvents[0]).toMatchObject({ type: 'cash', delta: 1000, reason: 'deposit' });
+    expect(cashEvents[0]?.t.toISOString()).toBe('2024-06-03T00:00:00.000Z');
+
+    // The cash event is emitted BEFORE the snapshot, and the snapshot reflects +1000.
+    const cashIdx = events.findIndex((e) => e.type === 'cash');
+    const snapIdx = events.findIndex((e) => e.type === 'snapshot');
+    expect(cashIdx).toBeLessThan(snapIdx);
+    const snapshot = events.find((e) => e.type === 'snapshot');
+    expect(snapshot?.type === 'snapshot' && snapshot.portfolio.cash).toBe(2000);
+  });
+
+  it('drains a dynamically pushed CashEventQueue at the next session close', async () => {
+    const calendar = new Crypto24x7Calendar();
+    const ticks: StreamingBar[] = [
+      { asset: SPY, bar: bar('2024-06-03T23:00:00Z', 100) },
+      { asset: SPY, bar: bar('2024-06-04T01:00:00Z', 105) }, // closes day 1
+    ];
+    const strategy: Strategy<Features, void> = {
+      universe: () => [SPY],
+      features: async () => ({}),
+      build: () => [],
+    };
+    const history: BacktestResult<void> = {
+      snapshots: [],
+      finalPortfolio: { cash: 1000, positions: [], t: new Date('2024-06-03T00:00:00Z') },
+      finalState: undefined,
+      bars: new Map(),
+    };
+
+    const queue = new CashEventQueue();
+    // Pushed before draining the stream; due by the day-1 session close.
+    queue.push({ t: new Date('2024-06-03T00:00:00Z'), delta: 500, reason: 'interest' });
+
+    const events = [];
+    for await (const ev of runLive({
+      strategy,
+      history,
+      dataFeed: tickStream(ticks),
+      executor: { submit: vi.fn().mockResolvedValue([]) },
+      calendar,
+      cashEventQueue: queue,
+    })) {
+      events.push(ev);
+    }
+
+    const cashEvents = events.filter((e) => e.type === 'cash');
+    expect(cashEvents).toHaveLength(1);
+    expect(cashEvents[0]).toMatchObject({ type: 'cash', delta: 500, reason: 'interest' });
+    const snapshot = events.find((e) => e.type === 'snapshot');
+    expect(snapshot?.type === 'snapshot' && snapshot.portfolio.cash).toBe(1500);
+  });
+
+  it('does NOT emit a cash event on plain mark ticks when nothing is due', async () => {
+    const calendar = new Crypto24x7Calendar();
+    const ticks: StreamingBar[] = [
+      { asset: SPY, bar: bar('2024-06-03T12:00:00Z', 100) },
+      { asset: SPY, bar: bar('2024-06-03T13:00:00Z', 101) },
+      { asset: SPY, bar: bar('2024-06-03T14:00:00Z', 102) },
+    ];
+    const strategy: Strategy<Features, void> = {
+      universe: () => [SPY],
+      features: async () => ({}),
+      build: () => [],
+    };
+    const history: BacktestResult<void> = {
+      snapshots: [],
+      finalPortfolio: { cash: 1000, positions: [], t: new Date('2024-06-03T00:00:00Z') },
+      finalState: undefined,
+      bars: new Map(),
+    };
+
+    const events = [];
+    for await (const ev of runLive({
+      strategy,
+      history,
+      dataFeed: tickStream(ticks),
+      executor: { submit: vi.fn().mockResolvedValue([]) },
+      calendar,
+      // Future-dated event — never becomes due within this stream (no boundary crossed).
+      cashEvents: [{ t: new Date('2024-06-10T00:00:00Z'), delta: 1000 }],
+    })) {
+      events.push(ev);
+    }
+
+    // All ticks within one session: 3 marks, no snapshot, and NO cash event.
+    expect(events.filter((e) => e.type === 'mark')).toHaveLength(3);
+    expect(events.filter((e) => e.type === 'snapshot')).toHaveLength(0);
+    expect(events.filter((e) => e.type === 'cash')).toHaveLength(0);
   });
 });
