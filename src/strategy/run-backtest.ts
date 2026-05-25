@@ -94,6 +94,10 @@ export type RunBacktestOptions<F extends Features = Features, S = unknown> = {
    * Optional scheduled deposits/withdrawals applied per-session before the
    * strategy runs. Matched by `t <= sessionT`; multiple due events are summed.
    * Defaults to none (today's behavior). See `BacktestSnapshot.cashFlow`.
+   *
+   * @remarks A withdrawal that exceeds available cash is allowed to drive cash
+   * negative (logged via `console.warn`); automatic force-selling of holdings to
+   * fund withdrawals is deferred to a later release, so this behavior may change.
    */
   cashEvents?: ReadonlyArray<CashEvent>;
 };
