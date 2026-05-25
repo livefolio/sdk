@@ -95,7 +95,7 @@ export type RunBacktestOptions<F extends Features = Features, S = unknown> = {
    * strategy runs. Matched by `t <= sessionT`; multiple due events are summed.
    * Defaults to none (today's behavior). See `BacktestSnapshot.cashFlow`.
    */
-  cashEvents?: readonly CashEvent[];
+  cashEvents?: ReadonlyArray<CashEvent>;
 };
 
 /**
