@@ -10,6 +10,20 @@ import type { FeatureRuntime } from '../features/runtime';
 import { applyFills } from '../portfolio/apply';
 
 /**
+ * A scheduled cash injection or withdrawal. Applied at the start of the
+ * matching session — BEFORE `universe`/`features`/`build` — by `runBacktest`
+ * (see Task 10 wiring). Events with `t <= sessionT` that have not yet been
+ * consumed are applied (and summed) on that session.
+ */
+export type CashEvent = {
+  t: Date;
+  /** Positive = deposit, negative = withdrawal. */
+  delta: number;
+  /** Optional attribution tag for downstream metrics. */
+  reason?: 'deposit' | 'withdrawal' | 'interest' | 'dividend';
+};
+
+/**
  * Narrows the dual return type of `Strategy.build` to the stateful object form.
  *
  * `Array.isArray` does not narrow `ReadonlyArray<T>` out of a union in TypeScript 5.x
@@ -76,6 +90,12 @@ export type RunBacktestOptions<F extends Features = Features, S = unknown> = {
    * runtime seed its buffer from the historical bars without refetching).
    */
   featureRuntime?: FeatureRuntime;
+  /**
+   * Optional scheduled deposits/withdrawals applied per-session before the
+   * strategy runs. Matched by `t <= sessionT`; multiple due events are summed.
+   * Defaults to none (today's behavior). See `BacktestSnapshot.cashFlow`.
+   */
+  cashEvents?: readonly CashEvent[];
 };
 
 /**

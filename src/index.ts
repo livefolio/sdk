@@ -3,6 +3,7 @@ export { runBacktest, runLive, reconcile } from './strategy';
 export type {
   Strategy,
   Features,
+  CashEvent,
   RunBacktestOptions,
   RunLiveOptions,
   BacktestResult,
