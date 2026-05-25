@@ -201,6 +201,61 @@ describe('applyFills', () => {
     );
     expect(p.realized![0]!.termType).toBe('long');
   });
+
+  it('an open long order creates a lot', () => {
+    const asset = { kind: 'equity' as const, id: 'AAPL', symbol: 'AAPL' };
+    const p0 = { cash: 10_000, positions: [], lots: [], realized: [], t: new Date('2024-01-01') };
+    const order = { id: 'o1', kind: 'open' as const, asset, side: 'long' as const, quantity: 10 };
+    const fill = { orderRef: 'o1', t: new Date('2024-01-02'), quantity: 10, price: 100, fees: 5 };
+    const next = applyFills(p0, [fill], [order]);
+    expect(next.lots).toHaveLength(1);
+    expect(next.lots![0]!.basis).toBe(10 * 100 + 5);
+  });
+
+  it('an open SHORT order creates no lot', () => {
+    const asset = { kind: 'equity' as const, id: 'AAPL', symbol: 'AAPL' };
+    const p0 = { cash: 10_000, positions: [], lots: [], realized: [], t: new Date('2024-01-01') };
+    const order = { id: 'o1', kind: 'open' as const, asset, side: 'short' as const, quantity: 10 };
+    const fill = { orderRef: 'o1', t: new Date('2024-01-02'), quantity: 10, price: 100, fees: 0 };
+    const next = applyFills(p0, [fill], [order]);
+    expect(next.lots).toHaveLength(0);
+    expect(next.realized).toHaveLength(0);
+  });
+
+  it('an adjust order does not touch lots or realized', () => {
+    const asset = { kind: 'equity' as const, id: 'AAPL', symbol: 'AAPL' };
+    let p = { cash: 100_000, positions: [], lots: [], realized: [], t: new Date('2024-01-01') };
+    p = applyFills(
+      p,
+      [{ orderRef: 'o', t: new Date('2024-01-02'), quantity: 10, price: 100, fees: 0 }],
+      [{ id: 'o', kind: 'open', asset, side: 'long', quantity: 10 }],
+    );
+    const posId = p.positions[0]!.id;
+    const before = p.lots!.length;
+    p = applyFills(
+      p,
+      [{ orderRef: 'adj', t: new Date('2024-02-01'), quantity: 0, price: 0, fees: 0 }],
+      [{ id: 'adj', kind: 'adjust', positionId: posId, changes: { quantity: 8 } }],
+    );
+    expect(p.lots!.length).toBe(before);
+    expect(p.realized).toHaveLength(0);
+  });
+
+  it('does not mutate the input portfolio lots', () => {
+    const asset = { kind: 'equity' as const, id: 'SPY', symbol: 'SPY' };
+    const seed = applyFills(
+      { cash: 100_000, positions: [], lots: [], realized: [], t: new Date('2024-01-01') },
+      [{ orderRef: 'b', t: new Date('2024-01-02'), quantity: 100, price: 10, fees: 0 }],
+      [{ id: 'b', kind: 'rebalance', asset, delta: 100 }],
+    );
+    const lotQtyBefore = seed.lots![0]!.quantity;
+    applyFills(
+      seed,
+      [{ orderRef: 's', t: new Date('2024-03-01'), quantity: 40, price: 30, fees: 0 }],
+      [{ id: 's', kind: 'rebalance', asset, delta: -40 }],
+    );
+    expect(seed.lots![0]!.quantity).toBe(lotQtyBefore); // original untouched
+  });
 });
 
 describe('applyOrders (projection)', () => {

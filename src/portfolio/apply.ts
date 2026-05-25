@@ -12,6 +12,7 @@ function findOrder(orders: ReadonlyArray<Order>, id: string): Order | undefined 
 }
 
 const MS_PER_DAY = 86_400_000;
+// TODO(Task 5): replace with isLongTerm/holdingPeriodDays from ../tax/holding-period once that module exists (same >365-day rule).
 const isLong = (openDate: Date, closeDate: Date): boolean =>
   (closeDate.getTime() - openDate.getTime()) / MS_PER_DAY > 365;
 
@@ -32,7 +33,7 @@ function consumeLots(
   closeDate: Date,
   preferLotId?: string,
 ): void {
-  const order = lots
+  const sortedLots = lots
     .filter((l) => l.asset.id === assetId && l.quantity > 0)
     .sort((a, b) => {
       if (preferLotId) {
@@ -41,13 +42,13 @@ function consumeLots(
       }
       return a.openDate.getTime() - b.openDate.getTime();
     });
-  const held = order.reduce((s, x) => s + x.quantity, 0);
+  const held = sortedLots.reduce((s, x) => s + x.quantity, 0);
   if (held < qty) {
     throw new RangeError(`applyFills: cannot sell ${qty} of ${assetId} — lot ledger holds ${held}`);
   }
   let need = qty;
   const totalQty = qty;
-  for (const l of order) {
+  for (const l of sortedLots) {
     if (need <= 0) break;
     const take = Math.min(l.quantity, need);
     const basisPerShare = l.basis / l.quantity;
