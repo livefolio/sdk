@@ -113,6 +113,10 @@ export type BacktestSnapshot = {
   orders: ReadonlyArray<Order>;
   /** Fills returned by the executor for the orders above. */
   fills: ReadonlyArray<Fill>;
+  /**
+   * Net cash delta applied this session via `cashEvents`. Omitted when zero.
+   */
+  cashFlow?: number;
 };
 
 /**
@@ -224,7 +228,27 @@ export async function runBacktest<F extends Features = Features, S = unknown>(
   let state: S | undefined = initialStateValue;
   const snapshots: BacktestSnapshot[] = [];
 
+  const cashEvents = [...(opts.cashEvents ?? [])].sort((a, b) => a.t.getTime() - b.t.getTime());
+  let eventCursor = 0;
+
   for (const t of sessions) {
+    let cashFlow = 0;
+    while (
+      eventCursor < cashEvents.length &&
+      cashEvents[eventCursor]!.t.getTime() <= t.getTime()
+    ) {
+      cashFlow += cashEvents[eventCursor]!.delta;
+      eventCursor++;
+    }
+    if (cashFlow !== 0) {
+      portfolio = { ...portfolio, cash: portfolio.cash + cashFlow };
+      if (portfolio.cash < 0) {
+        console.warn(
+          `[runBacktest] cash went negative at ${t.toISOString()}: ${portfolio.cash}`,
+        );
+      }
+    }
+
     const universe = opts.strategy.universe(t, portfolio);
     const features = await opts.strategy.features(universe, portfolio, t);
     const buildResult = opts.strategy.build(features, portfolio, state as S, t);
@@ -240,7 +264,7 @@ export async function runBacktest<F extends Features = Features, S = unknown>(
 
     const fills = await opts.executor.submit(orders, t, portfolio);
     portfolio = applyFills(portfolio, fills, orders);
-    snapshots.push({ t, portfolio, orders, fills });
+    snapshots.push({ t, portfolio, orders, fills, ...(cashFlow !== 0 ? { cashFlow } : {}) });
   }
 
   const bars = opts.featureRuntime?.getAllBars() ?? new Map<AssetId, ReadonlyArray<Bar>>();

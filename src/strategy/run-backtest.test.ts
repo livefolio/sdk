@@ -199,6 +199,113 @@ describe('runBacktest state threading', () => {
   });
 });
 
+describe('runBacktest cashEvents', () => {
+  const range = { from: new Date('2024-01-02'), to: new Date('2024-01-09') };
+  // NYSE sessions in this range: Jan 2, 3, 4, 5, 8 (5 sessions)
+  const simpleStrategy: Strategy = {
+    universe: () => [],
+    features: async () => ({}),
+    build: () => [],
+  };
+  const dataFeed: DataFeed = { bars: vi.fn().mockImplementation(async function* () {}) };
+  const executor: Executor = { submit: vi.fn().mockResolvedValue([]) };
+  const calendar = new NYSEExchangeCalendar();
+
+  it('applies a cashEvent on the matching session (3rd session) and records cashFlow', async () => {
+    // Jan 4 is the 3rd NYSE session (Jan 2, Jan 3, Jan 4)
+    const result = await runBacktest({
+      strategy: simpleStrategy,
+      range,
+      initialPortfolio: { cash: 10_000, positions: [] },
+      dataFeed,
+      executor,
+      calendar,
+      cashEvents: [{ t: new Date('2024-01-04'), delta: 1000 }],
+    });
+
+    expect(result.snapshots).toHaveLength(5);
+
+    // Sessions 1 and 2 should have no cashFlow
+    expect(result.snapshots[0]!.cashFlow).toBeUndefined();
+    expect(result.snapshots[1]!.cashFlow).toBeUndefined();
+
+    // Session 3 (Jan 4) should have cashFlow === 1000
+    expect(result.snapshots[2]!.cashFlow).toBe(1000);
+    // Portfolio cash at session 3 should reflect the deposit (no fills, so cash = 10_000 + 1000)
+    expect(result.snapshots[2]!.portfolio.cash).toBe(11_000);
+
+    // Sessions 4 and 5 should have no cashFlow
+    expect(result.snapshots[3]!.cashFlow).toBeUndefined();
+    expect(result.snapshots[4]!.cashFlow).toBeUndefined();
+  });
+
+  it('cashFlow is undefined on every snapshot when no cashEvents are passed (parity-safety guard)', async () => {
+    const result = await runBacktest({
+      strategy: simpleStrategy,
+      range,
+      initialPortfolio: { cash: 10_000, positions: [] },
+      dataFeed,
+      executor,
+      calendar,
+    });
+
+    for (const snap of result.snapshots) {
+      expect(snap.cashFlow).toBeUndefined();
+    }
+  });
+
+  it('sums multiple cashEvents due on the same session', async () => {
+    const result = await runBacktest({
+      strategy: simpleStrategy,
+      range,
+      initialPortfolio: { cash: 10_000, positions: [] },
+      dataFeed,
+      executor,
+      calendar,
+      cashEvents: [
+        { t: new Date('2024-01-04'), delta: 500 },
+        { t: new Date('2024-01-04'), delta: 300 },
+      ],
+    });
+
+    expect(result.snapshots[2]!.cashFlow).toBe(800);
+    expect(result.snapshots[2]!.portfolio.cash).toBe(10_800);
+  });
+
+  it('applies events with t before first session on session 1', async () => {
+    const result = await runBacktest({
+      strategy: simpleStrategy,
+      range,
+      initialPortfolio: { cash: 10_000, positions: [] },
+      dataFeed,
+      executor,
+      calendar,
+      cashEvents: [{ t: new Date('2023-12-31'), delta: 2000 }],
+    });
+
+    expect(result.snapshots[0]!.cashFlow).toBe(2000);
+    expect(result.snapshots[0]!.portfolio.cash).toBe(12_000);
+    expect(result.snapshots[1]!.cashFlow).toBeUndefined();
+  });
+
+  it('does not apply events with t after last session', async () => {
+    const result = await runBacktest({
+      strategy: simpleStrategy,
+      range,
+      initialPortfolio: { cash: 10_000, positions: [] },
+      dataFeed,
+      executor,
+      calendar,
+      cashEvents: [{ t: new Date('2024-01-15'), delta: 9999 }],
+    });
+
+    for (const snap of result.snapshots) {
+      expect(snap.cashFlow).toBeUndefined();
+    }
+    expect(result.finalPortfolio.cash).toBe(10_000);
+  });
+});
+
 describe('BacktestResult bar lineage', () => {
   it('exposes per-asset bars accumulated during the run when featureRuntime is provided', async () => {
     const SPY: Asset = { kind: 'equity', id: 'SPY', symbol: 'SPY' };
