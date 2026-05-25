@@ -62,7 +62,9 @@ export function selectLIFO(lots: readonly Lot[], qty: number): LotSlice[] {
  */
 export function selectHIFO(lots: readonly Lot[], qty: number): LotSlice[] {
   return take(
-    [...lots].sort((a, b) => b.basis / b.quantity - a.basis / a.quantity),
+    [...lots]
+      .filter((l) => l.quantity > 0)
+      .sort((a, b) => b.basis / b.quantity - a.basis / a.quantity),
     qty,
   );
 }
@@ -81,6 +83,10 @@ export function selectHIFO(lots: readonly Lot[], qty: number): LotSlice[] {
  *
  * Uses `isLongTerm(holdingPeriodDays(lot, ctx.asOf))` for term classification
  * and `ctx.price - lot.basis / lot.quantity` for gain-per-share.
+ *
+ * `ctx.rates` is accepted for forward-compatibility and signature stability
+ * (the executor's min-tax `lotMethod` passes it through); the current 4-tier
+ * ranking does not read the rate magnitudes.
  */
 export function selectMinTax(
   lots: readonly Lot[],

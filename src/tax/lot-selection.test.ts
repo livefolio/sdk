@@ -109,6 +109,14 @@ describe('lot selectors', () => {
       ).toBe(20);
     });
 
+    it('ranks a long-term gain before a short-term gain', () => {
+      const ltGain: Lot = { id: 'lt', asset, quantity: 10, openDate: new Date('2023-01-01'), openPrice: 100, basis: 1000 };
+      const stGain: Lot = { id: 'st', asset, quantity: 10, openDate: new Date('2024-12-01'), openPrice: 100, basis: 1000 };
+      // price 200 > basisPerShare 100 → both gains; lt >365 days (tier 2), st <365 days (tier 3)
+      const order = selectMinTax([stGain, ltGain], 10, { price: 200, asOf, rates }).map((s) => s.lotId);
+      expect(order[0]).toBe('lt'); // LT gain (tier 2) before ST gain (tier 3)
+    });
+
     it('within-tier ordering: smallest gain (biggest loss) first for LT losses', () => {
       // Two LT-loss lots: lotA gain=-80, lotB gain=-30 → lotA first (bigger loss = smaller gain)
       const lotsWithTwoLTLoss: Lot[] = [
