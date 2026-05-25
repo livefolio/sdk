@@ -6,6 +6,10 @@ import type { Lot, Portfolio, Position } from './types';
  * offered for consumers that want a single position per asset derived from the
  * cost-basis ledger. `reconcile` continues to read `portfolio.positions`.
  *
+ * The returned ids are synthetic view keys (`lot_view_<assetId>`) — they are
+ * NOT stable `PositionId`s and must not be passed to `CloseOrder.positionId`
+ * or compared against `portfolio.positions[*].id`.
+ *
  * @param portfolio - Source portfolio; reads `portfolio.lots` (treated as `[]` when absent).
  * @returns One {@link Position} per distinct asset id, summing quantity and basis,
  *   with `entry` taken from the earliest lot. Empty when there are no lots.
@@ -34,9 +38,8 @@ export function positionsByAsset(portfolio: Portfolio): Position[] {
       });
     }
   }
-  let i = 0;
   return Array.from(byId.values()).map((agg) => ({
-    id: `pos_lot_${agg.asset.id}_${i++}`,
+    id: `lot_view_${agg.asset.id}`,
     asset: agg.asset,
     side: 'long' as const,
     quantity: agg.quantity,
