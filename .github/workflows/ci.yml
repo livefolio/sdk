@@ -85,13 +85,18 @@ jobs:
         id: version
         run: |
           CURRENT=$(node -p "require('./package.json').version")
-          PUBLISHED=$(npm view @livefolio/sdk version 2>/dev/null || echo "none")
+          # Check whether this EXACT version is already published (under any
+          # dist-tag), not just the `latest` tag. Prereleases publish under
+          # `next`, so comparing against `latest` alone would re-trigger on
+          # every rc and try to republish an already-published version.
+          PUBLISHED=$(npm view "@livefolio/sdk@${CURRENT}" version 2>/dev/null || echo "none")
+          echo "current=${CURRENT}" >> "$GITHUB_OUTPUT"
           if [ "$CURRENT" = "$PUBLISHED" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "Version $CURRENT already on npm; skipping release."
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "Version to publish: $CURRENT (last on npm: $PUBLISHED)"
+            echo "Version to publish: $CURRENT (not yet on npm)"
           fi
 
       - run: npm ci
@@ -102,7 +107,15 @@ jobs:
 
       - name: Publish to npm
         if: steps.version.outputs.changed == 'true'
-        run: npm publish --access public
+        run: |
+          # Prerelease versions (e.g. 0.5.0-rc.1) publish under the `next`
+          # dist-tag so `latest` keeps pointing at the most recent stable
+          # release. Final versions (no hyphen) publish as `latest` as usual.
+          if [[ "${{ steps.version.outputs.current }}" == *-* ]]; then
+            npm publish --access public --tag next
+          else
+            npm publish --access public
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -110,6 +123,11 @@ jobs:
         if: steps.version.outputs.changed == 'true'
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          gh release create "v${VERSION}" --title "v${VERSION}" --generate-notes
+          # Mark prerelease versions (containing a hyphen) as GitHub prereleases.
+          if [[ "$VERSION" == *-* ]]; then
+            gh release create "v${VERSION}" --title "v${VERSION}" --generate-notes --prerelease
+          else
+            gh release create "v${VERSION}" --title "v${VERSION}" --generate-notes
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
