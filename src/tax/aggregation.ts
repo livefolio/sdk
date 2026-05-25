@@ -118,12 +118,7 @@ export function crossOffset(
     // The loss bucket was fully absorbed; residual remains in the positive bucket's term
     const taxableShort = netShort > 0 ? combined : 0;
     const taxableLong = netLong > 0 ? combined : 0;
-    return {
-      taxableShort: Math.max(0, taxableShort),
-      taxableLong: Math.max(0, taxableLong),
-      ordinaryOffset: 0,
-      carryForward: 0,
-    };
+    return { taxableShort, taxableLong, ordinaryOffset: 0, carryForward: 0 };
   }
 
   // combined < 0: net loss after cross-offset
@@ -210,6 +205,11 @@ export function aggregateByYear(events: readonly RealizedEvent[]): Map<number, T
  * `carryForward` is surfaced as a return field for the caller to track across
  * years; this function does **not** consume carry-forward from prior years
  * (cross-year carry is V3 work).
+ *
+ * Note: the `ordinaryOffset` produced by {@link crossOffset} (the up-to-$3,000
+ * §1211(b) capital-loss deduction against ordinary income) is intentionally not
+ * surfaced here. This function models only the tax on capital income; that
+ * deduction applies against wage/business income outside this module's scope.
  *
  * @param income - Year-level taxable income, as produced by {@link aggregateByYear}.
  * @param rates  - `{ shortTerm, longTerm }` tax rates as decimals (e.g. `0.37`).
