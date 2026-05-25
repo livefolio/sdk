@@ -93,6 +93,114 @@ describe('applyFills', () => {
     expect(empty.positions).toHaveLength(0);
     expect(empty.cash).toBe(10_000);
   });
+
+  it('a rebalance buy creates a lot', () => {
+    const asset = { kind: 'equity' as const, id: 'SPY', symbol: 'SPY' };
+    const p0 = { cash: 10_000, positions: [], lots: [], realized: [], t: new Date('2024-01-01') };
+    const order = { id: 'o1', kind: 'rebalance' as const, asset, delta: 100 };
+    const fill = { orderRef: 'o1', t: new Date('2024-01-02'), quantity: 100, price: 10, fees: 0 };
+    const next = applyFills(p0, [fill], [order]);
+    expect(next.lots).toHaveLength(1);
+    expect(next.lots![0]!.quantity).toBe(100);
+    expect(next.lots![0]!.basis).toBe(1000);
+  });
+
+  it('FIFO sell emits one realized event and reduces the oldest lot', () => {
+    const asset = { kind: 'equity' as const, id: 'SPY', symbol: 'SPY' };
+    let p = { cash: 10_000, positions: [], lots: [], realized: [], t: new Date('2024-01-01') };
+    p = applyFills(
+      p,
+      [{ orderRef: 'b', t: new Date('2024-01-02'), quantity: 100, price: 10, fees: 0 }],
+      [{ id: 'b', kind: 'rebalance', asset, delta: 100 }],
+    );
+    p = applyFills(
+      p,
+      [{ orderRef: 's', t: new Date('2024-03-01'), quantity: 75, price: 30, fees: 0 }],
+      [{ id: 's', kind: 'rebalance', asset, delta: -75 }],
+    );
+    expect(p.realized).toHaveLength(1);
+    expect(p.realized![0]!.gain).toBeCloseTo(75 * 30 - 75 * 10);
+    expect(p.realized![0]!.termType).toBe('short');
+    expect(p.lots![0]!.quantity).toBe(25);
+  });
+
+  it('a sell spanning two lots emits two realized events', () => {
+    const asset = { kind: 'equity' as const, id: 'SPY', symbol: 'SPY' };
+    let p = { cash: 100_000, positions: [], lots: [], realized: [], t: new Date('2024-01-01') };
+    p = applyFills(
+      p,
+      [{ orderRef: 'b1', t: new Date('2024-01-02'), quantity: 100, price: 10, fees: 0 }],
+      [{ id: 'b1', kind: 'rebalance', asset, delta: 100 }],
+    );
+    p = applyFills(
+      p,
+      [{ orderRef: 'b2', t: new Date('2024-02-02'), quantity: 50, price: 20, fees: 0 }],
+      [{ id: 'b2', kind: 'rebalance', asset, delta: 50 }],
+    );
+    p = applyFills(
+      p,
+      [{ orderRef: 's', t: new Date('2024-03-01'), quantity: 120, price: 30, fees: 0 }],
+      [{ id: 's', kind: 'rebalance', asset, delta: -120 }],
+    );
+    expect(p.realized).toHaveLength(2);
+    expect(p.realized![0]!.quantity).toBe(100);
+    expect(p.realized![1]!.quantity).toBe(20);
+  });
+
+  it('overselling the lot ledger throws RangeError', () => {
+    const asset = { kind: 'equity' as const, id: 'SPY', symbol: 'SPY' };
+    let p = { cash: 10_000, positions: [], lots: [], realized: [], t: new Date('2024-01-01') };
+    p = applyFills(
+      p,
+      [{ orderRef: 'b', t: new Date('2024-01-02'), quantity: 10, price: 10, fees: 0 }],
+      [{ id: 'b', kind: 'rebalance', asset, delta: 10 }],
+    );
+    expect(() =>
+      applyFills(
+        p,
+        [{ orderRef: 's', t: new Date('2024-03-01'), quantity: 50, price: 30, fees: 0 }],
+        [{ id: 's', kind: 'rebalance', asset, delta: -50 }],
+      ),
+    ).toThrow(/cannot sell/);
+  });
+
+  it('honors fill.lotId over FIFO when present', () => {
+    const asset = { kind: 'equity' as const, id: 'SPY', symbol: 'SPY' };
+    let p = { cash: 100_000, positions: [], lots: [], realized: [], t: new Date('2024-01-01') };
+    p = applyFills(
+      p,
+      [{ orderRef: 'b1', t: new Date('2024-01-02'), quantity: 10, price: 10, fees: 0 }],
+      [{ id: 'b1', kind: 'rebalance', asset, delta: 10 }],
+    );
+    p = applyFills(
+      p,
+      [{ orderRef: 'b2', t: new Date('2024-02-02'), quantity: 10, price: 20, fees: 0 }],
+      [{ id: 'b2', kind: 'rebalance', asset, delta: 10 }],
+    );
+    const newerLotId = p.lots![1]!.id;
+    p = applyFills(
+      p,
+      [{ orderRef: 's', t: new Date('2024-03-01'), quantity: 5, price: 30, fees: 0, lotId: newerLotId }],
+      [{ id: 's', kind: 'rebalance', asset, delta: -5 }],
+    );
+    expect(p.realized![0]!.basis).toBeCloseTo(5 * 20);
+  });
+
+  it('long-term vs short-term classification by 365-day rule', () => {
+    const asset = { kind: 'equity' as const, id: 'SPY', symbol: 'SPY' };
+    let p = { cash: 100_000, positions: [], lots: [], realized: [], t: new Date('2023-01-01') };
+    p = applyFills(
+      p,
+      [{ orderRef: 'b', t: new Date('2023-01-01'), quantity: 10, price: 10, fees: 0 }],
+      [{ id: 'b', kind: 'rebalance', asset, delta: 10 }],
+    );
+    p = applyFills(
+      p,
+      [{ orderRef: 's', t: new Date('2024-06-01'), quantity: 10, price: 20, fees: 0 }],
+      [{ id: 's', kind: 'rebalance', asset, delta: -10 }],
+    );
+    expect(p.realized![0]!.termType).toBe('long');
+  });
 });
 
 describe('applyOrders (projection)', () => {
