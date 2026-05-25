@@ -125,6 +125,25 @@ export {
 export type { FeatureSpec, FeatureKind, FeatureRuntimeOptions, BarField, ReturnMode, ComputeFn } from './features';
 export * as features from './features';
 
+// Tax utilities — flat exports (canonical) and namespace alias.
+export {
+  holdingPeriodDays,
+  isLongTerm,
+  realize,
+  selectFIFO,
+  selectLIFO,
+  selectHIFO,
+  selectMinTax,
+  bucketByTerm,
+  netWithinBucket,
+  crossOffset,
+  aggregateByYear,
+  computeTaxBill,
+  ORDINARY_OFFSET_CAP,
+} from './tax';
+export type { LotSlice, TaxRates, TaxableIncome, RealizeResult } from './tax';
+export * as tax from './tax';
+
 // Orders
 export type { Order, OpenOrder, CloseOrder, AdjustOrder, RebalanceOrder, Fill } from './orders';
 
