@@ -59,7 +59,7 @@ export type IncomeKind = 'capital-gain' | 'qualified-dividend' | 'ordinary-divid
  * sales reduce `quantity` and pro-rate `basis`.
  */
 export type Lot = {
-  /** Opaque id assigned by `nextLotId` on creation. */
+  /** Opaque id assigned by {@link nextLotId} on creation. */
   id: string;
   asset: Asset;
   /** Shares remaining in this lot after any partial sales. */
@@ -85,6 +85,7 @@ export type RealizedEvent = {
   asset: Asset;
   /** The lot this event closed against. For income events, a reference token (e.g. the paying lot, or `'cash'` for interest). */
   lotId: string;
+  /** Shares closed; `0` for dividend and interest income events. */
   quantity: number;
   openDate: Date;
   closeDate: Date;
