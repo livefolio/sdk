@@ -83,6 +83,14 @@ export class RoutingDataFeed implements DataFeed {
     return feed.fundamentals(asset, t);
   }
 
+  /**
+   * Resolves `asset` to its routed feed and delegates `dividends`. This method
+   * is ALWAYS present on the router (unlike a leaf feed's optional `dividends?`),
+   * so `typeof routingFeed.dividends === 'function'` is always `true` — capability
+   * detection must account for the routed feed possibly lacking it at call time.
+   *
+   * @throws {RoutingDataFeedError} when the routed feed does not implement `dividends`.
+   */
   async dividends(asset: Asset, range: DateRange): Promise<DividendEvent[]> {
     const feed = this.resolve(asset);
     if (typeof feed.dividends !== 'function') {

@@ -148,6 +148,12 @@ function resolveAsset(
  */
 export class BacktestExecutor implements Executor {
   constructor(private readonly opts: BacktestExecutorOptions) {
+    // `selectMinTax`'s context requires `rates`, and the call site passes
+    // `this.opts.taxRates!` (non-null). This guard backs that assertion so a
+    // 'min-tax' executor can never reach the selector with undefined rates.
+    // (The current 4-tier ranking is rate-independent — it reads only the sign
+    // of each lot's gain — but the selector's signature demands `rates`, and a
+    // future rate-weighted variant would consume the magnitudes.)
     if (opts.lotMethod === 'min-tax' && !opts.taxRates) {
       throw new Error("BacktestExecutor: lotMethod 'min-tax' requires taxRates");
     }
@@ -199,10 +205,16 @@ export class BacktestExecutor implements Executor {
           }
           continue;
         }
-        // No lots for this asset (e.g. a stray reduce on a non-held asset): fall
-        // through to the single-fill push below, which applyFills no-ops —
-        // matching the default path. lotMethod must not turn a tolerated
-        // stray-reduce (see #37) into a hard RangeError.
+        // No lots for this asset: fall through to the single-fill push below.
+        // Two downstream outcomes in applyFills, both correct:
+        //  - Stray reduce on a non-held asset (positions also lacks it): the
+        //    reduce branch's `idx >= 0` is false, so it no-ops and never calls
+        //    consumeLots — matching the default path's tolerance of #37.
+        //  - Position exists but lots don't (internal state inconsistency):
+        //    applyFills reduces the position, then consumeLots throws RangeError
+        //    (held 0 < qty). Fail-loud is the right outcome for a real state bug;
+        //    in a clean run this can't happen (every long lot is created with its
+        //    position in apply.ts). Either way, lotMethod never silently corrupts.
       }
 
       // Default single-fill path (byte-for-byte identical to pre-lotMethod
