@@ -170,23 +170,39 @@ export class BacktestExecutor implements Executor {
       // applyFills honors `fill.lotId`. Buys / short closes / adjust never split.
       if (method && method !== 'FIFO' && lotConsumingSell) {
         const lots = (portfolio.lots ?? []).filter((l) => l.asset.id === asset.id && l.quantity > 0);
-        const slices: LotSlice[] =
-          method === 'LIFO'
-            ? selectLIFO(lots, qty)
-            : method === 'HIFO'
-              ? selectHIFO(lots, qty)
-              : selectMinTax(lots, qty, { price: adjustedPrice, asOf: open.t, rates: this.opts.taxRates! });
-        for (const slice of slices) {
-          fills.push({
-            orderRef: order.id,
-            t: open.t,
-            quantity: slice.quantity,
-            price: adjustedPrice,
-            fees: feePer * slice.quantity,
-            lotId: slice.lotId,
-          });
+        if (lots.length > 0) {
+          // A genuine oversell (lots present but summing to < qty) still throws
+          // via the selector — matching applyFills' own oversell guard — so that
+          // case is intentionally NOT suppressed; only the empty-lots case below
+          // falls through.
+          const slices: LotSlice[] =
+            method === 'LIFO'
+              ? selectLIFO(lots, qty)
+              : method === 'HIFO'
+                ? selectHIFO(lots, qty)
+                : selectMinTax(lots, qty, { price: adjustedPrice, asOf: open.t, rates: this.opts.taxRates! });
+          for (const slice of slices) {
+            // Per-slice fee `feePer * slice.quantity` sums across slices to the
+            // single-fill `feePer * qty` (the slice quantities partition qty), so
+            // splitting adds no fees. In applyFills, consumeLots' pro-rata fee
+            // term `(take / totalQty) * fees` collapses to `fees` for a one-lot
+            // fill (take === totalQty === slice.quantity), giving proceeds of
+            // `take * price - fees` with no double-count.
+            fills.push({
+              orderRef: order.id,
+              t: open.t,
+              quantity: slice.quantity,
+              price: adjustedPrice,
+              fees: feePer * slice.quantity,
+              lotId: slice.lotId,
+            });
+          }
+          continue;
         }
-        continue;
+        // No lots for this asset (e.g. a stray reduce on a non-held asset): fall
+        // through to the single-fill push below, which applyFills no-ops —
+        // matching the default path. lotMethod must not turn a tolerated
+        // stray-reduce (see #37) into a hard RangeError.
       }
 
       // Default single-fill path (byte-for-byte identical to pre-lotMethod

@@ -195,6 +195,64 @@ describe('BacktestExecutor', () => {
       expect(fills[0]!.lotId).toBeUndefined();
     });
 
+    it('LIFO path splits a long rebalance sell newest-first', async () => {
+      // lotCheap openDate 2025-06-01 (older), lotPricey 2025-09-01 (newer).
+      const held: Portfolio = { ...portfolio, lots: [lotCheap, lotPricey] };
+      const exec = new BacktestExecutor({ calendar: cal, nextOpen, lotMethod: 'LIFO' });
+      // Sell 7: LIFO takes the 4 newest (pricey) shares first, then 3 from cheap.
+      const order: Order = { id: 'r5', kind: 'rebalance', asset: SPY, delta: -7 };
+      const fills = await exec.submit([order], T, held);
+      expect(fills.map((f) => f.lotId)).toEqual(['lot_pricey', 'lot_cheap']);
+      expect(fills.map((f) => f.quantity)).toEqual([4, 3]);
+      expect(fills.reduce((s, f) => s + f.quantity, 0)).toBe(7);
+    });
+
+    it('min-tax path selects the long-term LOSS lot before the short-term GAIN lot', async () => {
+      // asOf is NEXT (2026-01-05), sale price 400.
+      // LT loss: opened > 365d before, basis/share 500 > 400 → tier 0 (selected first).
+      const ltLoss: Lot = {
+        id: 'lot_lt_loss',
+        asset: SPY,
+        quantity: 3,
+        openDate: new Date('2024-06-01T00:00:00Z'),
+        openPrice: 500,
+        basis: 1500,
+      };
+      // ST gain: opened recently, basis/share 300 < 400 → tier 3 (selected last).
+      const stGain: Lot = {
+        id: 'lot_st_gain',
+        asset: SPY,
+        quantity: 5,
+        openDate: new Date('2025-12-01T00:00:00Z'),
+        openPrice: 300,
+        basis: 1500,
+      };
+      const held: Portfolio = { ...portfolio, lots: [stGain, ltLoss] };
+      const exec = new BacktestExecutor({
+        calendar: cal,
+        nextOpen,
+        lotMethod: 'min-tax',
+        taxRates: { shortTerm: 0.37, longTerm: 0.2 },
+      });
+      // Sell 5: 3 from the LT-loss lot first, then 2 from the ST-gain lot.
+      const order: Order = { id: 'r6', kind: 'rebalance', asset: SPY, delta: -5 };
+      const fills = await exec.submit([order], T, held);
+      expect(fills.map((f) => f.lotId)).toEqual(['lot_lt_loss', 'lot_st_gain']);
+      expect(fills.map((f) => f.quantity)).toEqual([3, 2]);
+      expect(fills.reduce((s, f) => s + f.quantity, 0)).toBe(5);
+    });
+
+    it('falls back to a single fill (no lotId, no throw) for a stray reduce on an asset with no lots', async () => {
+      // No SPY lots held; a rebalance reduce must not throw under a split method.
+      const held: Portfolio = { ...portfolio, lots: [] };
+      const exec = new BacktestExecutor({ calendar: cal, nextOpen, lotMethod: 'HIFO' });
+      const order: Order = { id: 'r7', kind: 'rebalance', asset: SPY, delta: -5 };
+      const fills = await exec.submit([order], T, held);
+      expect(fills).toHaveLength(1);
+      expect(fills[0]!.lotId).toBeUndefined();
+      expect(fills[0]!.quantity).toBe(5);
+    });
+
     it('end-to-end: split fills feed applyFills, realized events draw from HIFO lots', async () => {
       const pos: Position = {
         id: 'p1',
