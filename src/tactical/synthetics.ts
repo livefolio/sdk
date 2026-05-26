@@ -124,6 +124,9 @@ export function withSynthetics(dataFeed: DataFeed, synthetics: ReadonlyArray<Syn
   if (dataFeed.events) {
     wrapped.events = dataFeed.events.bind(dataFeed);
   }
+  if (dataFeed.dividends) {
+    wrapped.dividends = dataFeed.dividends.bind(dataFeed);
+  }
 
   return wrapped;
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { withSynthetics } from './synthetics';
 import type { DataFeed } from '../interfaces/data-feed';
-import type { Asset, Bar } from '../interfaces/types';
+import type { Asset, Bar, DividendEvent } from '../interfaces/types';
 import type { SyntheticAsset } from './types';
 
 const utc = (s: string) => new Date(`${s}T00:00:00Z`);
@@ -143,6 +143,34 @@ describe('withSynthetics', () => {
     const b: SyntheticAsset = { id: 'us:X', symbol: 'X', underlying: SPY_REF, leverage: 3 };
     const { feed: f } = feed({});
     expect(() => withSynthetics(f, [a, b])).toThrow(/duplicate synthetic asset id "us:X"/);
+  });
+
+  it('exposes dividends and forwards calls when underlying feed has it', async () => {
+    const divs: DividendEvent[] = [
+      {
+        asset: { kind: 'equity', id: 'us:SPY', symbol: 'SPY' },
+        exDate: new Date('2024-03-08'),
+        payDate: new Date('2024-03-15'),
+        amountPerShare: 1.5,
+        incomeKind: 'qualified-eligible',
+      },
+    ];
+    const dividendsFn = vi.fn(async () => divs);
+    const { feed: f } = feed({ 'us:SPY': underlyingBars });
+    const feedWithDivs: DataFeed = { ...f, dividends: dividendsFn };
+    const wrapped = withSynthetics(feedWithDivs, [SPY3X]);
+    expect('dividends' in wrapped).toBe(true);
+    const asset: Asset = { kind: 'equity', id: 'us:SPY', symbol: 'SPY' };
+    const result = await wrapped.dividends!(asset, range);
+    expect(result).toEqual(divs);
+    expect(dividendsFn).toHaveBeenCalledWith(asset, range);
+  });
+
+  it('does NOT define dividends on the wrapped feed when underlying lacks it', () => {
+    const { feed: f } = feed({ 'us:SPY': underlyingBars });
+    // f does not have a dividends method
+    const wrapped = withSynthetics(f, [SPY3X]);
+    expect('dividends' in wrapped).toBe(false);
   });
 
   it('does not delegate to the wrapped feed on synthetic id queries', async () => {

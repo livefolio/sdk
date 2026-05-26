@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { RoutingDataFeed, RoutingDataFeedError } from './routing-data-feed';
-import type { Asset, Bar, DateRange } from '../interfaces/types';
+import type { Asset, Bar, DateRange, DividendEvent } from '../interfaces/types';
 import type { DataFeed, Fundamentals } from '../interfaces/data-feed';
 
 const equity: Asset = { kind: 'equity', id: 'AAPL', symbol: 'AAPL' };
@@ -101,6 +101,29 @@ describe('RoutingDataFeed', () => {
     await expect(drain(router.bars(equity, range, '1d'))).rejects.toThrow(
       /no feed registered.*kind="equity".*id="AAPL"/,
     );
+  });
+
+  it('routes dividends to a feed that implements it', async () => {
+    const divs: DividendEvent[] = [
+      {
+        asset: equity,
+        exDate: new Date('2024-03-08'),
+        payDate: new Date('2024-03-15'),
+        amountPerShare: 0.24,
+        incomeKind: 'qualified-eligible',
+      },
+    ];
+    const yahoo = makeFeed({ dividends: vi.fn(async () => divs) });
+    const router = new RoutingDataFeed({ equity: yahoo });
+    expect(await router.dividends(equity, range)).toEqual(divs);
+    expect(yahoo.dividends).toHaveBeenCalledWith(equity, range);
+  });
+
+  it('throws RoutingDataFeedError when routed feed lacks dividends', async () => {
+    const fred = makeFeed(); // no dividends method
+    const router = new RoutingDataFeed({ macro: fred });
+    await expect(router.dividends(macro, range)).rejects.toThrow(RoutingDataFeedError);
+    await expect(router.dividends(macro, range)).rejects.toThrow(/does not implement dividends/);
   });
 
   it('does not implement events', () => {

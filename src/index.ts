@@ -21,6 +21,7 @@ export type {
   MacroAsset,
   Bar,
   DateRange,
+  DividendEvent,
   Frequency,
   Series,
   DataFeed,

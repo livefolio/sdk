@@ -131,3 +131,20 @@ export type Bar = {
  * `ReadonlyArray`, so implementations must not mutate it after construction.
  */
 export type Series = ReadonlyArray<{ t: Date; v: number }>;
+
+/**
+ * A cash distribution (dividend) or interest payment for an asset, carrying
+ * what the SDK needs to credit cash and classify the income per-lot.
+ *
+ * `incomeKind: 'qualified-eligible'` means the distribution CAN be qualified if
+ * a holding lot satisfies the 60-of-121-day rule; the runtime resolves the
+ * actual qualified-vs-ordinary split per lot. `'ordinary'`/`'interest'` are
+ * never qualified.
+ */
+export type DividendEvent = {
+  asset: Asset;
+  exDate: Date;
+  payDate: Date;
+  amountPerShare: number;
+  incomeKind: 'qualified-eligible' | 'ordinary' | 'interest';
+};

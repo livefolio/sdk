@@ -1,4 +1,4 @@
-import type { Asset, Bar, DateRange, Frequency } from '../interfaces/types';
+import type { Asset, Bar, DateRange, DividendEvent, Frequency } from '../interfaces/types';
 import type { DataFeed, Fundamentals } from '../interfaces/data-feed';
 
 /**
@@ -78,6 +78,16 @@ export class RoutingDataFeed implements DataFeed {
       );
     }
     return feed.fundamentals(asset, t);
+  }
+
+  async dividends(asset: Asset, range: DateRange): Promise<DividendEvent[]> {
+    const feed = this.resolve(asset);
+    if (typeof feed.dividends !== 'function') {
+      throw new RoutingDataFeedError(
+        `RoutingDataFeed: routed feed for asset.kind="${asset.kind}" (id="${asset.id}") does not implement dividends()`,
+      );
+    }
+    return feed.dividends(asset, range);
   }
 
   private resolve(asset: Asset): DataFeed {
