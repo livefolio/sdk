@@ -32,8 +32,8 @@ describe('RoutingDataFeed', () => {
     await drain(router.bars(equity, range, '1d'));
     await drain(router.bars(macro, range, '1d'));
 
-    expect(yahoo.bars).toHaveBeenCalledWith(equity, range, '1d');
-    expect(fred.bars).toHaveBeenCalledWith(macro, range, '1d');
+    expect(yahoo.bars).toHaveBeenCalledWith(equity, range, '1d', undefined);
+    expect(fred.bars).toHaveBeenCalledWith(macro, range, '1d', undefined);
     expect(yahoo.bars).toHaveBeenCalledTimes(1);
     expect(fred.bars).toHaveBeenCalledTimes(1);
   });
@@ -54,7 +54,7 @@ describe('RoutingDataFeed', () => {
     const feed = makeFeed();
     const router = new RoutingDataFeed({ equity: feed });
     await drain(router.bars(equity, range, '1h'));
-    expect(feed.bars).toHaveBeenCalledWith(equity, range, '1h');
+    expect(feed.bars).toHaveBeenCalledWith(equity, range, '1h', undefined);
   });
 
   it('yields bars in the order the inner feed yields them', async () => {
@@ -106,5 +106,24 @@ describe('RoutingDataFeed', () => {
   it('does not implement events', () => {
     const router = new RoutingDataFeed({ equity: makeFeed() });
     expect('events' in router).toBe(false);
+  });
+
+  it('forwards the bars kind discriminator to the routed feed', async () => {
+    const feed: DataFeed = {
+      async *bars(_a, _r, _f, kind) {
+        yield { t: new Date('2024-01-02'), open: 0, high: 0, low: 0, close: kind === 'unadjusted' ? 100 : 95, volume: 0 };
+      },
+    };
+    const router = new RoutingDataFeed({ equity: feed });
+    const asset: Asset = { kind: 'equity', id: 'SPY', symbol: 'SPY' };
+    const r: DateRange = { from: new Date('2024-01-01'), to: new Date('2024-02-01') };
+    const collect = async (k?: 'adjusted' | 'unadjusted'): Promise<number[]> => {
+      const out: number[] = [];
+      for await (const b of router.bars(asset, r, '1d', k)) out.push(b.close);
+      return out;
+    };
+    expect(await collect('unadjusted')).toEqual([100]);
+    expect(await collect('adjusted')).toEqual([95]);
+    expect(await collect()).toEqual([95]); // default = adjusted
   });
 });

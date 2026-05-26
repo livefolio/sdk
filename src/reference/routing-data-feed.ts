@@ -65,9 +65,9 @@ export class RoutingDataFeed implements DataFeed {
   // Async generator (rather than plain delegation) so resolve() runs lazily on
   // the first next() call, surfacing errors via the iterable's normal rejection
   // path instead of throwing synchronously at call time.
-  async *bars(asset: Asset, range: DateRange, freq: Frequency): AsyncGenerator<Bar> {
+  async *bars(asset: Asset, range: DateRange, freq: Frequency, kind?: 'adjusted' | 'unadjusted'): AsyncGenerator<Bar> {
     const feed = this.resolve(asset);
-    yield* feed.bars(asset, range, freq);
+    yield* feed.bars(asset, range, freq, kind);
   }
 
   async fundamentals(asset: Asset, t: Date): Promise<Fundamentals> {

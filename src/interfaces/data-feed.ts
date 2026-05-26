@@ -94,9 +94,13 @@ export interface DataFeed {
    * @param asset - The instrument to fetch bars for.
    * @param range - Half-open date range; `range.from` inclusive, `range.to` exclusive.
    * @param freq  - Bar width. `'1d'` returns one bar per trading day.
+   * @param kind  - `'adjusted'` (default) applies split/dividend adjustments;
+   *   `'unadjusted'` returns raw prices. Indicators consume adjusted bars;
+   *   execution fills and dividend cash-flow use unadjusted bars. Vendors that
+   *   do not distinguish may ignore this and always return their single series.
    * @returns An async iterable of {@link Bar} objects.
    */
-  bars(asset: Asset, range: DateRange, freq: Frequency): AsyncIterable<Bar>;
+  bars(asset: Asset, range: DateRange, freq: Frequency, kind?: 'adjusted' | 'unadjusted'): AsyncIterable<Bar>;
 
   /**
    * Returns a snapshot of fundamental data for `asset` as of `t`.
