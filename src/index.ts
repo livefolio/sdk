@@ -4,6 +4,7 @@ export type {
   Strategy,
   Features,
   CashEvent,
+  DividendsConfig,
   RunBacktestOptions,
   RunLiveOptions,
   BacktestResult,

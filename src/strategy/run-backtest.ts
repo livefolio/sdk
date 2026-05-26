@@ -4,10 +4,11 @@ import type { DataFeed } from '../interfaces/data-feed';
 import type { Executor } from '../interfaces/executor';
 import type { Calendar } from '../interfaces/calendar';
 import type { FeatureCache } from '../interfaces/feature-cache';
-import type { AssetId, Bar, DateRange, Frequency } from '../interfaces/types';
+import type { Asset, AssetId, Bar, DateRange, DividendEvent, Frequency } from '../interfaces/types';
 import type { Order, Fill } from '../orders/types';
 import type { FeatureRuntime } from '../features/runtime';
 import { applyFills } from '../portfolio/apply';
+import { distributeDividend, reinvestDividend } from '../tax/dividends';
 
 /**
  * A scheduled cash injection or withdrawal. Applied at the start of the
@@ -31,6 +32,9 @@ export type CashEvent = {
   reason?: 'deposit' | 'withdrawal' | 'interest' | 'dividend';
 };
 
+/** How dividends are handled during a backtest. `reinvest: true` enables DRIP (dividend reinvestment). */
+export type DividendsConfig = { reinvest: boolean };
+
 /**
  * Narrows the dual return type of `Strategy.build` to the stateful object form.
  *
@@ -42,6 +46,23 @@ export function isStateResult<S>(
   r: ReadonlyArray<Order> | { orders: ReadonlyArray<Order>; state: S },
 ): r is { orders: ReadonlyArray<Order>; state: S } {
   return !Array.isArray(r);
+}
+
+/**
+ * Fetches the first unadjusted bar's close on/after `payDate` from `feed`.
+ * Used by DRIP to price the reinvestment lot at the raw pay-date close.
+ *
+ * @returns The close price, or `undefined` when no bar is available.
+ */
+async function firstUnadjustedClose(
+  feed: DataFeed,
+  asset: Asset,
+  payDate: Date,
+  freq: Frequency,
+): Promise<number | undefined> {
+  const to = new Date(payDate.getTime() + 86_400_000);
+  for await (const bar of feed.bars(asset, { from: payDate, to }, freq, 'unadjusted')) return bar.close;
+  return undefined;
 }
 
 /**
@@ -108,6 +129,16 @@ export type RunBacktestOptions<F extends Features = Features, S = unknown> = {
    * fund withdrawals is deferred to a later release, so this behavior may change.
    */
   cashEvents?: ReadonlyArray<CashEvent>;
+  /**
+   * Optional dividend handling. When `dataFeed.dividends` exists, the universe's
+   * day-0 dividends are pre-fetched and dividends whose `exDate` matches a session
+   * are applied to held lots: cash mode credits cash, DRIP mode (`reinvest: true`)
+   * reinvests into a new lot at the unadjusted pay-date close.
+   *
+   * @remarks Default = no dividends applied unless `dataFeed.dividends` exists;
+   * `reinvest` defaults to `false` (cash mode).
+   */
+  dividends?: DividendsConfig;
 };
 
 /**
@@ -129,6 +160,10 @@ export type BacktestSnapshot = {
    * Net cash delta applied this session via `cashEvents`. Omitted when zero.
    */
   cashFlow?: number;
+  /** Dividend income recognized this session, split by qualified status. Omitted when zero. */
+  dividendIncome?: { qualified: number; ordinary: number };
+  /** Interest income accrued on cash this session. Omitted when zero. */
+  interestIncome?: number;
 };
 
 /**
@@ -246,6 +281,23 @@ export async function runBacktest<F extends Features = Features, S = unknown>(
   // warn once per run so a withdrawal-heavy strategy doesn't spam the logs.
   let warnedNegativeCash = false;
 
+  // Pre-fetch dividends ONCE for the day-0 universe. Static-universe assumption:
+  // assets that enter the universe on later sessions will NOT have their dividends
+  // applied — only the day-0 universe is queried. This keeps the hook O(1) per
+  // session (no per-session feed calls) at the cost of not tracking universe churn.
+  const divByAsset = new Map<string, DividendEvent[]>();
+  if (opts.dataFeed.dividends && sessions.length > 0) {
+    const u0 = opts.strategy.universe(sessions[0]!, opts.initialPortfolio);
+    for (const asset of u0) {
+      divByAsset.set(asset.id, await opts.dataFeed.dividends(asset, opts.range));
+    }
+  }
+  // Flatten and sort ascending by exDate so a monotonic cursor can drain per session.
+  const allDivs = [...divByAsset.values()]
+    .flat()
+    .sort((a, b) => a.exDate.getTime() - b.exDate.getTime());
+  let divCursor = 0;
+
   for (const t of sessions) {
     let cashFlow = 0;
     while (
@@ -266,6 +318,55 @@ export async function runBacktest<F extends Features = Features, S = unknown>(
       }
     }
 
+    // Drain dividends whose exDate matches this session (cursor pattern; allDivs is sorted by exDate).
+    // Skip any whose exDate fell strictly before this session (e.g. on a non-trading day) — same drop
+    // behavior as an exact-date match, just O(1) amortized instead of a full scan.
+    while (divCursor < allDivs.length && allDivs[divCursor]!.exDate.getTime() < t.getTime()) divCursor++;
+    let qualifiedTotal = 0;
+    let ordinaryTotal = 0;
+    while (divCursor < allDivs.length && allDivs[divCursor]!.exDate.getTime() === t.getTime()) {
+      const div = allDivs[divCursor]!;
+      divCursor++;
+      const dist = distributeDividend(div, portfolio.lots ?? []);
+      if (dist.perLot.length === 0) continue;
+      qualifiedTotal += dist.totals.qualified;
+      ordinaryTotal += dist.totals.ordinary;
+      const reinvest = opts.dividends?.reinvest === true;
+      const lots = [...(portfolio.lots ?? [])];
+      const realized = [...(portfolio.realized ?? [])];
+      let cashCredit = 0;
+      // DRIP reinvests at the unadjusted pay-date close, which is identical for every slice of
+      // this dividend (same asset, same pay date) — fetch it once per dividend, not once per lot.
+      const reinvestPrice = reinvest
+        ? await firstUnadjustedClose(opts.dataFeed, div.asset, div.payDate, opts.freq ?? '1d')
+        : undefined;
+      for (const slice of dist.perLot) {
+        realized.push({
+          asset: div.asset,
+          lotId: slice.lotId,
+          quantity: 0,
+          openDate: t,
+          closeDate: t,
+          proceeds: slice.cash,
+          basis: 0,
+          termType: 'long',
+          gain: slice.cash,
+          incomeKind: slice.qualified ? 'qualified-dividend' : 'ordinary-dividend',
+        });
+        if (reinvest && reinvestPrice && reinvestPrice > 0) {
+          const { newLot, residual } = reinvestDividend(slice.cash, div.asset, reinvestPrice, div.payDate, slice.lotId);
+          if (newLot.quantity > 0) lots.push(newLot);
+          cashCredit += residual;
+        } else {
+          // Cash mode, or DRIP with no/zero pay-date price → credit the full slice to cash.
+          cashCredit += slice.cash;
+        }
+      }
+      portfolio = { ...portfolio, cash: portfolio.cash + cashCredit, lots, realized };
+    }
+    const dividendIncome =
+      qualifiedTotal + ordinaryTotal > 0 ? { qualified: qualifiedTotal, ordinary: ordinaryTotal } : undefined;
+
     const universe = opts.strategy.universe(t, portfolio);
     const features = await opts.strategy.features(universe, portfolio, t);
     const buildResult = opts.strategy.build(features, portfolio, state as S, t);
@@ -281,7 +382,14 @@ export async function runBacktest<F extends Features = Features, S = unknown>(
 
     const fills = await opts.executor.submit(orders, t, portfolio);
     portfolio = applyFills(portfolio, fills, orders);
-    snapshots.push({ t, portfolio, orders, fills, ...(cashFlow !== 0 ? { cashFlow } : {}) });
+    snapshots.push({
+      t,
+      portfolio,
+      orders,
+      fills,
+      ...(cashFlow !== 0 ? { cashFlow } : {}),
+      ...(dividendIncome ? { dividendIncome } : {}),
+    });
   }
 
   const bars = opts.featureRuntime?.getAllBars() ?? new Map<AssetId, ReadonlyArray<Bar>>();

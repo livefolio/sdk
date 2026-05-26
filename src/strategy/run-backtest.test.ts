@@ -4,11 +4,11 @@ import { NYSEExchangeCalendar } from '../calendars';
 import { FeatureRuntime } from '../features/runtime';
 import { MemoryFeatureCache } from '../reference/memory-feature-cache';
 import type { Strategy, Features } from './types';
-import type { Asset, Bar } from '../interfaces/types';
+import type { Asset, Bar, DividendEvent } from '../interfaces/types';
 import type { DataFeed } from '../interfaces/data-feed';
 import type { Executor } from '../interfaces/executor';
 import type { Order, Fill } from '../orders/types';
-import type { Portfolio } from '../portfolio/types';
+import type { Portfolio, Lot } from '../portfolio/types';
 
 const SPY: Asset = { kind: 'equity', id: 'us:SPY', symbol: 'SPY' };
 
@@ -301,6 +301,236 @@ describe('runBacktest cashEvents', () => {
 
     for (const snap of result.snapshots) {
       expect(snap.cashFlow).toBeUndefined();
+    }
+    expect(result.finalPortfolio.cash).toBe(10_000);
+  });
+});
+
+describe('runBacktest dividend hook', () => {
+  const calendar = new NYSEExchangeCalendar();
+  // NYSE sessions in this range: Jan 2, 3, 4, 5, 8 (5 sessions). Ex-date = Jan 4 (3rd session).
+  const range = { from: new Date('2024-01-02'), to: new Date('2024-01-09') };
+  const exDate = new Date('2024-01-04');
+  const payDate = new Date('2024-01-08');
+
+  const heldLot: Lot = {
+    id: 'lot_held',
+    asset: SPY,
+    quantity: 100,
+    openDate: new Date('2023-01-01'), // long-held → qualifies for the 60-of-121 test
+    openPrice: 50,
+    basis: 5000,
+  };
+
+  const portfolioWithLot: Portfolio = {
+    cash: 10_000,
+    positions: [],
+    lots: [heldLot],
+    realized: [],
+    t: new Date('2024-01-02T00:00:00Z'),
+  };
+
+  // Trivial strategy: universe = [SPY], no orders, isolates the dividend hook.
+  const strategy: Strategy = {
+    universe: () => [SPY],
+    features: async () => ({}),
+    build: () => [],
+  };
+
+  const makeFeed = (event: DividendEvent, payClose = 200): DataFeed => ({
+    bars: async function* (_asset, _r, _freq, kind) {
+      // Only the unadjusted pay-date close matters for DRIP.
+      if (kind === 'unadjusted') {
+        yield {
+          t: payDate,
+          open: payClose,
+          high: payClose,
+          low: payClose,
+          close: payClose,
+          volume: 0,
+        };
+      }
+    },
+    dividends: async () => [event],
+  });
+
+  const executor: Executor = { submit: async () => [] };
+
+  it('(a) cash mode credits cash and appends a RealizedEvent', async () => {
+    const event: DividendEvent = {
+      asset: SPY,
+      exDate,
+      payDate,
+      amountPerShare: 1.5,
+      incomeKind: 'qualified-eligible',
+    };
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: portfolioWithLot,
+      dataFeed: makeFeed(event),
+      executor,
+      calendar,
+      dividends: { reinvest: false },
+    });
+
+    // Ex-date is the 3rd session (Jan 4).
+    const exSnap = result.snapshots[2]!;
+    expect(exSnap.dividendIncome).toEqual({ qualified: 150, ordinary: 0 });
+
+    // 100 shares * 1.5 = 150 credited to cash.
+    expect(result.finalPortfolio.cash).toBe(10_150);
+
+    const realized = result.finalPortfolio.realized ?? [];
+    expect(realized).toHaveLength(1);
+    expect(realized[0]).toMatchObject({
+      lotId: 'lot_held',
+      quantity: 0,
+      basis: 0,
+      proceeds: 150,
+      gain: 150,
+      incomeKind: 'qualified-dividend',
+      termType: 'long',
+    });
+
+    // No DRIP lot was created (still just the original lot).
+    expect(result.finalPortfolio.lots).toHaveLength(1);
+  });
+
+  it('cash mode is the default when dividends config is omitted (feed still drives it)', async () => {
+    const event: DividendEvent = {
+      asset: SPY,
+      exDate,
+      payDate,
+      amountPerShare: 2,
+      incomeKind: 'ordinary',
+    };
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: portfolioWithLot,
+      dataFeed: makeFeed(event),
+      executor,
+      calendar,
+      // dividends omitted → reinvest defaults false (cash mode)
+    });
+
+    expect(result.snapshots[2]!.dividendIncome).toEqual({ qualified: 0, ordinary: 200 });
+    expect(result.finalPortfolio.cash).toBe(10_200);
+    expect(result.finalPortfolio.lots).toHaveLength(1);
+  });
+
+  it('(b) DRIP mode reinvests into a new lot at the unadjusted pay-date close', async () => {
+    const payClose = 200;
+    const event: DividendEvent = {
+      asset: SPY,
+      exDate,
+      payDate,
+      amountPerShare: 1.5,
+      incomeKind: 'qualified-eligible',
+    };
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: portfolioWithLot,
+      dataFeed: makeFeed(event, payClose),
+      executor,
+      calendar,
+      dividends: { reinvest: true },
+    });
+
+    // cash = 100 * 1.5 = 150; floor(150 / 200) = 0 shares affordable, so DRIP buys
+    // nothing and the full 150 falls back as residual cash.
+    expect(result.finalPortfolio.cash).toBe(10_150);
+    // No lot added because quantity === 0.
+    expect(result.finalPortfolio.lots).toHaveLength(1);
+  });
+
+  it('(b) DRIP mode adds a lot with dripParent when a whole share is affordable', async () => {
+    const payClose = 50; // 150 cash / 50 = 3 shares, residual 0
+    const event: DividendEvent = {
+      asset: SPY,
+      exDate,
+      payDate,
+      amountPerShare: 1.5,
+      incomeKind: 'qualified-eligible',
+    };
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: portfolioWithLot,
+      dataFeed: makeFeed(event, payClose),
+      executor,
+      calendar,
+      dividends: { reinvest: true },
+    });
+
+    const lots = result.finalPortfolio.lots ?? [];
+    expect(lots).toHaveLength(2);
+    const dripLot = lots.find((l) => l.dripParent === 'lot_held');
+    expect(dripLot).toBeDefined();
+    expect(dripLot!.quantity).toBe(Math.floor(150 / payClose)); // 3
+    expect(dripLot!.openPrice).toBe(payClose);
+    // residual = 150 - 3*50 = 0 → cash unchanged.
+    expect(result.finalPortfolio.cash).toBe(10_000);
+    // Still records dividend income.
+    expect(result.snapshots[2]!.dividendIncome).toEqual({ qualified: 150, ordinary: 0 });
+  });
+
+  it('(c) ordinary dividend lands in dividendIncome.ordinary; qualified-eligible (long-held) in .qualified', async () => {
+    const ordinaryEvent: DividendEvent = {
+      asset: SPY,
+      exDate,
+      payDate,
+      amountPerShare: 1,
+      incomeKind: 'ordinary',
+    };
+    const ordResult = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: portfolioWithLot,
+      dataFeed: makeFeed(ordinaryEvent),
+      executor,
+      calendar,
+    });
+    expect(ordResult.snapshots[2]!.dividendIncome).toEqual({ qualified: 0, ordinary: 100 });
+    expect(ordResult.finalPortfolio.realized?.[0]?.incomeKind).toBe('ordinary-dividend');
+  });
+
+  it('does not set dividendIncome on sessions without a matching ex-date', async () => {
+    const event: DividendEvent = {
+      asset: SPY,
+      exDate,
+      payDate,
+      amountPerShare: 1.5,
+      incomeKind: 'qualified-eligible',
+    };
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: portfolioWithLot,
+      dataFeed: makeFeed(event),
+      executor,
+      calendar,
+    });
+    expect(result.snapshots[0]!.dividendIncome).toBeUndefined();
+    expect(result.snapshots[1]!.dividendIncome).toBeUndefined();
+    expect(result.snapshots[2]!.dividendIncome).toBeDefined();
+    expect(result.snapshots[3]!.dividendIncome).toBeUndefined();
+  });
+
+  it('is inert when the feed has no dividends() (parity-safety guard)', async () => {
+    const feed: DataFeed = { bars: async function* () {} };
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: portfolioWithLot,
+      dataFeed: feed,
+      executor,
+      calendar,
+    });
+    for (const snap of result.snapshots) {
+      expect(snap.dividendIncome).toBeUndefined();
     }
     expect(result.finalPortfolio.cash).toBe(10_000);
   });
