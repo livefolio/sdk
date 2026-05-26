@@ -63,11 +63,17 @@ export function isStateResult<S>(
   return !Array.isArray(r);
 }
 
+/** Lookback window (7 days) for the DRIP pay-date price fetch — see `firstUnadjustedClose`. */
+const DRIP_PRICE_WINDOW_MS = 7 * 86_400_000;
+
 /**
- * Fetches the first unadjusted bar's close on/after `payDate` from `feed`.
- * Used by DRIP to price the reinvestment lot at the raw pay-date close.
+ * Fetches the first unadjusted bar's close on/after `payDate` from `feed`,
+ * scanning a 7-day window starting at `payDate`. Used by DRIP to price the
+ * reinvestment lot at the raw pay-date close. The window (rather than a single
+ * day) tolerates pay dates that land on a non-trading day — the first bar
+ * on/after `payDate` is used.
  *
- * @returns The close price, or `undefined` when no bar is available.
+ * @returns The close price, or `undefined` when no bar is available in the window.
  */
 async function firstUnadjustedClose(
   feed: DataFeed,
@@ -75,7 +81,7 @@ async function firstUnadjustedClose(
   payDate: Date,
   freq: Frequency,
 ): Promise<number | undefined> {
-  const to = new Date(payDate.getTime() + 86_400_000);
+  const to = new Date(payDate.getTime() + DRIP_PRICE_WINDOW_MS);
   for await (const bar of feed.bars(asset, { from: payDate, to }, freq, 'unadjusted')) return bar.close;
   return undefined;
 }
@@ -176,12 +182,17 @@ export type RunBacktestOptions<F extends Features = Features, S = unknown> = {
   cashEvents?: ReadonlyArray<CashEvent>;
   /**
    * Optional dividend handling. When `dataFeed.dividends` exists, the universe's
-   * day-0 dividends are pre-fetched and dividends whose `exDate` matches a session
-   * are applied to held lots: cash mode credits cash, DRIP mode (`reinvest: true`)
-   * reinvests into a new lot at the unadjusted pay-date close.
+   * day-0 dividends are pre-fetched and dividends are applied to held lots on the
+   * first session on/after their `exDate`: cash mode credits cash, DRIP mode
+   * (`reinvest: true`) reinvests into a new lot at the unadjusted pay-date close.
    *
    * @remarks Default = no dividends applied unless `dataFeed.dividends` exists;
    * `reinvest` defaults to `false` (cash mode).
+   * @remarks Static-universe assumption: dividends are queried once for the day-0
+   * universe (`strategy.universe(sessions[0], initialPortfolio)`). Assets that
+   * enter the universe on later sessions — e.g. a dynamic-universe strategy that
+   * opens a new position mid-run — will NOT have their dividends applied. This is
+   * a non-issue for `fromSpec` strategies, whose universe is statically declared.
    */
   dividends?: DividendsConfig;
   /**
@@ -336,6 +347,9 @@ export async function runBacktest<F extends Features = Features, S = unknown>(
   // Negative cash is allowed for now (force-sell on over-withdrawal is deferred);
   // warn once per run so a withdrawal-heavy strategy doesn't spam the logs.
   let warnedNegativeCash = false;
+  // Warn once per run when DRIP is requested but a pay-date price was unavailable
+  // and the dividend fell back to a cash credit (see the dividend drain below).
+  let warnedDripFallback = false;
 
   // Pre-fetch dividends ONCE for the day-0 universe. Static-universe assumption:
   // assets that enter the universe on later sessions will NOT have their dividends
@@ -374,13 +388,15 @@ export async function runBacktest<F extends Features = Features, S = unknown>(
       }
     }
 
-    // Drain dividends whose exDate matches this session (cursor pattern; allDivs is sorted by exDate).
-    // Skip any whose exDate fell strictly before this session (e.g. on a non-trading day) — same drop
-    // behavior as an exact-date match, just O(1) amortized instead of a full scan.
-    while (divCursor < allDivs.length && allDivs[divCursor]!.exDate.getTime() < t.getTime()) divCursor++;
+    // Drain every dividend with exDate on or before this session that hasn't been applied yet
+    // (cursor pattern; allDivs is sorted by exDate, so this is O(1) amortized — no per-session scan).
+    // A dividend whose exDate landed on a non-trading day (weekend/holiday, between two sessions) is
+    // rolled forward to the first session on/after its exDate rather than silently dropped — no
+    // session occurs between the ex-date and here, so the entitled lot is still held. Lot eligibility
+    // is keyed off the dividend's own exDate inside distributeDividend, not the (possibly later) `t`.
     let qualifiedTotal = 0;
     let ordinaryTotal = 0;
-    while (divCursor < allDivs.length && allDivs[divCursor]!.exDate.getTime() === t.getTime()) {
+    while (divCursor < allDivs.length && allDivs[divCursor]!.exDate.getTime() <= t.getTime()) {
       const div = allDivs[divCursor]!;
       divCursor++;
       const dist = distributeDividend(div, portfolio.lots ?? []);
@@ -415,6 +431,14 @@ export async function runBacktest<F extends Features = Features, S = unknown>(
           cashCredit += residual;
         } else {
           // Cash mode, or DRIP with no/zero pay-date price → credit the full slice to cash.
+          if (reinvest && !warnedDripFallback) {
+            warnedDripFallback = true;
+            console.warn(
+              `[runBacktest] DRIP fell back to a cash credit for ${div.asset.id} (pay date ` +
+                `${div.payDate.toISOString()}): no unadjusted bar within 7 days of the pay date. ` +
+                `Further occurrences this run are suppressed.`,
+            );
+          }
           cashCredit += slice.cash;
         }
       }

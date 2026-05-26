@@ -534,6 +534,66 @@ describe('runBacktest dividend hook', () => {
     }
     expect(result.finalPortfolio.cash).toBe(10_000);
   });
+
+  it('rolls a non-trading-day ex-date forward to the next session (no silent drop)', async () => {
+    // Jan 6 2024 is a Saturday (no NYSE session); the next session is Mon Jan 8 (snapshot index 4).
+    const event: DividendEvent = {
+      asset: SPY,
+      exDate: new Date('2024-01-06'),
+      payDate,
+      amountPerShare: 1.5,
+      incomeKind: 'qualified-eligible',
+    };
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: portfolioWithLot,
+      dataFeed: makeFeed(event),
+      executor,
+      calendar,
+      dividends: { reinvest: false },
+    });
+    // Sessions Jan 2,3,4,5 (indices 0-3) see nothing; Jan 8 (index 4) gets the rolled-forward credit.
+    expect(result.snapshots[0]!.dividendIncome).toBeUndefined();
+    expect(result.snapshots[3]!.dividendIncome).toBeUndefined();
+    expect(result.snapshots[4]!.dividendIncome).toEqual({ qualified: 150, ordinary: 0 });
+    expect(result.finalPortfolio.cash).toBe(10_150);
+  });
+
+  it('DRIP falls back to a cash credit (with a one-time warning) when no pay-date price exists', async () => {
+    const event: DividendEvent = {
+      asset: SPY,
+      exDate,
+      payDate,
+      amountPerShare: 1.5,
+      incomeKind: 'qualified-eligible',
+    };
+    // Feed exposes dividends() but yields NO unadjusted bar → firstUnadjustedClose returns undefined.
+    const feed: DataFeed = {
+      bars: async function* () {},
+      dividends: async () => [event],
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const result = await runBacktest({
+        strategy,
+        range,
+        initialPortfolio: portfolioWithLot,
+        dataFeed: feed,
+        executor,
+        calendar,
+        dividends: { reinvest: true },
+      });
+      // No DRIP lot created; the full dividend is credited to cash instead.
+      expect(result.finalPortfolio.lots).toHaveLength(1);
+      expect(result.finalPortfolio.cash).toBe(10_150);
+      expect(result.snapshots[2]!.dividendIncome).toEqual({ qualified: 150, ordinary: 0 });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]![0])).toContain('DRIP fell back');
+    } finally {
+      warn.mockRestore();
+    }
+  });
 });
 
 describe('runBacktest cashYield (interest accrual)', () => {

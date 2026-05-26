@@ -144,8 +144,20 @@ export {
   aggregateByYear,
   computeTaxBill,
   ORDINARY_OFFSET_CAP,
+  isQualifiedForLot,
+  distributeDividend,
+  reinvestDividend,
+  accrueCashInterest,
 } from './tax';
-export type { LotSlice, TaxRates, TaxableIncome, RealizeResult } from './tax';
+export type {
+  LotSlice,
+  TaxRates,
+  TaxableIncome,
+  RealizeResult,
+  QualificationOpts,
+  DividendDistribution,
+  CashInterestResult,
+} from './tax';
 export * as tax from './tax';
 
 // Orders
