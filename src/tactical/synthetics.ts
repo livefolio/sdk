@@ -74,7 +74,7 @@ async function* synthesize(
  * independently scaled); `volume` is passed through from the underlying bar.
  *
  * Non-synthetic assets are proxied transparently to the original `dataFeed`.
- * `fundamentals` and `events` methods, if present, are forwarded unchanged.
+ * `fundamentals`, `events`, and `dividends` methods, if present, are forwarded unchanged.
  *
  * Throws at construction time if `synthetics` contains duplicate `id` values.
  *

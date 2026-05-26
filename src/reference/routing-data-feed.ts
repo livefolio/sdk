@@ -6,7 +6,8 @@ import type { DataFeed, Fundamentals } from '../interfaces/data-feed';
  * when the routed feed does not support the requested optional method.
  *
  * Distinguish the two cases via the message text: "no feed registered" vs
- * "does not implement fundamentals".
+ * "does not implement <method>" (e.g. "does not implement fundamentals()" or
+ * "does not implement dividends()").
  */
 export class RoutingDataFeedError extends Error {
   constructor(message: string) {
@@ -33,9 +34,11 @@ export type RoutingDataFeedRouteMap = Readonly<Partial<Record<Asset['kind'], Dat
  * - **Function form:** `new RoutingDataFeed((a) => a.kind === 'macro' ? fred : yahoo)`.
  *   Use when routing depends on more than `kind` (e.g. allowlists).
  *
- * The router does **not** implement `events()` — the optional method is
- * genuinely absent (`'events' in router === false`). Cross-feed event
- * fan-out is deferred until a real consumer materializes.
+ * `dividends()` and `fundamentals()` ARE implemented — each targets a single
+ * asset, so it resolves to that asset's routed feed (or throws if the feed
+ * lacks the method). The router does **not** implement `events()` — the
+ * optional method is genuinely absent (`'events' in router === false`) because
+ * cross-feed event fan-out is a separate, deferred problem.
  *
  * @example
  * ```ts
