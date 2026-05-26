@@ -4,11 +4,11 @@ import { NYSEExchangeCalendar } from '../calendars';
 import { FeatureRuntime } from '../features/runtime';
 import { MemoryFeatureCache } from '../reference/memory-feature-cache';
 import type { Strategy, Features } from './types';
-import type { Asset, Bar } from '../interfaces/types';
+import type { Asset, Bar, DividendEvent } from '../interfaces/types';
 import type { DataFeed } from '../interfaces/data-feed';
 import type { Executor } from '../interfaces/executor';
 import type { Order, Fill } from '../orders/types';
-import type { Portfolio } from '../portfolio/types';
+import type { Portfolio, Lot } from '../portfolio/types';
 
 const SPY: Asset = { kind: 'equity', id: 'us:SPY', symbol: 'SPY' };
 
@@ -303,6 +303,446 @@ describe('runBacktest cashEvents', () => {
       expect(snap.cashFlow).toBeUndefined();
     }
     expect(result.finalPortfolio.cash).toBe(10_000);
+  });
+});
+
+describe('runBacktest dividend hook', () => {
+  const calendar = new NYSEExchangeCalendar();
+  // NYSE sessions in this range: Jan 2, 3, 4, 5, 8 (5 sessions). Ex-date = Jan 4 (3rd session).
+  const range = { from: new Date('2024-01-02'), to: new Date('2024-01-09') };
+  const exDate = new Date('2024-01-04');
+  const payDate = new Date('2024-01-08');
+
+  const heldLot: Lot = {
+    id: 'lot_held',
+    asset: SPY,
+    quantity: 100,
+    openDate: new Date('2023-01-01'), // long-held → qualifies for the 60-of-121 test
+    openPrice: 50,
+    basis: 5000,
+  };
+
+  const portfolioWithLot: Portfolio = {
+    cash: 10_000,
+    positions: [],
+    lots: [heldLot],
+    realized: [],
+    t: new Date('2024-01-02T00:00:00Z'),
+  };
+
+  // Trivial strategy: universe = [SPY], no orders, isolates the dividend hook.
+  const strategy: Strategy = {
+    universe: () => [SPY],
+    features: async () => ({}),
+    build: () => [],
+  };
+
+  const makeFeed = (event: DividendEvent, payClose = 200): DataFeed => ({
+    bars: async function* (_asset, _r, _freq, kind) {
+      // Only the unadjusted pay-date close matters for DRIP.
+      if (kind === 'unadjusted') {
+        yield {
+          t: payDate,
+          open: payClose,
+          high: payClose,
+          low: payClose,
+          close: payClose,
+          volume: 0,
+        };
+      }
+    },
+    dividends: async () => [event],
+  });
+
+  const executor: Executor = { submit: async () => [] };
+
+  it('(a) cash mode credits cash and appends a RealizedEvent', async () => {
+    const event: DividendEvent = {
+      asset: SPY,
+      exDate,
+      payDate,
+      amountPerShare: 1.5,
+      incomeKind: 'qualified-eligible',
+    };
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: portfolioWithLot,
+      dataFeed: makeFeed(event),
+      executor,
+      calendar,
+      dividends: { reinvest: false },
+    });
+
+    // Ex-date is the 3rd session (Jan 4).
+    const exSnap = result.snapshots[2]!;
+    expect(exSnap.dividendIncome).toEqual({ qualified: 150, ordinary: 0 });
+
+    // 100 shares * 1.5 = 150 credited to cash.
+    expect(result.finalPortfolio.cash).toBe(10_150);
+
+    const realized = result.finalPortfolio.realized ?? [];
+    expect(realized).toHaveLength(1);
+    expect(realized[0]).toMatchObject({
+      lotId: 'lot_held',
+      quantity: 0,
+      basis: 0,
+      proceeds: 150,
+      gain: 150,
+      incomeKind: 'qualified-dividend',
+      termType: 'long',
+    });
+
+    // No DRIP lot was created (still just the original lot).
+    expect(result.finalPortfolio.lots).toHaveLength(1);
+  });
+
+  it('cash mode is the default when dividends config is omitted (feed still drives it)', async () => {
+    const event: DividendEvent = {
+      asset: SPY,
+      exDate,
+      payDate,
+      amountPerShare: 2,
+      incomeKind: 'ordinary',
+    };
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: portfolioWithLot,
+      dataFeed: makeFeed(event),
+      executor,
+      calendar,
+      // dividends omitted → reinvest defaults false (cash mode)
+    });
+
+    expect(result.snapshots[2]!.dividendIncome).toEqual({ qualified: 0, ordinary: 200 });
+    expect(result.finalPortfolio.cash).toBe(10_200);
+    expect(result.finalPortfolio.lots).toHaveLength(1);
+  });
+
+  it('(b) DRIP mode reinvests into a new lot at the unadjusted pay-date close', async () => {
+    const payClose = 200;
+    const event: DividendEvent = {
+      asset: SPY,
+      exDate,
+      payDate,
+      amountPerShare: 1.5,
+      incomeKind: 'qualified-eligible',
+    };
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: portfolioWithLot,
+      dataFeed: makeFeed(event, payClose),
+      executor,
+      calendar,
+      dividends: { reinvest: true },
+    });
+
+    // cash = 100 * 1.5 = 150; floor(150 / 200) = 0 shares affordable, so DRIP buys
+    // nothing and the full 150 falls back as residual cash.
+    expect(result.finalPortfolio.cash).toBe(10_150);
+    // No lot added because quantity === 0.
+    expect(result.finalPortfolio.lots).toHaveLength(1);
+  });
+
+  it('(b) DRIP mode adds a lot with dripParent when a whole share is affordable', async () => {
+    const payClose = 50; // 150 cash / 50 = 3 shares, residual 0
+    const event: DividendEvent = {
+      asset: SPY,
+      exDate,
+      payDate,
+      amountPerShare: 1.5,
+      incomeKind: 'qualified-eligible',
+    };
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: portfolioWithLot,
+      dataFeed: makeFeed(event, payClose),
+      executor,
+      calendar,
+      dividends: { reinvest: true },
+    });
+
+    const lots = result.finalPortfolio.lots ?? [];
+    expect(lots).toHaveLength(2);
+    const dripLot = lots.find((l) => l.dripParent === 'lot_held');
+    expect(dripLot).toBeDefined();
+    expect(dripLot!.quantity).toBe(Math.floor(150 / payClose)); // 3
+    expect(dripLot!.openPrice).toBe(payClose);
+    // residual = 150 - 3*50 = 0 → cash unchanged.
+    expect(result.finalPortfolio.cash).toBe(10_000);
+    // Still records dividend income.
+    expect(result.snapshots[2]!.dividendIncome).toEqual({ qualified: 150, ordinary: 0 });
+  });
+
+  it('(c) ordinary dividend lands in dividendIncome.ordinary; qualified-eligible (long-held) in .qualified', async () => {
+    const ordinaryEvent: DividendEvent = {
+      asset: SPY,
+      exDate,
+      payDate,
+      amountPerShare: 1,
+      incomeKind: 'ordinary',
+    };
+    const ordResult = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: portfolioWithLot,
+      dataFeed: makeFeed(ordinaryEvent),
+      executor,
+      calendar,
+    });
+    expect(ordResult.snapshots[2]!.dividendIncome).toEqual({ qualified: 0, ordinary: 100 });
+    expect(ordResult.finalPortfolio.realized?.[0]?.incomeKind).toBe('ordinary-dividend');
+  });
+
+  it('does not set dividendIncome on sessions without a matching ex-date', async () => {
+    const event: DividendEvent = {
+      asset: SPY,
+      exDate,
+      payDate,
+      amountPerShare: 1.5,
+      incomeKind: 'qualified-eligible',
+    };
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: portfolioWithLot,
+      dataFeed: makeFeed(event),
+      executor,
+      calendar,
+    });
+    expect(result.snapshots[0]!.dividendIncome).toBeUndefined();
+    expect(result.snapshots[1]!.dividendIncome).toBeUndefined();
+    expect(result.snapshots[2]!.dividendIncome).toBeDefined();
+    expect(result.snapshots[3]!.dividendIncome).toBeUndefined();
+  });
+
+  it('is inert when the feed has no dividends() (parity-safety guard)', async () => {
+    const feed: DataFeed = { bars: async function* () {} };
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: portfolioWithLot,
+      dataFeed: feed,
+      executor,
+      calendar,
+    });
+    for (const snap of result.snapshots) {
+      expect(snap.dividendIncome).toBeUndefined();
+    }
+    expect(result.finalPortfolio.cash).toBe(10_000);
+  });
+
+  it('rolls a non-trading-day ex-date forward to the next session (no silent drop)', async () => {
+    // Jan 6 2024 is a Saturday (no NYSE session); the next session is Mon Jan 8 (snapshot index 4).
+    const event: DividendEvent = {
+      asset: SPY,
+      exDate: new Date('2024-01-06'),
+      payDate,
+      amountPerShare: 1.5,
+      incomeKind: 'qualified-eligible',
+    };
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: portfolioWithLot,
+      dataFeed: makeFeed(event),
+      executor,
+      calendar,
+      dividends: { reinvest: false },
+    });
+    // Sessions Jan 2,3,4,5 (indices 0-3) see nothing; Jan 8 (index 4) gets the rolled-forward credit.
+    expect(result.snapshots[0]!.dividendIncome).toBeUndefined();
+    expect(result.snapshots[3]!.dividendIncome).toBeUndefined();
+    expect(result.snapshots[4]!.dividendIncome).toEqual({ qualified: 150, ordinary: 0 });
+    expect(result.finalPortfolio.cash).toBe(10_150);
+  });
+
+  it('DRIP falls back to a cash credit (with a one-time warning) when no pay-date price exists', async () => {
+    const event: DividendEvent = {
+      asset: SPY,
+      exDate,
+      payDate,
+      amountPerShare: 1.5,
+      incomeKind: 'qualified-eligible',
+    };
+    // Feed exposes dividends() but yields NO unadjusted bar → firstUnadjustedClose returns undefined.
+    const feed: DataFeed = {
+      bars: async function* () {},
+      dividends: async () => [event],
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const result = await runBacktest({
+        strategy,
+        range,
+        initialPortfolio: portfolioWithLot,
+        dataFeed: feed,
+        executor,
+        calendar,
+        dividends: { reinvest: true },
+      });
+      // No DRIP lot created; the full dividend is credited to cash instead.
+      expect(result.finalPortfolio.lots).toHaveLength(1);
+      expect(result.finalPortfolio.cash).toBe(10_150);
+      expect(result.snapshots[2]!.dividendIncome).toEqual({ qualified: 150, ordinary: 0 });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]![0])).toContain('DRIP fell back');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
+describe('runBacktest cashYield (interest accrual)', () => {
+  const calendar = new NYSEExchangeCalendar();
+  // ~1 trading year of NYSE sessions.
+  const range = { from: new Date('2024-01-01'), to: new Date('2024-12-31') };
+
+  const strategy: Strategy = {
+    universe: () => [SPY],
+    features: async () => ({}),
+    build: () => [],
+  };
+  const emptyFeed: DataFeed = { bars: async function* () {} };
+  const executor: Executor = { submit: async () => [] };
+
+  const cashOnly: Portfolio = {
+    cash: 10_000,
+    positions: [],
+    lots: [],
+    realized: [],
+    t: new Date('2024-01-01T00:00:00Z'),
+  };
+
+  it('flat: accrues daily interest, credits cash, and reports interestIncome', async () => {
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: cashOnly,
+      dataFeed: emptyFeed,
+      executor,
+      calendar,
+      cashYield: { kind: 'flat', apy: 0.05 },
+    });
+
+    // First session: interest on the starting balance at apy/365.
+    const first = result.snapshots[0]!;
+    expect(first.interestIncome).toBeDefined();
+    expect(first.interestIncome!).toBeCloseTo((10_000 * 0.05) / 365, 6);
+
+    // Interest accrues only on trading sessions (~252 NYSE days/yr) at apy/365,
+    // so cumulative over a calendar year ≈ 10_000 * 0.05 * (252/365) ≈ $345.
+    const cumulative = result.snapshots.reduce((sum, s) => sum + (s.interestIncome ?? 0), 0);
+    expect(cumulative).toBeGreaterThan(330);
+    expect(cumulative).toBeLessThan(360);
+    // Final cash reflects the accrued interest.
+    expect(result.finalPortfolio.cash).toBeCloseTo(10_000 + cumulative, 6);
+
+    // At least one snapshot carries an `interest` RealizedEvent with basis 0.
+    const interestEvents = (result.finalPortfolio.realized ?? []).filter(
+      (r) => r.incomeKind === 'interest',
+    );
+    expect(interestEvents.length).toBeGreaterThan(0);
+    expect(interestEvents[0]).toMatchObject({
+      incomeKind: 'interest',
+      basis: 0,
+      termType: 'short',
+      lotId: 'cash',
+      quantity: 0,
+    });
+    expect(interestEvents[0]!.gain).toBe(interestEvents[0]!.proceeds);
+    expect(interestEvents[0]!.asset.symbol).toBe('CASH');
+  });
+
+  it('default (no cashYield) is inert: no interestIncome, no interest events', async () => {
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: cashOnly,
+      dataFeed: emptyFeed,
+      executor,
+      calendar,
+    });
+    for (const snap of result.snapshots) {
+      expect(snap.interestIncome).toBeUndefined();
+    }
+    expect((result.finalPortfolio.realized ?? []).some((r) => r.incomeKind === 'interest')).toBe(
+      false,
+    );
+    expect(result.finalPortfolio.cash).toBe(10_000);
+  });
+
+  it("kind 'none' is inert (parity-safe)", async () => {
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: cashOnly,
+      dataFeed: emptyFeed,
+      executor,
+      calendar,
+      cashYield: { kind: 'none' },
+    });
+    for (const snap of result.snapshots) {
+      expect(snap.interestIncome).toBeUndefined();
+    }
+    expect((result.finalPortfolio.realized ?? []).some((r) => r.incomeKind === 'interest')).toBe(
+      false,
+    );
+  });
+
+  it('does not accrue when cash <= 0', async () => {
+    const broke: Portfolio = {
+      cash: 0,
+      positions: [],
+      lots: [],
+      realized: [],
+      t: new Date('2024-01-01T00:00:00Z'),
+    };
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: broke,
+      dataFeed: emptyFeed,
+      executor,
+      calendar,
+      cashYield: { kind: 'flat', apy: 0.05 },
+    });
+    for (const snap of result.snapshots) {
+      expect(snap.interestIncome).toBeUndefined();
+    }
+    expect((result.finalPortfolio.realized ?? []).some((r) => r.incomeKind === 'interest')).toBe(
+      false,
+    );
+  });
+
+  it('tbill: derives the daily rate from a macro yield series close', async () => {
+    const macroClose = 5.0; // FRED percentage → 5%
+    const spread = 0.001;
+    const macroFeed: DataFeed = {
+      bars: async function* (asset) {
+        // Only the macro series drives the rate; SPY (and others) yield nothing.
+        if (asset.kind === 'macro') {
+          yield { t: new Date('2024-01-02'), open: macroClose, high: macroClose, low: macroClose, close: macroClose, volume: 0 };
+        }
+      },
+    };
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: cashOnly,
+      dataFeed: macroFeed,
+      executor,
+      calendar,
+      cashYield: { kind: 'tbill', spread },
+    });
+
+    const expectedDaily = (macroClose / 100 - spread) / 365;
+    const first = result.snapshots[0]!;
+    expect(first.interestIncome).toBeDefined();
+    expect(first.interestIncome!).toBeCloseTo(10_000 * expectedDaily, 6);
   });
 });
 
