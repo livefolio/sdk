@@ -19,7 +19,15 @@ export type CashEvent = {
   t: Date;
   /** Positive = deposit, negative = withdrawal. */
   delta: number;
-  /** Optional attribution tag for downstream metrics. */
+  /**
+   * Optional attribution tag for downstream metrics. `'deposit'`/`'withdrawal'`
+   * are the natural tags for user-scheduled flows (this surface's main use case).
+   * `'interest'`/`'dividend'` are accepted for callers who want to tag a
+   * manually-scheduled flow as income, but the SDK's automatic per-session
+   * interest/dividend hooks do NOT emit `CashEvent`s — they credit cash directly
+   * and report via `BacktestSnapshot.interestIncome`/`dividendIncome`. User code
+   * typically only sets `'deposit'`/`'withdrawal'`.
+   */
   reason?: 'deposit' | 'withdrawal' | 'interest' | 'dividend';
 };
 
@@ -234,6 +242,9 @@ export async function runBacktest<F extends Features = Features, S = unknown>(
 
   const cashEvents = [...(opts.cashEvents ?? [])].sort((a, b) => a.t.getTime() - b.t.getTime());
   let eventCursor = 0;
+  // Negative cash is allowed for now (force-sell on over-withdrawal is deferred);
+  // warn once per run so a withdrawal-heavy strategy doesn't spam the logs.
+  let warnedNegativeCash = false;
 
   for (const t of sessions) {
     let cashFlow = 0;
@@ -246,9 +257,11 @@ export async function runBacktest<F extends Features = Features, S = unknown>(
     }
     if (cashFlow !== 0) {
       portfolio = { ...portfolio, cash: portfolio.cash + cashFlow };
-      if (portfolio.cash < 0) {
+      if (portfolio.cash < 0 && !warnedNegativeCash) {
+        warnedNegativeCash = true;
         console.warn(
-          `[runBacktest] cash went negative at ${t.toISOString()}: ${portfolio.cash}`,
+          `[runBacktest] cash went negative at ${t.toISOString()}: ${portfolio.cash}. ` +
+            `Withdrawals exceed available cash (force-sell is deferred); further occurrences this run are suppressed.`,
         );
       }
     }
