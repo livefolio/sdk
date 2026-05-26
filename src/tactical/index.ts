@@ -14,6 +14,7 @@ export type {
   RuleNode,
   TacticalSpec,
   RuleTreeState,
+  TacticalRuntimeState,
 } from './types';
 export { evaluateRuleTree } from './evaluate-rule-tree';
 export { evaluateFeatureSpecs } from './evaluate-feature-specs';
@@ -26,3 +27,8 @@ export {
   type TacticalFeatures,
   type FromSpecOptions,
 } from './from-spec';
+export { currentWeights, withinDriftBand } from './drift-band';
+export { applyTaxPolicy } from './apply-tax-policy';
+export type { TaxPolicyConfig } from './apply-tax-policy';
+export { applyTaxLossHarvesting } from './apply-tax-loss-harvest';
+export type { TLHConfig, TLHResult } from './apply-tax-loss-harvest';

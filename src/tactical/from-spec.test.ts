@@ -252,13 +252,14 @@ describe('fromSpec state threading', () => {
     },
   };
 
-  it('initialState() returns an empty RuleTreeState Map', () => {
+  it('initialState() returns an empty TacticalRuntimeState ({ ruleTree, recentBuys })', () => {
     const { feed } = feedFor([106, 96, 94]);
     const runtime = new FeatureRuntime({ dataFeed: feed, featureCache: new MemoryFeatureCache(), range, freq: '1d' });
     const strategy = fromSpec(simpleSpecWithHysteresis, { runtime, calendar });
     const initial = strategy.initialState!();
-    expect(initial).toBeInstanceOf(Map);
-    expect(initial.size).toBe(0);
+    expect(initial.ruleTree).toBeInstanceOf(Map);
+    expect(initial.ruleTree.size).toBe(0);
+    expect(initial.recentBuys).toEqual([]);
   });
 
   it('build is deterministic given the same state input (no hidden closure)', async () => {
@@ -276,6 +277,115 @@ describe('fromSpec state threading', () => {
     // If state were held in a closure and mutated by r1, r2 would differ.
     // With threaded state, both calls receive the same input and produce the same output.
     expect(r1).toEqual(r2);
+  });
+});
+
+describe('fromSpec tax pre-passes', () => {
+  const IVV_REF = { id: 'us:IVV', symbol: 'IVV' };
+  const allocSpec: TacticalSpec = {
+    kind: 'tactical/v1',
+    universe: [SPY_REF, IVV_REF],
+    features: [],
+    rules: { op: 'allocate', weights: { 'us:SPY': 1 } },
+  };
+
+  const mkAsset = (ref: { id: string; symbol: string }) =>
+    ({ kind: 'equity', id: ref.id, symbol: ref.symbol }) as const;
+
+  it('drift-band hold: same portfolio rebalances without taxes but holds within band with taxes', () => {
+    // Portfolio is WITHIN the 5% band of target { SPY: 1 } but not exactly on it: 160 SPY @ $100
+    // (= $16,000) + $384 cash → total $16,384. SPY weight = 16000/16384 = 125/128 = 0.9765625,
+    // cash weight = 0.0234375 (both < 0.05 from the 1.0 / 0.0 target). The 16,384 = 2^14 total
+    // makes the weight binary-exact so currentWeights -> reconcile floors back to exactly 160
+    // shares (no float-dip). Both builds run against the SAME portfolio so the assertion proves
+    // the drift-band short-circuit, not a difference in starting state.
+    const portfolio: Portfolio = {
+      cash: 384,
+      positions: [
+        {
+          id: 'pos_1',
+          asset: mkAsset(SPY_REF),
+          side: 'long',
+          quantity: 160,
+          entry: { date: utc('2025-01-02'), price: 100 },
+          basis: 16_000,
+        },
+      ],
+      lots: [
+        { id: 'lot_1', asset: mkAsset(SPY_REF), quantity: 160, openDate: utc('2025-01-02'), openPrice: 100, basis: 16_000 },
+      ],
+      t: utc('2026-01-09'),
+    };
+    const features = { values: new Map(), prices: new Map([['us:SPY', 100]]) };
+    const t = utc('2026-01-09');
+
+    const { feed } = feedFor([100, 101, 102, 103, 104]);
+    const runtime = new FeatureRuntime({ dataFeed: feed, featureCache: new MemoryFeatureCache(), range, freq: '1d' });
+
+    // Baseline (no taxes): reconcile nudges 160 held shares toward the floored 163-share target
+    // (floor(16384 / 100)) → at least one rebalance order.
+    const baseline = fromSpec(allocSpec, { runtime, calendar });
+    const baseOrders = baseline.build(features, portfolio, baseline.initialState!(), t).orders;
+    expect(baseOrders.length).toBeGreaterThan(0);
+
+    // With taxes + drift band: within band, so applyTaxPolicy holds the current allocation →
+    // reconcile against the held weights yields zero orders. (Would be non-empty if the
+    // short-circuit didn't fire, since the raw target floors to 163 shares.)
+    const taxed = fromSpec(allocSpec, {
+      runtime,
+      calendar,
+      taxes: { accountType: 'taxable', shortTermRate: 0.35, longTermRate: 0.15, driftBand: { threshold: 0.05 } },
+    });
+    const heldOrders = taxed.build(features, portfolio, taxed.initialState!(), t).orders;
+    expect(heldOrders).toEqual([]);
+  });
+
+  it('TLH swap: sells the held loser and buys the wash-safe pair', () => {
+    const t = utc('2026-01-09');
+    // SPY held at basis 10,000 but now worth 9,000 → unrealized loss 1,000 (> 500).
+    const portfolio: Portfolio = {
+      cash: 0,
+      positions: [
+        {
+          id: 'pos_1',
+          asset: mkAsset(SPY_REF),
+          side: 'long',
+          quantity: 100,
+          entry: { date: utc('2025-01-02'), price: 100 },
+          basis: 10_000,
+        },
+      ],
+      lots: [
+        { id: 'lot_1', asset: mkAsset(SPY_REF), quantity: 100, openDate: utc('2025-01-02'), openPrice: 100, basis: 10_000 },
+      ],
+      t,
+    };
+    const features = {
+      values: new Map(),
+      prices: new Map([
+        ['us:SPY', 90],
+        ['us:IVV', 90],
+      ]),
+    };
+
+    const { feed } = feedFor([100, 101, 102, 103, 104]);
+    const runtime = new FeatureRuntime({ dataFeed: feed, featureCache: new MemoryFeatureCache(), range, freq: '1d' });
+    const strategy = fromSpec(allocSpec, {
+      runtime,
+      calendar,
+      taxLossHarvesting: {
+        enabled: true,
+        minLossThreshold: 500,
+        cooldownDays: 30,
+        swapPairs: { 'us:SPY': 'us:IVV' },
+      },
+    });
+
+    const { orders } = strategy.build(features, portfolio, strategy.initialState!(), t);
+    const spy = orders.find((o) => o.kind === 'rebalance' && o.asset.id === 'us:SPY');
+    const ivv = orders.find((o) => o.kind === 'rebalance' && o.asset.id === 'us:IVV');
+    expect(spy?.delta).toBeLessThan(0);
+    expect(ivv?.delta).toBeGreaterThan(0);
   });
 });
 

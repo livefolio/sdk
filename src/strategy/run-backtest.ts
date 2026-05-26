@@ -10,6 +10,7 @@ import type { FeatureRuntime } from '../features/runtime';
 import { applyFills } from '../portfolio/apply';
 import { distributeDividend, reinvestDividend } from '../tax/dividends';
 import { accrueCashInterest } from '../tax/cash-interest';
+import { findWashSales, applyWashSaleAdjustment } from '../tax/wash-sale';
 
 /**
  * A scheduled cash injection or withdrawal. Applied at the start of the
@@ -281,6 +282,13 @@ export type BacktestResult<S = unknown> = {
  * 7. Apply fills to the portfolio with `applyFills`.
  * 8. Append a `BacktestSnapshot` and advance to the next session.
  *
+ * At each calendar-year boundary (and once more at end-of-run) a wash-sale sweep
+ * (IRS §1091) marks the closing year's disallowed capital losses and rolls them
+ * into the replacement lot's basis. The sweep is idempotent and finalized at
+ * those boundaries: it is reflected on `finalPortfolio` and any later snapshot,
+ * but is NOT retroactively rewritten into snapshots already pushed for the
+ * closing year.
+ *
  * The portfolio is never mutated in place; each session receives the immutable
  * result of the previous session's `applyFills`.
  *
@@ -342,6 +350,37 @@ export async function runBacktest<F extends Features = Features, S = unknown>(
   let state: S | undefined = initialStateValue;
   const snapshots: BacktestSnapshot[] = [];
 
+  // Wash-sale sweep (IRS §1091): at each calendar-year boundary and at end-of-run, mark the
+  // closing year's unmarked capital losses that have a same-asset replacement lot opened within
+  // ±30 days, and roll the disallowed loss into that replacement lot's basis. Idempotent — events
+  // already carrying `washSaleDisallowed` are skipped, so basis is never bumped twice.
+  //
+  // Marking is FINALIZED at year/run boundaries and reflected on `finalPortfolio` and any snapshot
+  // pushed after the sweep — it is NOT retroactively rewritten into snapshots already pushed for the
+  // closing year (each of those holds a reference to the pre-sweep `portfolio`).
+  const runWashSaleSweep = (year: number): void => {
+    const losses = (portfolio.realized ?? []).filter(
+      (e) =>
+        e.closeDate.getUTCFullYear() === year &&
+        e.incomeKind === 'capital-gain' &&
+        e.gain < 0 &&
+        e.washSaleDisallowed === undefined,
+    );
+    const adjustments = findWashSales(losses, portfolio.lots ?? []);
+    if (adjustments.length === 0) return;
+    let lots = [...(portfolio.lots ?? [])];
+    const byLossLot = new Map(adjustments.map((a) => [a.lossEventLotId, a]));
+    const realized = (portfolio.realized ?? []).map((e) => {
+      const a = byLossLot.get(e.lotId);
+      return a && e.washSaleDisallowed === undefined && e.gain < 0
+        ? { ...e, washSaleDisallowed: a.disallowedAmount }
+        : e;
+    });
+    for (const a of adjustments) lots = applyWashSaleAdjustment(lots, a);
+    portfolio = { ...portfolio, lots, realized };
+  };
+  let prevYear = -1;
+
   const cashEvents = [...(opts.cashEvents ?? [])].sort((a, b) => a.t.getTime() - b.t.getTime());
   let eventCursor = 0;
   // Negative cash is allowed for now (force-sell on over-withdrawal is deferred);
@@ -369,6 +408,10 @@ export async function runBacktest<F extends Features = Features, S = unknown>(
   let divCursor = 0;
 
   for (const t of sessions) {
+    const sessionYear = t.getUTCFullYear();
+    if (prevYear >= 0 && sessionYear !== prevYear) runWashSaleSweep(prevYear);
+    prevYear = sessionYear;
+
     let cashFlow = 0;
     while (
       eventCursor < cashEvents.length &&
@@ -495,6 +538,8 @@ export async function runBacktest<F extends Features = Features, S = unknown>(
       ...(interestThisSession !== 0 ? { interestIncome: interestThisSession } : {}),
     });
   }
+
+  if (prevYear >= 0) runWashSaleSweep(prevYear);
 
   const bars = opts.featureRuntime?.getAllBars() ?? new Map<AssetId, ReadonlyArray<Bar>>();
   return { snapshots, finalPortfolio: portfolio, finalState: state, bars };

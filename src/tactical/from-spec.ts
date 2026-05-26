@@ -4,10 +4,12 @@ import type { Strategy } from '../strategy/types';
 import { reconcile } from '../strategy/reconcile';
 import type { FeatureRuntime } from '../features/runtime';
 import { seriesAt } from '../features/series-utils';
-import type { RebalanceFrequency, RuleTreeState, TacticalSpec } from './types';
+import type { RebalanceFrequency, RuleTreeState, TacticalRuntimeState, TacticalSpec } from './types';
 import { resolveAssetRef } from './asset-ref';
 import { evaluateRuleTree } from './evaluate-rule-tree';
 import { evaluateFeatureSpecs } from './evaluate-feature-specs';
+import { applyTaxPolicy, type TaxPolicyConfig } from './apply-tax-policy';
+import { applyTaxLossHarvesting, type TLHConfig } from './apply-tax-loss-harvest';
 
 let _warnedV0 = false;
 
@@ -41,6 +43,10 @@ export type FromSpecOptions = {
   runtime: FeatureRuntime;
   /** Exchange calendar used to gate rebalance days via {@link isRebalanceDay}. */
   calendar: Calendar;
+  /** Optional tax policy (drift-band short-circuit on taxable accounts). */
+  taxes?: TaxPolicyConfig;
+  /** Optional tax-loss-harvesting pre-pass (swaps held losers into wash-safe pairs). */
+  taxLossHarvesting?: TLHConfig;
 };
 
 function validateSynthetics(spec: TacticalSpec): void {
@@ -121,8 +127,10 @@ export function isRebalanceDay(t: Date, freq: RebalanceFrequency, calendar: Cale
  *
  * State is threaded explicitly through `build` via the
  * {@link Strategy | `Strategy<F, S>.build`} signature. `initialState()` returns
- * an empty {@link RuleTreeState} Map; the runtime is responsible for storing and
- * forwarding the state between calls. This design makes `build` a pure function
+ * a {@link TacticalRuntimeState} of shape `{ ruleTree, recentBuys }` — an empty
+ * {@link RuleTreeState} Map for hysteresis plus an empty `recentBuys` buffer
+ * feeding the tax-loss-harvesting cooldown; the runtime is responsible for
+ * storing and forwarding the state between calls. This design makes `build` a pure function
  * of its inputs — calling it twice with identical arguments produces identical
  * outputs, enabling snapshot/restore for preview-builds in live mode.
  *
@@ -148,7 +156,7 @@ export function isRebalanceDay(t: Date, freq: RebalanceFrequency, calendar: Cale
  * const strategy = fromSpec(mySpec, { runtime, calendar });
  * ```
  */
-export function fromSpec(spec: TacticalSpec, opts: FromSpecOptions): Strategy<TacticalFeatures, RuleTreeState> {
+export function fromSpec(spec: TacticalSpec, opts: FromSpecOptions): Strategy<TacticalFeatures, TacticalRuntimeState> {
   if (spec.kind === 'tactical/v0' && !_warnedV0) {
     _warnedV0 = true;
 
@@ -189,7 +197,7 @@ export function fromSpec(spec: TacticalSpec, opts: FromSpecOptions): Strategy<Ta
       return { values, prices };
     },
 
-    initialState: () => new Map() as RuleTreeState,
+    initialState: () => ({ ruleTree: new Map() as RuleTreeState, recentBuys: [] }),
 
     build: (features, portfolio, state, t) => {
       if (!isRebalanceDay(t, cadence, calendar)) {
@@ -202,22 +210,41 @@ export function fromSpec(spec: TacticalSpec, opts: FromSpecOptions): Strategy<Ta
       }
       let evaluated;
       try {
-        evaluated = evaluateRuleTree(spec.rules, defined, state);
+        evaluated = evaluateRuleTree(spec.rules, defined, state.ruleTree);
       } catch (e) {
         if (e instanceof Error && /has no value/.test(e.message)) {
           return { orders: [], state };
         }
         throw e;
       }
-      for (const assetId of evaluated.weights.keys()) {
+
+      // Tax pre-passes: drift-band hold, then TLH loser-swap. Both are identity
+      // unless their config is supplied, so default fromSpec behavior is unchanged.
+      const afterPolicy = applyTaxPolicy(evaluated.weights, portfolio, features.prices, t, opts.taxes);
+      const tlh = opts.taxLossHarvesting?.enabled
+        ? applyTaxLossHarvesting(afterPolicy, portfolio, features.prices, t, opts.taxLossHarvesting, state.recentBuys)
+        : { weights: afterPolicy, swaps: [] };
+
+      // Missing-price guard on the FINAL weights reconcile will consume: a TLH swap
+      // target without a price (e.g. not in the universe) bails the rebalance gracefully
+      // rather than letting reconcile throw. Discards the rule-tree advance, matching the
+      // pre-existing bail semantics.
+      for (const assetId of tlh.weights.keys()) {
         if (!features.prices.has(assetId)) {
           return { orders: [], state };
         }
       }
-      return {
-        orders: reconcile(evaluated.weights, portfolio, features.prices, assetsById),
-        state: evaluated.state,
-      };
+
+      const orders = reconcile(tlh.weights, portfolio, features.prices, assetsById);
+
+      const cooldownWindow = 30 + (opts.taxLossHarvesting?.cooldownDays ?? 0);
+      const cut = t.getTime() - cooldownWindow * 86_400_000;
+      const recentBuys = [
+        ...state.recentBuys.filter((b) => b.t.getTime() >= cut),
+        ...orders.filter((o) => o.kind === 'rebalance' && o.delta > 0).map((o) => ({ assetId: o.asset.id, t })),
+      ];
+
+      return { orders, state: { ruleTree: evaluated.state, recentBuys } };
     },
   };
 }
