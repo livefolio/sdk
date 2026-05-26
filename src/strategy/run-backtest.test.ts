@@ -812,3 +812,142 @@ describe('BacktestResult bar lineage', () => {
     expect(result.bars.size).toBe(0);
   });
 });
+
+describe('runBacktest wash-sale sweep (IRS §1091)', () => {
+  const WSPY: Asset = { kind: 'equity', id: 'us:SPY', symbol: 'SPY' };
+
+  // A no-op strategy that never trades, so the only ledger activity is what we seed.
+  const noopStrategy: Strategy = {
+    universe: () => [WSPY],
+    features: async () => ({}),
+    build: () => [],
+  };
+  const noopFeed: DataFeed = { bars: async function* () {} };
+  const noopExecutor: Executor = { submit: async () => [] };
+
+  // A 2024 capital loss (gain −500) closed mid-year, plus a same-asset replacement lot opened
+  // 5 days later (within the ±30-day window).
+  const lossClose = new Date('2024-06-15T00:00:00Z');
+  function seedLoss(over: Partial<import('../portfolio/types').RealizedEvent> = {}) {
+    return {
+      asset: WSPY,
+      lotId: 'sold',
+      quantity: 100,
+      openDate: new Date('2024-01-02T00:00:00Z'),
+      closeDate: lossClose,
+      proceeds: 39_500,
+      basis: 40_000,
+      termType: 'short' as const,
+      gain: -500,
+      incomeKind: 'capital-gain' as const,
+      ...over,
+    };
+  }
+  function seedReplLot(over: Partial<Lot> = {}): Lot {
+    return {
+      id: 'repl',
+      asset: WSPY,
+      quantity: 100,
+      openDate: new Date('2024-06-20T00:00:00Z'),
+      openPrice: 395,
+      basis: 39_500,
+      ...over,
+    };
+  }
+
+  it('marks the loss and bumps the replacement lot basis at the year boundary', async () => {
+    const portfolio: Portfolio = {
+      cash: 10_000,
+      positions: [],
+      lots: [seedReplLot()],
+      realized: [seedLoss()],
+      t: new Date('2024-12-30T00:00:00Z'),
+    };
+    const result = await runBacktest({
+      strategy: noopStrategy,
+      range: { from: new Date('2024-12-30T00:00:00Z'), to: new Date('2025-01-05T00:00:00Z') },
+      initialPortfolio: portfolio,
+      dataFeed: noopFeed,
+      executor: noopExecutor,
+      calendar: new NYSEExchangeCalendar(),
+    });
+
+    const marked = result.finalPortfolio.realized!.find((e) => e.lotId === 'sold')!;
+    expect(marked.washSaleDisallowed).toBe(500);
+    const repl = result.finalPortfolio.lots!.find((l) => l.id === 'repl')!;
+    expect(repl.basis).toBe(40_000); // 39_500 + 500
+    expect(repl.washSaleAdjustment).toBe(500);
+  });
+
+  it('is idempotent: an already-marked loss does not bump basis again', async () => {
+    const portfolio: Portfolio = {
+      cash: 10_000,
+      positions: [],
+      lots: [seedReplLot()], // basis 39_500, no prior adjustment
+      realized: [seedLoss({ washSaleDisallowed: 500 })],
+      t: new Date('2024-12-30T00:00:00Z'),
+    };
+    const result = await runBacktest({
+      strategy: noopStrategy,
+      range: { from: new Date('2024-12-30T00:00:00Z'), to: new Date('2025-01-05T00:00:00Z') },
+      initialPortfolio: portfolio,
+      dataFeed: noopFeed,
+      executor: noopExecutor,
+      calendar: new NYSEExchangeCalendar(),
+    });
+
+    const repl = result.finalPortfolio.lots!.find((l) => l.id === 'repl')!;
+    expect(repl.basis).toBe(39_500); // unchanged from seed
+    expect(repl.washSaleAdjustment).toBeUndefined();
+
+    // Re-running on the swept output also leaves basis unchanged (double-idempotency check).
+    const first = await runBacktest({
+      strategy: noopStrategy,
+      range: { from: new Date('2024-12-30T00:00:00Z'), to: new Date('2025-01-05T00:00:00Z') },
+      initialPortfolio: {
+        cash: 10_000,
+        positions: [],
+        lots: [seedReplLot()],
+        realized: [seedLoss()],
+        t: new Date('2024-12-30T00:00:00Z'),
+      },
+      dataFeed: noopFeed,
+      executor: noopExecutor,
+      calendar: new NYSEExchangeCalendar(),
+    });
+    const reReplBefore = first.finalPortfolio.lots!.find((l) => l.id === 'repl')!.basis;
+    const second = await runBacktest({
+      strategy: noopStrategy,
+      range: { from: new Date('2024-12-30T00:00:00Z'), to: new Date('2025-01-05T00:00:00Z') },
+      initialPortfolio: first.finalPortfolio,
+      dataFeed: noopFeed,
+      executor: noopExecutor,
+      calendar: new NYSEExchangeCalendar(),
+    });
+    expect(second.finalPortfolio.lots!.find((l) => l.id === 'repl')!.basis).toBe(reReplBefore);
+  });
+
+  it('end-of-run sweep marks a loss even within a single year (no boundary crossed)', async () => {
+    const portfolio: Portfolio = {
+      cash: 10_000,
+      positions: [],
+      lots: [seedReplLot()],
+      realized: [seedLoss()],
+      t: new Date('2024-06-25T00:00:00Z'),
+    };
+    const result = await runBacktest({
+      strategy: noopStrategy,
+      range: { from: new Date('2024-06-25T00:00:00Z'), to: new Date('2024-06-28T00:00:00Z') },
+      initialPortfolio: portfolio,
+      dataFeed: noopFeed,
+      executor: noopExecutor,
+      calendar: new NYSEExchangeCalendar(),
+    });
+
+    const marked = result.finalPortfolio.realized!.find((e) => e.lotId === 'sold')!;
+    expect(marked.washSaleDisallowed).toBe(500);
+    const repl = result.finalPortfolio.lots!.find((l) => l.id === 'repl')!;
+    expect(repl.basis).toBe(40_000);
+    expect(repl.washSaleAdjustment).toBe(500);
+  });
+});

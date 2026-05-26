@@ -156,8 +156,11 @@ export {
   distributeDividend,
   reinvestDividend,
   accrueCashInterest,
+  findWashSales,
+  applyWashSaleAdjustment,
 } from './tax';
 export type {
+  WashSaleAdjustment,
   LotSlice,
   TaxRates,
   TaxableIncome,
