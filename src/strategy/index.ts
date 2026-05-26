@@ -5,6 +5,7 @@ export { runBacktest } from './run-backtest';
 export type {
   CashEvent,
   DividendsConfig,
+  CashYieldConfig,
   RunBacktestOptions,
   BacktestResult,
   BacktestSnapshot,

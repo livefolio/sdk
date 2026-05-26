@@ -536,6 +536,156 @@ describe('runBacktest dividend hook', () => {
   });
 });
 
+describe('runBacktest cashYield (interest accrual)', () => {
+  const calendar = new NYSEExchangeCalendar();
+  // ~1 trading year of NYSE sessions.
+  const range = { from: new Date('2024-01-01'), to: new Date('2024-12-31') };
+
+  const strategy: Strategy = {
+    universe: () => [SPY],
+    features: async () => ({}),
+    build: () => [],
+  };
+  const emptyFeed: DataFeed = { bars: async function* () {} };
+  const executor: Executor = { submit: async () => [] };
+
+  const cashOnly: Portfolio = {
+    cash: 10_000,
+    positions: [],
+    lots: [],
+    realized: [],
+    t: new Date('2024-01-01T00:00:00Z'),
+  };
+
+  it('flat: accrues daily interest, credits cash, and reports interestIncome', async () => {
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: cashOnly,
+      dataFeed: emptyFeed,
+      executor,
+      calendar,
+      cashYield: { kind: 'flat', apy: 0.05 },
+    });
+
+    // First session: interest on the starting balance at apy/365.
+    const first = result.snapshots[0]!;
+    expect(first.interestIncome).toBeDefined();
+    expect(first.interestIncome!).toBeCloseTo((10_000 * 0.05) / 365, 6);
+
+    // Interest accrues only on trading sessions (~252 NYSE days/yr) at apy/365,
+    // so cumulative over a calendar year ≈ 10_000 * 0.05 * (252/365) ≈ $345.
+    const cumulative = result.snapshots.reduce((sum, s) => sum + (s.interestIncome ?? 0), 0);
+    expect(cumulative).toBeGreaterThan(330);
+    expect(cumulative).toBeLessThan(360);
+    // Final cash reflects the accrued interest.
+    expect(result.finalPortfolio.cash).toBeCloseTo(10_000 + cumulative, 6);
+
+    // At least one snapshot carries an `interest` RealizedEvent with basis 0.
+    const interestEvents = (result.finalPortfolio.realized ?? []).filter(
+      (r) => r.incomeKind === 'interest',
+    );
+    expect(interestEvents.length).toBeGreaterThan(0);
+    expect(interestEvents[0]).toMatchObject({
+      incomeKind: 'interest',
+      basis: 0,
+      termType: 'short',
+      lotId: 'cash',
+      quantity: 0,
+    });
+    expect(interestEvents[0]!.gain).toBe(interestEvents[0]!.proceeds);
+    expect(interestEvents[0]!.asset.symbol).toBe('CASH');
+  });
+
+  it('default (no cashYield) is inert: no interestIncome, no interest events', async () => {
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: cashOnly,
+      dataFeed: emptyFeed,
+      executor,
+      calendar,
+    });
+    for (const snap of result.snapshots) {
+      expect(snap.interestIncome).toBeUndefined();
+    }
+    expect((result.finalPortfolio.realized ?? []).some((r) => r.incomeKind === 'interest')).toBe(
+      false,
+    );
+    expect(result.finalPortfolio.cash).toBe(10_000);
+  });
+
+  it("kind 'none' is inert (parity-safe)", async () => {
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: cashOnly,
+      dataFeed: emptyFeed,
+      executor,
+      calendar,
+      cashYield: { kind: 'none' },
+    });
+    for (const snap of result.snapshots) {
+      expect(snap.interestIncome).toBeUndefined();
+    }
+    expect((result.finalPortfolio.realized ?? []).some((r) => r.incomeKind === 'interest')).toBe(
+      false,
+    );
+  });
+
+  it('does not accrue when cash <= 0', async () => {
+    const broke: Portfolio = {
+      cash: 0,
+      positions: [],
+      lots: [],
+      realized: [],
+      t: new Date('2024-01-01T00:00:00Z'),
+    };
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: broke,
+      dataFeed: emptyFeed,
+      executor,
+      calendar,
+      cashYield: { kind: 'flat', apy: 0.05 },
+    });
+    for (const snap of result.snapshots) {
+      expect(snap.interestIncome).toBeUndefined();
+    }
+    expect((result.finalPortfolio.realized ?? []).some((r) => r.incomeKind === 'interest')).toBe(
+      false,
+    );
+  });
+
+  it('tbill: derives the daily rate from a macro yield series close', async () => {
+    const macroClose = 5.0; // FRED percentage → 5%
+    const spread = 0.001;
+    const macroFeed: DataFeed = {
+      bars: async function* (asset) {
+        // Only the macro series drives the rate; SPY (and others) yield nothing.
+        if (asset.kind === 'macro') {
+          yield { t: new Date('2024-01-02'), open: macroClose, high: macroClose, low: macroClose, close: macroClose, volume: 0 };
+        }
+      },
+    };
+    const result = await runBacktest({
+      strategy,
+      range,
+      initialPortfolio: cashOnly,
+      dataFeed: macroFeed,
+      executor,
+      calendar,
+      cashYield: { kind: 'tbill', spread },
+    });
+
+    const expectedDaily = (macroClose / 100 - spread) / 365;
+    const first = result.snapshots[0]!;
+    expect(first.interestIncome).toBeDefined();
+    expect(first.interestIncome!).toBeCloseTo(10_000 * expectedDaily, 6);
+  });
+});
+
 describe('BacktestResult bar lineage', () => {
   it('exposes per-asset bars accumulated during the run when featureRuntime is provided', async () => {
     const SPY: Asset = { kind: 'equity', id: 'SPY', symbol: 'SPY' };

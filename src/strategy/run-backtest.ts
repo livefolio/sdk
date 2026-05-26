@@ -9,6 +9,7 @@ import type { Order, Fill } from '../orders/types';
 import type { FeatureRuntime } from '../features/runtime';
 import { applyFills } from '../portfolio/apply';
 import { distributeDividend, reinvestDividend } from '../tax/dividends';
+import { accrueCashInterest } from '../tax/cash-interest';
 
 /**
  * A scheduled cash injection or withdrawal. Applied at the start of the
@@ -34,6 +35,20 @@ export type CashEvent = {
 
 /** How dividends are handled during a backtest. `reinvest: true` enables DRIP (dividend reinvestment). */
 export type DividendsConfig = { reinvest: boolean };
+
+/**
+ * How idle cash earns interest during a backtest.
+ * - `none` — cash earns nothing (default).
+ * - `flat` — a constant annual percentage yield; daily rate is `apy / 365`.
+ * - `tbill` — track a macro yield series (default `DGS3MO`) minus `spread`, as `(yield/100 - spread) / 365`.
+ */
+export type CashYieldConfig =
+  | { kind: 'none' }
+  | { kind: 'flat'; apy: number }
+  | { kind: 'tbill'; spread: number; assetId?: AssetId };
+
+/** Synthetic asset used to tag interest `RealizedEvent`s on idle cash. */
+const CASH_ASSET: Asset = { kind: 'equity', id: '_cash', symbol: 'CASH' };
 
 /**
  * Narrows the dual return type of `Strategy.build` to the stateful object form.
@@ -63,6 +78,36 @@ async function firstUnadjustedClose(
   const to = new Date(payDate.getTime() + 86_400_000);
   for await (const bar of feed.bars(asset, { from: payDate, to }, freq, 'unadjusted')) return bar.close;
   return undefined;
+}
+
+/**
+ * Resolves the per-session interest rate for idle cash from a {@link CashYieldConfig}.
+ *
+ * - `none` / missing → `0` (no interest).
+ * - `flat` → `apy / 365` (actual/365 day-count).
+ * - `tbill` → fetches the macro yield series (default `DGS3MO`) over a short lookback
+ *   window ending at `t`, takes the latest close (a FRED percentage), and returns
+ *   `max(0, (yield/100 - spread) / 365)`.
+ *
+ * @returns A non-negative daily rate; `0` when no rate is configured or no bar is available.
+ */
+async function resolveDailyRate(
+  cfg: CashYieldConfig | undefined,
+  t: Date,
+  feed: DataFeed,
+  freq: Frequency,
+): Promise<number> {
+  if (!cfg || cfg.kind === 'none') return 0;
+  if (cfg.kind === 'flat') return cfg.apy / 365;
+  const id = cfg.assetId ?? 'DGS3MO';
+  const asset: Asset = { kind: 'macro', id, symbol: id, source: 'FRED' };
+  const to = new Date(t.getTime() + 86_400_000);
+  let last: number | undefined;
+  for await (const bar of feed.bars(asset, { from: new Date(t.getTime() - 7 * 86_400_000), to }, freq, 'unadjusted')) {
+    last = bar.close;
+  }
+  if (last === undefined) return 0;
+  return Math.max(0, (last / 100 - cfg.spread) / 365); // FRED yields are percentages
 }
 
 /**
@@ -139,6 +184,17 @@ export type RunBacktestOptions<F extends Features = Features, S = unknown> = {
    * `reinvest` defaults to `false` (cash mode).
    */
   dividends?: DividendsConfig;
+  /**
+   * Optional idle-cash interest accrual. Each session — after dividends, before
+   * the strategy runs — interest is accrued on positive cash at a daily rate
+   * resolved from this config (`flat` → `apy/365`; `tbill` → macro yield series
+   * `(yield/100 - spread)/365`, clamped ≥ 0). The interest is credited to cash,
+   * recorded as an `interest` `RealizedEvent` on the synthetic cash asset, and
+   * reported via `BacktestSnapshot.interestIncome`.
+   *
+   * @remarks Default = `{ kind: 'none' }` (no interest → today's behavior).
+   */
+  cashYield?: CashYieldConfig;
 };
 
 /**
@@ -367,6 +423,29 @@ export async function runBacktest<F extends Features = Features, S = unknown>(
     const dividendIncome =
       qualifiedTotal + ordinaryTotal > 0 ? { qualified: qualifiedTotal, ordinary: ordinaryTotal } : undefined;
 
+    let interestThisSession = 0;
+    const dailyRate = await resolveDailyRate(opts.cashYield, t, opts.dataFeed, opts.freq ?? '1d');
+    if (dailyRate > 0 && portfolio.cash > 0) {
+      const { newCash, interest } = accrueCashInterest(portfolio.cash, dailyRate);
+      const realized = [
+        ...(portfolio.realized ?? []),
+        {
+          asset: CASH_ASSET,
+          lotId: 'cash',
+          quantity: 0,
+          openDate: t,
+          closeDate: t,
+          proceeds: interest,
+          basis: 0,
+          termType: 'short' as const,
+          gain: interest,
+          incomeKind: 'interest' as const,
+        },
+      ];
+      portfolio = { ...portfolio, cash: newCash, realized };
+      interestThisSession = interest;
+    }
+
     const universe = opts.strategy.universe(t, portfolio);
     const features = await opts.strategy.features(universe, portfolio, t);
     const buildResult = opts.strategy.build(features, portfolio, state as S, t);
@@ -389,6 +468,7 @@ export async function runBacktest<F extends Features = Features, S = unknown>(
       fills,
       ...(cashFlow !== 0 ? { cashFlow } : {}),
       ...(dividendIncome ? { dividendIncome } : {}),
+      ...(interestThisSession !== 0 ? { interestIncome: interestThisSession } : {}),
     });
   }
 

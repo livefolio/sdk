@@ -5,6 +5,7 @@ export type {
   Features,
   CashEvent,
   DividendsConfig,
+  CashYieldConfig,
   RunBacktestOptions,
   RunLiveOptions,
   BacktestResult,
