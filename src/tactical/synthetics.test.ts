@@ -153,4 +153,30 @@ describe('withSynthetics', () => {
     expect(askedFor).toContain('us:SPY');
     expect(askedFor).not.toContain('us:SPY_3X');
   });
+
+  it('forwards the bars kind to the underlying feed (passthrough and synthetic)', async () => {
+    // Stub whose close varies by `kind`: unadjusted -> 100, adjusted/default -> 95.
+    const calls = vi.fn(async function* (_a: Asset, _r, _f, kind?: 'adjusted' | 'unadjusted') {
+      const close = kind === 'unadjusted' ? 100 : 95;
+      yield { t: utc('2026-01-05'), open: close, high: close, low: close, close, volume: 1 };
+    });
+    const f = { bars: calls } as DataFeed;
+    const wrapped = withSynthetics(f, [SPY3X]);
+
+    // Passthrough asset: kind reaches the underlying feed and the close reflects it.
+    const pass = await collect(
+      wrapped.bars({ kind: 'equity', id: 'us:AGG', symbol: 'AGG' }, range, '1d', 'unadjusted'),
+    );
+    expect(calls).toHaveBeenLastCalledWith({ kind: 'equity', id: 'us:AGG', symbol: 'AGG' }, range, '1d', 'unadjusted');
+    expect(pass[0]!.close).toBe(100);
+
+    // Synthetic asset: kind is forwarded to the underlying lookup; first bar anchors to it.
+    const synth = await collect(
+      wrapped.bars({ kind: 'equity', id: 'us:SPY_3X', symbol: 'SPY_3X' }, range, '1d', 'unadjusted'),
+    );
+    const lastCall = calls.mock.calls.at(-1)!;
+    expect((lastCall[0] as Asset).id).toBe('us:SPY');
+    expect(lastCall[3]).toBe('unadjusted');
+    expect(synth[0]!.close).toBe(100);
+  });
 });
