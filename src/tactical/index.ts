@@ -26,3 +26,4 @@ export {
   type TacticalFeatures,
   type FromSpecOptions,
 } from './from-spec';
+export { currentWeights, withinDriftBand } from './drift-band';
