@@ -6,7 +6,7 @@ import type { DataFeed, Fundamentals } from '../interfaces/data-feed';
  * when the routed feed does not support the requested optional method.
  *
  * Distinguish the two cases via the message text: "no feed registered" vs
- * "does not implement <method>" (e.g. "does not implement fundamentals()" or
+ * "does not implement `<method>`" (e.g. "does not implement fundamentals()" or
  * "does not implement dividends()").
  */
 export class RoutingDataFeedError extends Error {
