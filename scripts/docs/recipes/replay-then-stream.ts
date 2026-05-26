@@ -188,7 +188,7 @@ for await (const ev of runLive<Features, S>({
     // the session closed at the current tick price. State is snapshotted and
     // restored, so previews never corrupt committed state.
     for (const o of ev.previewOrders) previewOrdersSeen.push(o.id);
-  } else {
+  } else if (ev.type === 'snapshot') {
     liveSnapshots.push(ev);
   }
 }

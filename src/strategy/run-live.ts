@@ -5,11 +5,30 @@ import type { Calendar } from '../interfaces/calendar';
 import type { Order } from '../orders/types';
 import type { Portfolio } from '../portfolio/types';
 import type { Strategy, Features } from './types';
-import type { BacktestResult, BacktestSnapshot } from './run-backtest';
+import type { BacktestResult, BacktestSnapshot, CashEvent } from './run-backtest';
 import { isStateResult } from './run-backtest';
 import { FeatureRuntime } from '../features/runtime';
 import { MemoryFeatureCache } from '../reference/memory-feature-cache';
 import { applyFills } from '../portfolio/apply';
+
+/**
+ * Mutable queue for scheduling {@link CashEvent}s into a running `runLive`
+ * stream. Construct one, pass it via {@link RunLiveOptions.cashEventQueue}, and
+ * `push` events from outside the generator; they are drained at each session
+ * close. A non-breaking alternative to a returned scheduling handle.
+ */
+export class CashEventQueue {
+  private pending: CashEvent[] = [];
+  push(e: CashEvent): void {
+    this.pending.push(e);
+  }
+  /** Remove and return events with `t <= now`, leaving later events queued. */
+  drainDue(now: Date): CashEvent[] {
+    const due = this.pending.filter((e) => e.t.getTime() <= now.getTime());
+    if (due.length > 0) this.pending = this.pending.filter((e) => e.t.getTime() > now.getTime());
+    return due;
+  }
+}
 
 /**
  * Unified event stream from {@link runLive}. Discriminated union of two variants:
@@ -54,6 +73,26 @@ export type LiveEvent<F extends Features = Features, _S = unknown> =
        */
       previewPortfolio: Portfolio;
     }
+  | {
+      /**
+       * A net cash injection/withdrawal applied to the committed portfolio at a
+       * session close. Emitted BEFORE the `snapshot` for that session, so the
+       * subsequent snapshot's `portfolio.cash` already reflects this delta.
+       * Only emitted when the summed delta of due events is non-zero.
+       */
+      type: 'cash';
+      /** Session-close timestamp at which the delta was applied. */
+      t: Date;
+      /** Net cash delta applied (sum of all due events). Positive = deposit. */
+      delta: number;
+      /**
+       * Attribution tag of the FIRST contributing event. When multiple cash
+       * events are due at the same session close they are summed into one delta
+       * and the other reasons are dropped — use `cashEventQueue` and drain
+       * manually if you need per-event attribution.
+       */
+      reason?: CashEvent['reason'];
+    }
   | (BacktestSnapshot & { type: 'snapshot' });
 
 /** Required inputs to {@link runLive}. */
@@ -83,6 +122,20 @@ export type RunLiveOptions<F extends Features = Features, S = unknown> = {
    * seeded from `history.bars`.
    */
   streamingRuntime?: FeatureRuntime;
+  /**
+   * Cash injections/withdrawals known up front. Each is applied to the
+   * committed portfolio at the first session close whose date is `>= e.t`,
+   * summed with any other due events for that session. For dynamic scheduling
+   * after the stream has started, use {@link RunLiveOptions.cashEventQueue}.
+   */
+  cashEvents?: ReadonlyArray<CashEvent>;
+  /**
+   * Optional mutable queue for scheduling cash events into the running stream
+   * from outside the generator. Drained (alongside `cashEvents`) at each
+   * session close. Construct a {@link CashEventQueue}, pass it here, and `push`
+   * events as they arrive.
+   */
+  cashEventQueue?: CashEventQueue;
 };
 
 /**
@@ -191,6 +244,11 @@ export async function* runLive<F extends Features = Features, S = unknown>(
 
   let portfolio = history.finalPortfolio;
   let state: S | undefined = history.finalState;
+
+  // Pre-seeded cash events go into an internal queue; the optional caller-owned
+  // queue is drained alongside it at each session close.
+  const seedQueue = new CashEventQueue();
+  for (const e of opts.cashEvents ?? []) seedQueue.push(e);
   // Universe is captured once at startup using the last historical snapshot's
   // timestamp as an anchor (or epoch zero for empty history). Dynamic
   // universes are not yet supported in live mode.
@@ -260,6 +318,24 @@ export async function* runLive<F extends Features = Features, S = unknown>(
       }
       const fills = await executor.submit(orders, currentSession, portfolio);
       portfolio = applyFills(portfolio, fills, orders);
+
+      // Drain due cash events from BOTH the seed queue and the caller-owned
+      // queue at this session close (never on a mark tick — that would
+      // double-apply). Apply the net delta to the committed portfolio BEFORE
+      // the snapshot so the snapshot reports the cash-adjusted balance.
+      // Cash events apply post-fills here (unlike runBacktest, which applies pre-universe): the live session's orders were already submitted, so same-session cash can't influence this session's sizing.
+      const dueCash = [...seedQueue.drainDue(currentSession), ...(opts.cashEventQueue?.drainDue(currentSession) ?? [])];
+      const cashDelta = dueCash.reduce((s, e) => s + e.delta, 0);
+      if (cashDelta !== 0) {
+        portfolio = { ...portfolio, cash: portfolio.cash + cashDelta };
+        yield {
+          type: 'cash',
+          t: currentSession,
+          delta: cashDelta,
+          reason: dueCash[0]?.reason,
+        };
+      }
+
       yield {
         type: 'snapshot',
         t: currentSession,

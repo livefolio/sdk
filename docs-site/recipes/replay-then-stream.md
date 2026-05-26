@@ -91,8 +91,8 @@ for await (const ev of runLive({
       prices:        ev.prices,
       previewOrders: ev.previewOrders,
     });
-  } else {
-    // ev.type === 'snapshot': session closed and orders settled.
+  } else if (ev.type === 'snapshot') {
+    // session closed and orders settled.
     chart.appendBar(ev);   // same shape as BacktestSnapshot
   }
 }
@@ -239,7 +239,7 @@ for await (const event of runLive({
   streamingRuntime,          // share with fromSpec — keeps bar buffer in sync
 })) {
   if (event.type === 'mark') { /* intra-session tick */ }
-  else { /* session closed, orders settled */ }
+  else if (event.type === 'snapshot') { /* session closed, orders settled */ }
 }
 ```
 

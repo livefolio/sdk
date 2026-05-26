@@ -1,8 +1,9 @@
 // Strategy / runtime
-export { runBacktest, runLive, reconcile } from './strategy';
+export { runBacktest, runLive, reconcile, CashEventQueue } from './strategy';
 export type {
   Strategy,
   Features,
+  CashEvent,
   RunBacktestOptions,
   RunLiveOptions,
   BacktestResult,

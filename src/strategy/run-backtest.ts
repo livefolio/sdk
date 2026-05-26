@@ -10,6 +10,28 @@ import type { FeatureRuntime } from '../features/runtime';
 import { applyFills } from '../portfolio/apply';
 
 /**
+ * A scheduled cash injection or withdrawal. Applied at the start of the
+ * matching session — BEFORE `universe`/`features`/`build` — by `runBacktest`
+ * (see Task 10 wiring). Events with `t <= sessionT` that have not yet been
+ * consumed are applied (and summed) on that session.
+ */
+export type CashEvent = {
+  t: Date;
+  /** Positive = deposit, negative = withdrawal. */
+  delta: number;
+  /**
+   * Optional attribution tag for downstream metrics. `'deposit'`/`'withdrawal'`
+   * are the natural tags for user-scheduled flows (this surface's main use case).
+   * `'interest'`/`'dividend'` are accepted for callers who want to tag a
+   * manually-scheduled flow as income, but the SDK's automatic per-session
+   * interest/dividend hooks do NOT emit `CashEvent`s — they credit cash directly
+   * and report via `BacktestSnapshot.interestIncome`/`dividendIncome`. User code
+   * typically only sets `'deposit'`/`'withdrawal'`.
+   */
+  reason?: 'deposit' | 'withdrawal' | 'interest' | 'dividend';
+};
+
+/**
  * Narrows the dual return type of `Strategy.build` to the stateful object form.
  *
  * `Array.isArray` does not narrow `ReadonlyArray<T>` out of a union in TypeScript 5.x
@@ -76,6 +98,16 @@ export type RunBacktestOptions<F extends Features = Features, S = unknown> = {
    * runtime seed its buffer from the historical bars without refetching).
    */
   featureRuntime?: FeatureRuntime;
+  /**
+   * Optional scheduled deposits/withdrawals applied per-session before the
+   * strategy runs. Matched by `t <= sessionT`; multiple due events are summed.
+   * Defaults to none (today's behavior). See `BacktestSnapshot.cashFlow`.
+   *
+   * @remarks A withdrawal that exceeds available cash is allowed to drive cash
+   * negative (logged via `console.warn`); automatic force-selling of holdings to
+   * fund withdrawals is deferred to a later release, so this behavior may change.
+   */
+  cashEvents?: ReadonlyArray<CashEvent>;
 };
 
 /**
@@ -93,6 +125,10 @@ export type BacktestSnapshot = {
   orders: ReadonlyArray<Order>;
   /** Fills returned by the executor for the orders above. */
   fills: ReadonlyArray<Fill>;
+  /**
+   * Net cash delta applied this session via `cashEvents`. Omitted when zero.
+   */
+  cashFlow?: number;
 };
 
 /**
@@ -204,7 +240,32 @@ export async function runBacktest<F extends Features = Features, S = unknown>(
   let state: S | undefined = initialStateValue;
   const snapshots: BacktestSnapshot[] = [];
 
+  const cashEvents = [...(opts.cashEvents ?? [])].sort((a, b) => a.t.getTime() - b.t.getTime());
+  let eventCursor = 0;
+  // Negative cash is allowed for now (force-sell on over-withdrawal is deferred);
+  // warn once per run so a withdrawal-heavy strategy doesn't spam the logs.
+  let warnedNegativeCash = false;
+
   for (const t of sessions) {
+    let cashFlow = 0;
+    while (
+      eventCursor < cashEvents.length &&
+      cashEvents[eventCursor]!.t.getTime() <= t.getTime()
+    ) {
+      cashFlow += cashEvents[eventCursor]!.delta;
+      eventCursor++;
+    }
+    if (cashFlow !== 0) {
+      portfolio = { ...portfolio, cash: portfolio.cash + cashFlow };
+      if (portfolio.cash < 0 && !warnedNegativeCash) {
+        warnedNegativeCash = true;
+        console.warn(
+          `[runBacktest] cash went negative at ${t.toISOString()}: ${portfolio.cash}. ` +
+            `Withdrawals exceed available cash (force-sell is deferred); further occurrences this run are suppressed.`,
+        );
+      }
+    }
+
     const universe = opts.strategy.universe(t, portfolio);
     const features = await opts.strategy.features(universe, portfolio, t);
     const buildResult = opts.strategy.build(features, portfolio, state as S, t);
@@ -220,7 +281,7 @@ export async function runBacktest<F extends Features = Features, S = unknown>(
 
     const fills = await opts.executor.submit(orders, t, portfolio);
     portfolio = applyFills(portfolio, fills, orders);
-    snapshots.push({ t, portfolio, orders, fills });
+    snapshots.push({ t, portfolio, orders, fills, ...(cashFlow !== 0 ? { cashFlow } : {}) });
   }
 
   const bars = opts.featureRuntime?.getAllBars() ?? new Map<AssetId, ReadonlyArray<Bar>>();
