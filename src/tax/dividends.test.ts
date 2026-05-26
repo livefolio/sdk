@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isQualifiedForLot, distributeDividend } from './dividends';
+import { isQualifiedForLot, distributeDividend, reinvestDividend } from './dividends';
 import type { Lot } from '../portfolio/types';
 import type { DividendEvent } from '../interfaces/types';
 
@@ -155,5 +155,40 @@ describe('distributeDividend', () => {
     expect(result.totals.qualified).toBeCloseTo(20);
     expect(result.totals.ordinary).toBe(0);
     expect(result.perLot[0]?.qualified).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// reinvestDividend
+// ---------------------------------------------------------------------------
+
+describe('reinvestDividend', () => {
+  const payDate = new Date('2024-06-15');
+  const dripParent = 'lot-parent-1';
+
+  it('$1000 cash @ $300/share → 3 shares, residual ~100, correct lot fields', () => {
+    const result = reinvestDividend(1000, asset, 300, payDate, dripParent);
+
+    expect(result.newLot.quantity).toBe(3);
+    expect(result.residual).toBeCloseTo(100);
+    expect(result.newLot.openDate).toBe(payDate);
+    expect(result.newLot.openPrice).toBe(300);
+    expect(result.newLot.basis).toBeCloseTo(900);
+    expect(result.newLot.dripParent).toBe(dripParent);
+    expect(result.newLot.asset).toBe(asset);
+  });
+
+  it('$50 cash @ $300/share → 0 shares, residual === 50', () => {
+    const result = reinvestDividend(50, asset, 300, payDate, dripParent);
+
+    expect(result.newLot.quantity).toBe(0);
+    expect(result.residual).toBe(50);
+  });
+
+  it('newLot.id is a non-empty string', () => {
+    const result = reinvestDividend(1000, asset, 300, payDate, dripParent);
+
+    expect(typeof result.newLot.id).toBe('string');
+    expect(result.newLot.id.length).toBeGreaterThan(0);
   });
 });

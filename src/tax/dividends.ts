@@ -1,5 +1,6 @@
 import type { Lot } from '../portfolio/types';
-import type { DividendEvent } from '../interfaces/types';
+import type { DividendEvent, Asset } from '../interfaces/types';
+import { nextLotId } from '../portfolio/ids';
 
 const MS_PER_DAY = 86_400_000;
 
@@ -98,4 +99,47 @@ export function distributeDividend(
     else ordinary += cash;
   }
   return { totals: { qualified, ordinary }, perLot };
+}
+
+/**
+ * Converts dividend cash into a new whole-share DRIP tax lot at the pay-date price.
+ *
+ * Computes `shares = floor(cashAvailable / pricePayDate)` and opens a fresh
+ * {@link Lot} with `openDate = payDate`, `openPrice = pricePayDate`,
+ * `basis = shares * pricePayDate`, and `dripParent` set to the originating lot
+ * id. Any fractional-share remainder is returned as `residual`.
+ *
+ * When `cashAvailable` is less than one share (`shares === 0`), `newLot.quantity`
+ * will be `0` and `residual` will equal `cashAvailable`. The caller is
+ * responsible for skipping zero-quantity lots.
+ *
+ * @param cashAvailable - Total dividend cash to reinvest.
+ * @param asset - The asset being purchased.
+ * @param pricePayDate - Share price on the dividend pay date.
+ * @param payDate - The dividend pay date; becomes `openDate` on the new lot.
+ * @param dripParent - Id of the originating lot that generated the dividend cash.
+ * @returns An object with `newLot` (the freshly created {@link Lot}) and
+ *   `residual` (uninvested cash remainder).
+ */
+export function reinvestDividend(
+  cashAvailable: number,
+  asset: Asset,
+  pricePayDate: number,
+  payDate: Date,
+  dripParent: string,
+): { newLot: Lot; residual: number } {
+  const shares = Math.floor(cashAvailable / pricePayDate);
+  const cost = shares * pricePayDate;
+  return {
+    newLot: {
+      id: nextLotId(),
+      asset,
+      quantity: shares,
+      openDate: payDate,
+      openPrice: pricePayDate,
+      basis: cost,
+      dripParent,
+    },
+    residual: cashAvailable - cost,
+  };
 }
