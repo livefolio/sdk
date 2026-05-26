@@ -27,3 +27,5 @@ export {
   type FromSpecOptions,
 } from './from-spec';
 export { currentWeights, withinDriftBand } from './drift-band';
+export { applyTaxPolicy } from './apply-tax-policy';
+export type { TaxPolicyConfig } from './apply-tax-policy';
