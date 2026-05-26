@@ -87,6 +87,10 @@ export {
   withStreamingSynthetics,
   isRebalanceDay,
   periodKey,
+  currentWeights,
+  withinDriftBand,
+  applyTaxPolicy,
+  applyTaxLossHarvesting,
 } from './tactical';
 export type {
   TacticalSpec,
@@ -96,6 +100,7 @@ export type {
   FromSpecOptions,
   RuleNode,
   RuleTreeState,
+  TacticalRuntimeState,
   AllocateNode,
   IfNode,
   Comparison,
@@ -107,6 +112,9 @@ export type {
   SyntheticAsset,
   AssetRef,
   WithStreamingSyntheticsOptions,
+  TaxPolicyConfig,
+  TLHConfig,
+  TLHResult,
 } from './tactical';
 export * as tactical from './tactical';
 

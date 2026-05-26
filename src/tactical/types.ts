@@ -336,3 +336,12 @@ export type TacticalSpec = {
  * for callers that drive {@link evaluateRuleTree} directly.
  */
 export type RuleTreeState = ReadonlyMap<string, 0 | 1>;
+
+/**
+ * Internal threaded state for `fromSpec` strategies: rule-tree hysteresis latch
+ * plus a pruned buffer of recent buys feeding the tax-loss-harvesting cooldown.
+ */
+export type TacticalRuntimeState = {
+  ruleTree: RuleTreeState;
+  recentBuys: { assetId: AssetId; t: Date }[];
+};

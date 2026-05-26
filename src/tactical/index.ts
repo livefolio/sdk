@@ -14,6 +14,7 @@ export type {
   RuleNode,
   TacticalSpec,
   RuleTreeState,
+  TacticalRuntimeState,
 } from './types';
 export { evaluateRuleTree } from './evaluate-rule-tree';
 export { evaluateFeatureSpecs } from './evaluate-feature-specs';
