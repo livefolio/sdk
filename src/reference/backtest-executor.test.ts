@@ -1,15 +1,35 @@
 import { describe, it, expect, vi } from 'vitest';
 import { BacktestExecutor } from './backtest-executor';
+import { applyFills } from '../portfolio/apply';
 import { NYSEExchangeCalendar } from '../calendars';
 import type { Asset } from '../interfaces/types';
 import type { Order } from '../orders/types';
-import type { Portfolio, Position } from '../portfolio/types';
+import type { Portfolio, Position, Lot } from '../portfolio/types';
 
 const SPY: Asset = { kind: 'equity', id: 'us:SPY', symbol: 'SPY' };
 const T = new Date('2026-01-02T00:00:00Z');
 const NEXT = new Date('2026-01-05T00:00:00Z');
 
 const portfolio: Portfolio = { cash: 10_000, positions: [], t: T };
+
+// Two lots of SPY at different per-share basis. The cheaper lot was opened
+// first; the pricier lot second. HIFO consumes the high-basis lot first.
+const lotCheap: Lot = {
+  id: 'lot_cheap',
+  asset: SPY,
+  quantity: 6,
+  openDate: new Date('2025-06-01T00:00:00Z'),
+  openPrice: 300,
+  basis: 1800, // 300/share
+};
+const lotPricey: Lot = {
+  id: 'lot_pricey',
+  asset: SPY,
+  quantity: 4,
+  openDate: new Date('2025-09-01T00:00:00Z'),
+  openPrice: 450,
+  basis: 1800, // 450/share
+};
 
 describe('BacktestExecutor', () => {
   it('fills an OpenOrder at the next open with slippage and fees', async () => {
@@ -58,5 +78,148 @@ describe('BacktestExecutor', () => {
     });
     const order: Order = { id: 'c1', kind: 'close', positionId: 'missing' };
     await expect(exec.submit([order], T, portfolio)).rejects.toThrow(/position/);
+  });
+
+  describe('lotMethod', () => {
+    const cal = new NYSEExchangeCalendar();
+    const nextOpen = () => Promise.resolve({ t: NEXT, price: 400 });
+
+    it("constructor throws for lotMethod 'min-tax' without taxRates", () => {
+      expect(() => new BacktestExecutor({ calendar: cal, nextOpen, lotMethod: 'min-tax' })).toThrow(/min-tax/);
+    });
+
+    it("constructor accepts lotMethod 'min-tax' with taxRates", () => {
+      expect(
+        () =>
+          new BacktestExecutor({
+            calendar: cal,
+            nextOpen,
+            lotMethod: 'min-tax',
+            taxRates: { shortTerm: 0.37, longTerm: 0.2 },
+          }),
+      ).not.toThrow();
+    });
+
+    it('default/FIFO path emits a single fill with no lotId for a rebalance sell (parity-safe)', async () => {
+      const held: Portfolio = { ...portfolio, lots: [lotCheap, lotPricey] };
+      // Default (lotMethod unset)
+      const execDefault = new BacktestExecutor({ calendar: cal, nextOpen });
+      const order: Order = { id: 'r1', kind: 'rebalance', asset: SPY, delta: -5 };
+      const fillsDefault = await execDefault.submit([order], T, held);
+      expect(fillsDefault).toHaveLength(1);
+      expect(fillsDefault[0]!.lotId).toBeUndefined();
+      expect(fillsDefault[0]!.quantity).toBe(5);
+
+      // Explicit 'FIFO' behaves identically
+      const execFifo = new BacktestExecutor({ calendar: cal, nextOpen, lotMethod: 'FIFO' });
+      const fillsFifo = await execFifo.submit([order], T, held);
+      expect(fillsFifo).toHaveLength(1);
+      expect(fillsFifo[0]!.lotId).toBeUndefined();
+      expect(fillsFifo[0]!.quantity).toBe(5);
+    });
+
+    it('HIFO path splits a long rebalance sell into per-lot fills, highest-basis-first', async () => {
+      const held: Portfolio = { ...portfolio, lots: [lotCheap, lotPricey] };
+      const exec = new BacktestExecutor({ calendar: cal, nextOpen, lotMethod: 'HIFO', perShareFee: 0.01 });
+      // Sell 7 shares: HIFO takes the 4 pricey shares first, then 3 cheap shares.
+      const order: Order = { id: 'r2', kind: 'rebalance', asset: SPY, delta: -7 };
+      const fills = await exec.submit([order], T, held);
+      expect(fills).toHaveLength(2);
+      expect(fills.map((f) => f.lotId)).toEqual(['lot_pricey', 'lot_cheap']);
+      expect(fills.map((f) => f.quantity)).toEqual([4, 3]);
+      expect(fills.reduce((s, f) => s + f.quantity, 0)).toBe(7);
+      // Fees pro-rated per slice quantity; price consistent across slices.
+      expect(fills[0]!.fees).toBeCloseTo(0.01 * 4, 8);
+      expect(fills[1]!.fees).toBeCloseTo(0.01 * 3, 8);
+      expect(fills[0]!.price).toBeCloseTo(fills[1]!.price, 8);
+    });
+
+    it('HIFO path splits a long close into per-lot fills', async () => {
+      const pos: Position = {
+        id: 'p1',
+        asset: SPY,
+        side: 'long',
+        quantity: 10,
+        entry: { date: T, price: 360 },
+        basis: 3600,
+      };
+      const held: Portfolio = { ...portfolio, positions: [pos], lots: [lotCheap, lotPricey] };
+      const exec = new BacktestExecutor({ calendar: cal, nextOpen, lotMethod: 'HIFO' });
+      const order: Order = { id: 'c2', kind: 'close', positionId: 'p1', quantity: 10 };
+      const fills = await exec.submit([order], T, held);
+      expect(fills.map((f) => f.lotId)).toEqual(['lot_pricey', 'lot_cheap']);
+      expect(fills.reduce((s, f) => s + f.quantity, 0)).toBe(10);
+    });
+
+    it('does NOT split a rebalance BUY under lotMethod HIFO', async () => {
+      const held: Portfolio = { ...portfolio, lots: [lotCheap, lotPricey] };
+      const exec = new BacktestExecutor({ calendar: cal, nextOpen, lotMethod: 'HIFO' });
+      const order: Order = { id: 'r3', kind: 'rebalance', asset: SPY, delta: 5 };
+      const fills = await exec.submit([order], T, held);
+      expect(fills).toHaveLength(1);
+      expect(fills[0]!.lotId).toBeUndefined();
+      expect(fills[0]!.quantity).toBe(5);
+    });
+
+    it('does NOT split an adjust order under lotMethod HIFO', async () => {
+      const pos: Position = {
+        id: 'p1',
+        asset: SPY,
+        side: 'long',
+        quantity: 10,
+        entry: { date: T, price: 360 },
+        basis: 3600,
+      };
+      const held: Portfolio = { ...portfolio, positions: [pos], lots: [lotCheap, lotPricey] };
+      const exec = new BacktestExecutor({ calendar: cal, nextOpen, lotMethod: 'HIFO' });
+      const order: Order = { id: 'a1', kind: 'adjust', positionId: 'p1', changes: { quantity: 6 } };
+      const fills = await exec.submit([order], T, held);
+      expect(fills).toHaveLength(1);
+      expect(fills[0]!.lotId).toBeUndefined();
+    });
+
+    it('does NOT split a short-side close under lotMethod HIFO', async () => {
+      const shortPos: Position = {
+        id: 'ps',
+        asset: SPY,
+        side: 'short',
+        quantity: 5,
+        entry: { date: T, price: 400 },
+        basis: 2000,
+      };
+      const held: Portfolio = { ...portfolio, positions: [shortPos] };
+      const exec = new BacktestExecutor({ calendar: cal, nextOpen, lotMethod: 'HIFO' });
+      const order: Order = { id: 'cs', kind: 'close', positionId: 'ps', quantity: 5 };
+      const fills = await exec.submit([order], T, held);
+      expect(fills).toHaveLength(1);
+      expect(fills[0]!.lotId).toBeUndefined();
+    });
+
+    it('end-to-end: split fills feed applyFills, realized events draw from HIFO lots', async () => {
+      const pos: Position = {
+        id: 'p1',
+        asset: SPY,
+        side: 'long',
+        quantity: 10,
+        entry: { date: T, price: 360 },
+        basis: 3600,
+      };
+      const held: Portfolio = { ...portfolio, positions: [pos], lots: [lotCheap, lotPricey] };
+      const exec = new BacktestExecutor({ calendar: cal, nextOpen, lotMethod: 'HIFO' });
+      const order: Order = { id: 'r4', kind: 'rebalance', asset: SPY, delta: -7 };
+      const fills = await exec.submit([order], T, held);
+      const next = applyFills(held, fills, [order]);
+      // Pricey lot fully consumed (4 shares), cheap lot reduced by 3 (6 -> 3).
+      const remaining = (next.lots ?? []).filter((l) => l.quantity > 0);
+      expect(remaining.map((l) => l.id)).toEqual(['lot_cheap']);
+      expect(remaining[0]!.quantity).toBe(3);
+      // Realized events: 4 shares from pricey lot, 3 from cheap lot.
+      const realized = next.realized ?? [];
+      expect(realized.map((r) => r.lotId).sort()).toEqual(['lot_cheap', 'lot_pricey']);
+      const pricey = realized.find((r) => r.lotId === 'lot_pricey')!;
+      const cheap = realized.find((r) => r.lotId === 'lot_cheap')!;
+      expect(pricey.quantity).toBe(4);
+      expect(cheap.quantity).toBe(3);
+    });
   });
 });

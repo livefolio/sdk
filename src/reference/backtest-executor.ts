@@ -3,6 +3,7 @@ import type { Calendar } from '../interfaces/calendar';
 import type { Asset } from '../interfaces/types';
 import type { Order, Fill } from '../orders/types';
 import type { Portfolio } from '../portfolio/types';
+import { selectLIFO, selectHIFO, selectMinTax, type LotSlice } from '../tax/lot-selection';
 
 /**
  * Callback that resolves the next-open price for `asset` as seen from date `t`.
@@ -42,25 +43,63 @@ export type BacktestExecutorOptions = {
    * the fill quantity and recorded in `Fill.fees`. Defaults to `0`.
    */
   perShareFee?: number;
+  /**
+   * Tax-lot selection method applied to long sells (a `rebalance` reduce or a
+   * `close` of a long position). When set to a non-default method
+   * (`'LIFO'` / `'HIFO'` / `'min-tax'`), such a sell is split into one
+   * {@link Fill} per selected lot — each carrying `Fill.lotId` — so
+   * {@link applyFills} consumes those exact lots.
+   *
+   * Defaults to `'FIFO'` (equivalently, leaving this unset): the executor emits
+   * a single fill per order with no `lotId`, and `applyFills` performs its own
+   * internal FIFO. Buys, short-side closes, and `adjust` orders are never split.
+   */
+  lotMethod?: 'FIFO' | 'LIFO' | 'HIFO' | 'min-tax';
+  /**
+   * Short- and long-term capital-gains tax rates (as decimals, e.g. `0.37`)
+   * forwarded to the `'min-tax'` selector. **Required** when
+   * `lotMethod === 'min-tax'`; the constructor throws otherwise. Ignored for
+   * all other lot methods.
+   */
+  taxRates?: { shortTerm: number; longTerm: number };
 };
 
-function resolveAsset(order: Order, portfolio: Portfolio): { asset: Asset; sign: 1 | -1; qty: number } {
+/**
+ * Resolves the asset, net direction, quantity, and whether the order is a
+ * long sell that {@link applyFills} consumes lots for — i.e. a `rebalance`
+ * reduce (`delta < 0`) or a `close` of a long position. `lotConsumingSell` is
+ * `false` for buys, short-side closes, and `adjust` orders.
+ */
+function resolveAsset(
+  order: Order,
+  portfolio: Portfolio,
+): { asset: Asset; sign: 1 | -1; qty: number; lotConsumingSell: boolean } {
   switch (order.kind) {
     case 'open':
-      return { asset: order.asset, sign: order.side === 'long' ? 1 : -1, qty: order.quantity };
+      return { asset: order.asset, sign: order.side === 'long' ? 1 : -1, qty: order.quantity, lotConsumingSell: false };
     case 'rebalance':
-      return { asset: order.asset, sign: order.delta >= 0 ? 1 : -1, qty: Math.abs(order.delta) };
+      return {
+        asset: order.asset,
+        sign: order.delta >= 0 ? 1 : -1,
+        qty: Math.abs(order.delta),
+        lotConsumingSell: order.delta < 0,
+      };
     case 'close': {
       const p = portfolio.positions.find((x) => x.id === order.positionId);
       if (!p) throw new Error(`BacktestExecutor: close target position ${order.positionId} not found`);
-      return { asset: p.asset, sign: p.side === 'long' ? -1 : 1, qty: order.quantity ?? p.quantity };
+      return {
+        asset: p.asset,
+        sign: p.side === 'long' ? -1 : 1,
+        qty: order.quantity ?? p.quantity,
+        lotConsumingSell: p.side === 'long',
+      };
     }
     case 'adjust': {
       const p = portfolio.positions.find((x) => x.id === order.positionId);
       if (!p) throw new Error(`BacktestExecutor: adjust target position ${order.positionId} not found`);
       const target = order.changes.quantity ?? p.quantity;
       const delta = target - p.quantity;
-      return { asset: p.asset, sign: delta >= 0 ? 1 : -1, qty: Math.abs(delta) };
+      return { asset: p.asset, sign: delta >= 0 ? 1 : -1, qty: Math.abs(delta), lotConsumingSell: false };
     }
   }
 }
@@ -84,6 +123,12 @@ function resolveAsset(order: Order, portfolio: Portfolio): { asset: Asset; sign:
  * A flat per-share fee is added to `Fill.fees`. Orders with zero quantity are
  * silently skipped.
  *
+ * **Lot selection**: by default each order yields exactly one fill. When a
+ * non-default `lotMethod` (`'LIFO'` / `'HIFO'` / `'min-tax'`) is configured,
+ * long sells (a `rebalance` reduce or a `close` of a long position) are split
+ * into one fill per selected lot — each tagged with `Fill.lotId` — so
+ * {@link applyFills} consumes those exact lots. See {@link BacktestExecutorOptions.lotMethod}.
+ *
  * @example
  * ```ts
  * import { BacktestExecutor } from '@livefolio/sdk';
@@ -102,18 +147,50 @@ function resolveAsset(order: Order, portfolio: Portfolio): { asset: Asset; sign:
  * ```
  */
 export class BacktestExecutor implements Executor {
-  constructor(private readonly opts: BacktestExecutorOptions) {}
+  constructor(private readonly opts: BacktestExecutorOptions) {
+    if (opts.lotMethod === 'min-tax' && !opts.taxRates) {
+      throw new Error("BacktestExecutor: lotMethod 'min-tax' requires taxRates");
+    }
+  }
 
   async submit(orders: ReadonlyArray<Order>, t: Date, portfolio: Portfolio): Promise<ReadonlyArray<Fill>> {
     const fills: Fill[] = [];
     const slip = (this.opts.slippageBps ?? 0) / 10_000;
     const feePer = this.opts.perShareFee ?? 0;
+    const method = this.opts.lotMethod;
 
     for (const order of orders) {
-      const { asset, sign, qty } = resolveAsset(order, portfolio);
+      const { asset, sign, qty, lotConsumingSell } = resolveAsset(order, portfolio);
       if (qty === 0) continue;
       const open = await this.opts.nextOpen(asset, t);
       const adjustedPrice = open.price * (1 + sign * slip);
+
+      // Split path: only for long sells that applyFills consumes lots for, and
+      // only under a non-default method. Emit one fill per selected lot so
+      // applyFills honors `fill.lotId`. Buys / short closes / adjust never split.
+      if (method && method !== 'FIFO' && lotConsumingSell) {
+        const lots = (portfolio.lots ?? []).filter((l) => l.asset.id === asset.id && l.quantity > 0);
+        const slices: LotSlice[] =
+          method === 'LIFO'
+            ? selectLIFO(lots, qty)
+            : method === 'HIFO'
+              ? selectHIFO(lots, qty)
+              : selectMinTax(lots, qty, { price: adjustedPrice, asOf: open.t, rates: this.opts.taxRates! });
+        for (const slice of slices) {
+          fills.push({
+            orderRef: order.id,
+            t: open.t,
+            quantity: slice.quantity,
+            price: adjustedPrice,
+            fees: feePer * slice.quantity,
+            lotId: slice.lotId,
+          });
+        }
+        continue;
+      }
+
+      // Default single-fill path (byte-for-byte identical to pre-lotMethod
+      // behavior): one fill per order, no `lotId`.
       fills.push({
         orderRef: order.id,
         t: open.t,
