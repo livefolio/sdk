@@ -29,3 +29,5 @@ export {
 export { currentWeights, withinDriftBand } from './drift-band';
 export { applyTaxPolicy } from './apply-tax-policy';
 export type { TaxPolicyConfig } from './apply-tax-policy';
+export { applyTaxLossHarvesting } from './apply-tax-loss-harvest';
+export type { TLHConfig, TLHResult } from './apply-tax-loss-harvest';
