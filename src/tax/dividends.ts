@@ -6,12 +6,12 @@ const MS_PER_DAY = 86_400_000;
 /**
  * Options for the 60-of-121-day qualified-dividend holding test.
  *
- * Both fields default to the IRS standard values for common stock dividends:
- * the investor must hold the stock for at least 61 days within the 121-day
- * window that begins 60 days before the ex-dividend date.
+ * Both fields default to values for common stock dividends: the investor must
+ * have held the lot throughout the 60-day window ending at the ex-dividend date, within
+ * the 121-day window that begins 60 days before the ex-date.
  */
 export type QualificationOpts = {
-  /** Minimum days the lot must be held within the window. Defaults to `61`. */
+  /** Minimum days the lot must be held within the window. Defaults to `60`. */
   holdingDaysRequired?: number;
   /** Width of the holding window in calendar days. Defaults to `121`. */
   windowDays?: number;
@@ -21,19 +21,26 @@ export type QualificationOpts = {
  * Determines whether a single {@link Lot} satisfies the IRS 60-of-121-day
  * qualified-dividend holding requirement as of a given `exDate`.
  *
- * The 121-day window is centred on `exDate` (60 days before, the ex-date
- * itself, and 60 days after). Only days the lot was held **on or before**
- * `exDate` count — future hold time does not qualify the dividend. Returns
- * `true` when the number of days held within the window is `>= holdingDaysRequired`.
+ * The 121-day window is centred on `exDate` with `half = floor(121 / 2) = 60`,
+ * so it spans the 60 days before `exDate`, the ex-date itself, and the 60 days
+ * after. Only days the lot was held **on or before** `exDate` count — `heldTo`
+ * is capped at `exDate` so future hold time never qualifies a dividend. This
+ * keeps the test lookahead-free and conservative: it never over-grants
+ * qualified status. Because `heldTo` is capped at `exDate`, the most a lot can
+ * accumulate is the 60-day run-up to the ex-date, so the default threshold of
+ * `60` models "held throughout the 60-day window ending at ex-date"
+ * (`60 >= 60`). Returns `true` when the days held within the window are
+ * `>= holdingDaysRequired`.
  *
  * @param lot - The tax lot to test.
  * @param exDate - The dividend ex-dividend date.
- * @param opts - Optional overrides for `holdingDaysRequired` (default `61`) and
- *   `windowDays` (default `121`).
+ * @param opts - Optional overrides for `holdingDaysRequired` (default `60` —
+ *   "held throughout the 60-day window ending at ex-date") and `windowDays`
+ *   (default `121`).
  * @returns `true` when the lot satisfies the holding-period test.
  */
 export function isQualifiedForLot(lot: Lot, exDate: Date, opts: QualificationOpts = {}): boolean {
-  const required = opts.holdingDaysRequired ?? 61;
+  const required = opts.holdingDaysRequired ?? 60;
   const window = opts.windowDays ?? 121;
   const half = Math.floor(window / 2);
   const windowStart = new Date(exDate.getTime() - half * MS_PER_DAY);
