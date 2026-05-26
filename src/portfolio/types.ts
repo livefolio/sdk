@@ -59,7 +59,7 @@ export type IncomeKind = 'capital-gain' | 'qualified-dividend' | 'ordinary-divid
  * sales reduce `quantity` and pro-rate `basis`.
  */
 export type Lot = {
-  /** Opaque id assigned by {@link nextLotId} on creation. */
+  /** Opaque id assigned by `nextLotId` (internal) on creation. */
   id: string;
   asset: Asset;
   /** Shares remaining in this lot after any partial sales. */

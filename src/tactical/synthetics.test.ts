@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { withSynthetics } from './synthetics';
 import type { DataFeed } from '../interfaces/data-feed';
-import type { Asset, Bar } from '../interfaces/types';
+import type { Asset, Bar, DividendEvent } from '../interfaces/types';
 import type { SyntheticAsset } from './types';
 
 const utc = (s: string) => new Date(`${s}T00:00:00Z`);
@@ -145,6 +145,34 @@ describe('withSynthetics', () => {
     expect(() => withSynthetics(f, [a, b])).toThrow(/duplicate synthetic asset id "us:X"/);
   });
 
+  it('exposes dividends and forwards calls when underlying feed has it', async () => {
+    const divs: DividendEvent[] = [
+      {
+        asset: { kind: 'equity', id: 'us:SPY', symbol: 'SPY' },
+        exDate: new Date('2024-03-08'),
+        payDate: new Date('2024-03-15'),
+        amountPerShare: 1.5,
+        incomeKind: 'qualified-eligible',
+      },
+    ];
+    const dividendsFn = vi.fn(async () => divs);
+    const { feed: f } = feed({ 'us:SPY': underlyingBars });
+    const feedWithDivs: DataFeed = { ...f, dividends: dividendsFn };
+    const wrapped = withSynthetics(feedWithDivs, [SPY3X]);
+    expect('dividends' in wrapped).toBe(true);
+    const asset: Asset = { kind: 'equity', id: 'us:SPY', symbol: 'SPY' };
+    const result = await wrapped.dividends!(asset, range);
+    expect(result).toEqual(divs);
+    expect(dividendsFn).toHaveBeenCalledWith(asset, range);
+  });
+
+  it('does NOT define dividends on the wrapped feed when underlying lacks it', () => {
+    const { feed: f } = feed({ 'us:SPY': underlyingBars });
+    // f does not have a dividends method
+    const wrapped = withSynthetics(f, [SPY3X]);
+    expect('dividends' in wrapped).toBe(false);
+  });
+
   it('does not delegate to the wrapped feed on synthetic id queries', async () => {
     const { feed: f, calls } = feed({ 'us:SPY': underlyingBars });
     const wrapped = withSynthetics(f, [SPY3X]);
@@ -152,5 +180,31 @@ describe('withSynthetics', () => {
     const askedFor = calls.mock.calls.map((c) => (c[0] as Asset).id);
     expect(askedFor).toContain('us:SPY');
     expect(askedFor).not.toContain('us:SPY_3X');
+  });
+
+  it('forwards the bars kind to the underlying feed (passthrough and synthetic)', async () => {
+    // Stub whose close varies by `kind`: unadjusted -> 100, adjusted/default -> 95.
+    const calls = vi.fn(async function* (_a: Asset, _r, _f, kind?: 'adjusted' | 'unadjusted') {
+      const close = kind === 'unadjusted' ? 100 : 95;
+      yield { t: utc('2026-01-05'), open: close, high: close, low: close, close, volume: 1 };
+    });
+    const f = { bars: calls } as DataFeed;
+    const wrapped = withSynthetics(f, [SPY3X]);
+
+    // Passthrough asset: kind reaches the underlying feed and the close reflects it.
+    const pass = await collect(
+      wrapped.bars({ kind: 'equity', id: 'us:AGG', symbol: 'AGG' }, range, '1d', 'unadjusted'),
+    );
+    expect(calls).toHaveBeenLastCalledWith({ kind: 'equity', id: 'us:AGG', symbol: 'AGG' }, range, '1d', 'unadjusted');
+    expect(pass[0]!.close).toBe(100);
+
+    // Synthetic asset: kind is forwarded to the underlying lookup; first bar anchors to it.
+    const synth = await collect(
+      wrapped.bars({ kind: 'equity', id: 'us:SPY_3X', symbol: 'SPY_3X' }, range, '1d', 'unadjusted'),
+    );
+    const lastCall = calls.mock.calls.at(-1)!;
+    expect((lastCall[0] as Asset).id).toBe('us:SPY');
+    expect(lastCall[3]).toBe('unadjusted');
+    expect(synth[0]!.close).toBe(100);
   });
 });

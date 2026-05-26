@@ -1,4 +1,4 @@
-import type { Asset, Bar, DateRange, Frequency } from './types';
+import type { Asset, Bar, DateRange, DividendEvent, Frequency } from './types';
 
 /**
  * A flat record of fundamental data points for an asset at a point in time.
@@ -94,9 +94,13 @@ export interface DataFeed {
    * @param asset - The instrument to fetch bars for.
    * @param range - Half-open date range; `range.from` inclusive, `range.to` exclusive.
    * @param freq  - Bar width. `'1d'` returns one bar per trading day.
+   * @param kind  - `'adjusted'` (default) applies split/dividend adjustments;
+   *   `'unadjusted'` returns raw prices. Indicators consume adjusted bars;
+   *   execution fills and dividend cash-flow use unadjusted bars. Vendors that
+   *   do not distinguish may ignore this and always return their single series.
    * @returns An async iterable of {@link Bar} objects.
    */
-  bars(asset: Asset, range: DateRange, freq: Frequency): AsyncIterable<Bar>;
+  bars(asset: Asset, range: DateRange, freq: Frequency, kind?: 'adjusted' | 'unadjusted'): AsyncIterable<Bar>;
 
   /**
    * Returns a snapshot of fundamental data for `asset` as of `t`.
@@ -119,4 +123,16 @@ export interface DataFeed {
    * @returns An async iterable of {@link DataEvent} objects.
    */
   events?(range: DateRange, kinds: ReadonlyArray<EventKind>): AsyncIterable<DataEvent>;
+
+  /**
+   * Returns cash distributions (dividends / interest) for `asset` over `range`.
+   * Optional — providers without dividend data omit it. Consumed by
+   * `runBacktest`'s per-session dividend hook. Amounts are per-share, on the
+   * unadjusted price basis.
+   *
+   * @param asset - The instrument to query.
+   * @param range - Half-open date range.
+   * @returns A promise resolving to an array of {@link DividendEvent} objects.
+   */
+  dividends?(asset: Asset, range: DateRange): Promise<DividendEvent[]>;
 }

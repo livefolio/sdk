@@ -1,4 +1,4 @@
-import type { Asset, Bar, DateRange, Frequency } from '../interfaces/types';
+import type { Asset, Bar, DateRange, DividendEvent, Frequency } from '../interfaces/types';
 import type { DataFeed, Fundamentals } from '../interfaces/data-feed';
 
 /**
@@ -6,7 +6,8 @@ import type { DataFeed, Fundamentals } from '../interfaces/data-feed';
  * when the routed feed does not support the requested optional method.
  *
  * Distinguish the two cases via the message text: "no feed registered" vs
- * "does not implement fundamentals".
+ * "does not implement `<method>`" (e.g. "does not implement fundamentals()" or
+ * "does not implement dividends()").
  */
 export class RoutingDataFeedError extends Error {
   constructor(message: string) {
@@ -33,9 +34,11 @@ export type RoutingDataFeedRouteMap = Readonly<Partial<Record<Asset['kind'], Dat
  * - **Function form:** `new RoutingDataFeed((a) => a.kind === 'macro' ? fred : yahoo)`.
  *   Use when routing depends on more than `kind` (e.g. allowlists).
  *
- * The router does **not** implement `events()` — the optional method is
- * genuinely absent (`'events' in router === false`). Cross-feed event
- * fan-out is deferred until a real consumer materializes.
+ * `dividends()` and `fundamentals()` ARE implemented — each targets a single
+ * asset, so it resolves to that asset's routed feed (or throws if the feed
+ * lacks the method). The router does **not** implement `events()` — the
+ * optional method is genuinely absent (`'events' in router === false`) because
+ * cross-feed event fan-out is a separate, deferred problem.
  *
  * @example
  * ```ts
@@ -65,9 +68,9 @@ export class RoutingDataFeed implements DataFeed {
   // Async generator (rather than plain delegation) so resolve() runs lazily on
   // the first next() call, surfacing errors via the iterable's normal rejection
   // path instead of throwing synchronously at call time.
-  async *bars(asset: Asset, range: DateRange, freq: Frequency): AsyncGenerator<Bar> {
+  async *bars(asset: Asset, range: DateRange, freq: Frequency, kind?: 'adjusted' | 'unadjusted'): AsyncGenerator<Bar> {
     const feed = this.resolve(asset);
-    yield* feed.bars(asset, range, freq);
+    yield* feed.bars(asset, range, freq, kind);
   }
 
   async fundamentals(asset: Asset, t: Date): Promise<Fundamentals> {
@@ -78,6 +81,24 @@ export class RoutingDataFeed implements DataFeed {
       );
     }
     return feed.fundamentals(asset, t);
+  }
+
+  /**
+   * Resolves `asset` to its routed feed and delegates `dividends`. This method
+   * is ALWAYS present on the router (unlike a leaf feed's optional `dividends?`),
+   * so `typeof routingFeed.dividends === 'function'` is always `true` — capability
+   * detection must account for the routed feed possibly lacking it at call time.
+   *
+   * @throws {RoutingDataFeedError} when the routed feed does not implement `dividends`.
+   */
+  async dividends(asset: Asset, range: DateRange): Promise<DividendEvent[]> {
+    const feed = this.resolve(asset);
+    if (typeof feed.dividends !== 'function') {
+      throw new RoutingDataFeedError(
+        `RoutingDataFeed: routed feed for asset.kind="${asset.kind}" (id="${asset.id}") does not implement dividends()`,
+      );
+    }
+    return feed.dividends(asset, range);
   }
 
   private resolve(asset: Asset): DataFeed {

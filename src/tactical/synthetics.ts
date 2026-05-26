@@ -74,7 +74,7 @@ async function* synthesize(
  * independently scaled); `volume` is passed through from the underlying bar.
  *
  * Non-synthetic assets are proxied transparently to the original `dataFeed`.
- * `fundamentals` and `events` methods, if present, are forwarded unchanged.
+ * `fundamentals`, `events`, and `dividends` methods, if present, are forwarded unchanged.
  *
  * Throws at construction time if `synthetics` contains duplicate `id` values.
  *
@@ -108,11 +108,13 @@ export function withSynthetics(dataFeed: DataFeed, synthetics: ReadonlyArray<Syn
   }
 
   const wrapped: DataFeed = {
-    bars(asset: Asset, range: DateRange, freq: Frequency): AsyncIterable<Bar> {
+    // `kind` ('adjusted' | 'unadjusted') is forwarded to the underlying feed
+    // before synthesis so synthetic bars derive from the requested price series.
+    bars(asset: Asset, range: DateRange, freq: Frequency, kind?: 'adjusted' | 'unadjusted'): AsyncIterable<Bar> {
       const synth = byId.get(asset.id);
-      if (!synth) return dataFeed.bars(asset, range, freq);
+      if (!synth) return dataFeed.bars(asset, range, freq, kind);
       const underlying = resolveAssetRef(synth.underlying);
-      return synthesize(dataFeed.bars(underlying, range, freq), synth.leverage, synth.expense);
+      return synthesize(dataFeed.bars(underlying, range, freq, kind), synth.leverage, synth.expense);
     },
   };
 
@@ -121,6 +123,9 @@ export function withSynthetics(dataFeed: DataFeed, synthetics: ReadonlyArray<Syn
   }
   if (dataFeed.events) {
     wrapped.events = dataFeed.events.bind(dataFeed);
+  }
+  if (dataFeed.dividends) {
+    wrapped.dividends = dataFeed.dividends.bind(dataFeed);
   }
 
   return wrapped;
